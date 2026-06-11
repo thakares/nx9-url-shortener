@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # nx9-url-shortner
 
 A lightweight, self-hosted URL shortener and landing page platform written in Rust.
@@ -18,13 +17,13 @@ Create short links using compact hexadecimal identifiers.
 Example:
 
 ```text
-https://bzo.in/1bb170
+https://<your-domain>/1bb170
 ```
 
 Redirects to:
 
 ```text
-https://github.com/thakares/chronoseal-rs
+https://very-long-domain-name.com
 ```
 
 ---
@@ -36,7 +35,7 @@ Create standalone landing pages using dedicated page identifiers.
 Example:
 
 ```text
-https://bzo.in/p/1a2b
+https://<your-domain>/p/1a2b
 ```
 
 ---
@@ -280,10 +279,9 @@ Apache License 2.0
 
 ## Author
 
-Sunil Thakare
+Sunil Purushottam Thakare
 
 Built using Rust, SQLite, Axum, Askama, and a preference for simple, maintainable software.
 =======
 # nx9-url-shortener
 A simple, self-hosted URL shortener built with Rust and SQLite: no Node.js, no Redis, no external dependencies.
->>>>>>> 1635099085c455f6f734d719f2bb0341d32207d3
