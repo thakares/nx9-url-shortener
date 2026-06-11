@@ -1,0 +1,27 @@
+[Unit]
+Description=BZOD - Personal URL Shortener & Landing Page Platform
+After=network.target
+
+[Service]
+Type=simple
+User=bzod
+Group=bzod
+WorkingDirectory=/var/lib/bzod
+EnvironmentFile=/etc/bzod/bzod.env
+ExecStart=/usr/local/bin/bzod serve --host 0.0.0.0 --port 8080 --data-dir /var/lib/bzod/data
+Restart=on-failure
+RestartSec=5s
+
+# Hardening / Sandboxing options for security
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/bzod
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

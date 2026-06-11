@@ -1,0 +1,137 @@
+{% extends "layout.html" %}
+
+{% block title %}Manage Landing Pages - BZOD{% endblock %}
+
+{% block active_pages %}active{% endblock %}
+
+{% block header_title %}Landing Page Registry{% endblock %}
+
+{% block content %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+    <!-- Create Landing Page Form -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Create a New Landing Page
+        </h3>
+        
+        <form action="/admin/pages/create" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="title">Page Title *</label>
+                    <input type="text" id="title" name="title" class="form-input" placeholder="e.g. Summer Campaign" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="slug">SEO Slug *</label>
+                    <input type="text" id="slug" name="slug" class="form-input" placeholder="e.g. summer-promo" required pattern="[a-zA-Z0-9\-_]+" title="Only alphanumeric characters, dashes, and underscores allowed">
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label for="code">Short Code (4-Hex, optional)</label>
+                    <input type="text" id="code" name="code" class="form-input" placeholder="e.g. a1b2" pattern="[0-9a-fA-F]{4}" title="Must be exactly 4 hex characters">
+                </div>
+
+                <div class="form-group">
+                    <label for="state">Publish State</label>
+                    <select id="state" name="state">
+                        <option value="draft">Draft</option>
+                        <option value="published" selected>Published</option>
+                        <option value="archived">Archived</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="html_content">Raw HTML Document *</label>
+                <textarea id="html_content" name="html_content" class="form-input" style="font-family: monospace; font-size: 0.85rem; height: 300px; background-color: #05070f; border-color: rgba(255,255,255,0.05);" placeholder="<!DOCTYPE html>&#10;<html>&#10;<head>&#10;  <title>Landing Page</title>&#10;</head>&#10;<body>&#10;  <h1>Welcome!</h1>&#10;</body>&#10;</html>" required></textarea>
+            </div>
+            
+            <button type="submit" class="btn" style="width: 100%; margin-top: 0.5rem;">Save Page</button>
+        </form>
+    </div>
+
+    <!-- Landing Pages Table -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Registered Pages
+            </h3>
+        </div>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Page Title</th>
+                        <th>Short Path</th>
+                        <th>SEO Preview Path</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if pages.is_empty() %}
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                                No landing pages registered. Create one to get started!
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for page in pages %}
+                            <tr>
+                                <td>
+                                    <div style="font-weight: 700; color: var(--text-primary);">
+                                        {{ page.title }}
+                                    </div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">
+                                        UUID: {{ page.id[0..8] }}...
+                                    </div>
+                                </td>
+                                <td>
+                                    <a href="/p/{{ page.code }}" target="_blank" style="color: var(--accent-color); font-weight: 700; text-decoration: none; font-family: monospace;">
+                                        /p/{{ page.code }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <a href="/p/{{ page.code }}/{{ page.slug }}" target="_blank" style="color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; font-family: monospace;">
+                                        /p/{{ page.code }}/{{ page.slug }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge badge-{{ page.state }}">
+                                        {{ page.state }}
+                                    </span>
+                                </td>
+                                <td style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    {{ page.created_at[0..10] }}
+                                </td>
+                                <td>
+                                    <form action="/admin/pages/delete/{{ page.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this page?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+use axum::{
+    extract::{Path, State, ConnectInfo},
+    http::{HeaderMap, StatusCode},
+    response::{Response, Html, IntoResponse},
+};
+use std::net::SocketAddr;
+use uuid::Uuid;
+use chrono::Utc;
+
+use crate::state::AppState;
+use crate::models::VisitRecord;
+use crate::utils::get_client_ip;
+use crate::analytics::get_client_country;
+use crate::services::landing_pages::get_landing_page_by_code;
+
+// GET /p/:code and GET /p/:code/*slug
+// Resolve and render landing page
+pub async fn resolve_page(
+    State(state): State<AppState>,
+    Path(code): Path<String>,
+    headers: HeaderMap,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+) -> Response {
+    if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+        return (StatusCode::NOT_FOUND, "Not Found").into_response();
+    }
+
+    let page_opt = match get_landing_page_by_code(&state.db, &code) {
+        Ok(page) => page,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    match page_opt {
+        Some(page) => {
+            // Check state
+            if page.state == "archived" {
+                return (StatusCode::GONE, "This landing page has been archived").into_response();
+            }
+
+            // Record view analytics
+            let ip = get_client_ip(&headers, connect_info);
+            let country = get_client_country(&headers);
+            let user_agent = headers.get("user-agent")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("Unknown")
+                .to_string();
+            let referer = headers.get("referer")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("Direct")
+                .to_string();
+            let accept_language = headers.get("accept-language")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or("Unknown")
+                .to_string();
+
+            let record = VisitRecord {
+                id: Uuid::new_v4().to_string(),
+                target_type: "page".to_string(),
+                target_id: page.id.clone(),
+                timestamp: Utc::now().to_rfc3339(),
+                ip_address: ip,
+                user_agent,
+                referer,
+                accept_language,
+                country,
+                status_code: 200,
+            };
+
+            state.analytics_queue.push(record);
+
+            // Render raw HTML
+            Html(page.html_content).into_response()
+        }
+        None => (StatusCode::NOT_FOUND, "Landing page not found").into_response(),
+    }
+}

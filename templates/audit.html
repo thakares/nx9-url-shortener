@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+
+{% block title %}Audit Logs - BZOD{% endblock %}
+
+{% block active_audit %}active{% endblock %}
+
+{% block header_title %}Security Audit Logs{% endblock %}
+
+{% block content %}
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            System Action Log
+        </h3>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Action</th>
+                    <th>Operator (User)</th>
+                    <th>Source IP Address</th>
+                    <th>Log Details / Context</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs.is_empty() %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No audit records logged yet.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for log in logs %}
+                        <tr>
+                            <td style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">
+                                {{ log.timestamp[0..19].replace("T", " ") }}
+                            </td>
+                            <td>
+                                <span class="badge" style="background-color: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.2);">
+                                    {{ log.action }}
+                                </span>
+                            </td>
+                            <td>
+                                <span style="font-weight: 600; color: var(--text-primary);">{{ log.username }}</span>
+                            </td>
+                            <td style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary);">
+                                {{ log.ip_address.as_deref().unwrap_or("Unknown") }}
+                            </td>
+                            <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                                {% if let Some(obj_type) = log.object_type %}
+                                    <span style="font-weight: 500;">Type:</span> {{ obj_type }}
+                                {% endif %}
+                                {% if let Some(obj_id) = log.object_id %}
+                                    | <span style="font-weight: 500;">ID:</span> {{ obj_id }}
+                                {% endif %}
+                                {% if let Some(ua) = log.user_agent %}
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">UA: {{ ua }}</div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

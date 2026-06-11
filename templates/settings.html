@@ -1,0 +1,188 @@
+{% extends "layout.html" %}
+
+{% block title %}Settings - BZOD{% endblock %}
+
+{% block active_settings %}active{% endblock %}
+
+{% block header_title %}System Settings{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+    
+    <!-- Left Column -->
+    <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <!-- Change Password -->
+        <div class="card">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                Change Password
+            </h3>
+            
+            <form action="/admin/settings/password" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="form-group">
+                    <label for="current_password">Current Password</label>
+                    <input type="password" id="current_password" name="current_password" class="form-input" required autocomplete="current-password">
+                </div>
+                
+                <div class="form-group">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8" autocomplete="new-password">
+                </div>
+                
+                <button type="submit" class="btn" style="width: 100%; margin-top: 0.5rem;">Update Password</button>
+            </form>
+        </div>
+
+        <!-- Data Retention -->
+        <div class="card">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Analytics Retention Policy
+            </h3>
+            
+            <form action="/admin/settings/retention" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="form-group">
+                    <label for="retention">Visits Logs Retention</label>
+                    <select id="retention" name="retention">
+                        <option value="30" {% if data_retention == "30" %}selected{% endif %}>30 Days</option>
+                        <option value="90" {% if data_retention == "90" %}selected{% endif %}>90 Days</option>
+                        <option value="365" {% if data_retention == "365" %}selected{% endif %}>365 Days</option>
+                        <option value="unlimited" {% if data_retention == "unlimited" %}selected{% endif %}>Unlimited</option>
+                    </select>
+                </div>
+                
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.4;">
+                    Old visits logs are cleaned up daily. Changing this policy does not affect aggregated monthly/yearly summaries.
+                </p>
+                
+                <button type="submit" class="btn" style="width: 100%;">Save Retention Policy</button>
+            </form>
+        </div>
+
+        <!-- Maintenance Operations -->
+        <div class="card">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Maintenance & DB Utilities
+            </h3>
+            
+            <div style="display: flex; flex-direction: column; gap: 1rem;">
+                <div>
+                    <form action="/admin/settings/compact" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-secondary" style="width: 100%; text-align: left; justify-content: flex-start;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                            Compact Databases (VACUUM)
+                        </button>
+                    </form>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; margin-left: 0.5rem;">
+                        Reclaims unused space and defragments all SQLite database files.
+                    </p>
+                </div>
+
+                <div>
+                    <a href="/admin/settings/backup" class="btn" style="width: 100%; text-align: left; justify-content: flex-start; background: #047857;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Download Backup (.tar.gz)
+                    </a>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; margin-left: 0.5rem;">
+                        Generates a tarball of admin.db, content.db, and analytics.db.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Right Column: API Keys -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                REST API Tokens
+            </h3>
+        </div>
+
+        <div style="padding: 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <form action="/admin/settings/api-keys/create" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group">
+                    <label for="key_name">Generate Token Name</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="key_name" name="key_name" class="form-input" placeholder="e.g. HomeAssistant Script" required>
+                        <button type="submit" class="btn">Generate</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Key Description</th>
+                        <th>Created</th>
+                        <th>Last Used</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if api_keys.is_empty() %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                                No active API tokens generated yet.
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for key in api_keys %}
+                            <tr>
+                                <td style="font-weight: 600; color: var(--text-primary);">
+                                    {{ key.name }}
+                                    <div style="font-size: 0.75rem; color: var(--text-muted); font-family: monospace;">
+                                        Key Prefix: {{ key.key_hash[0..8] }}...
+                                    </div>
+                                </td>
+                                <td style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    {{ key.created_at[0..10] }}
+                                </td>
+                                <td style="font-size: 0.8rem; color: var(--text-secondary);">
+                                    {% if let Some(last) = key.last_used_at %}
+                                        {{ last[0..16].replace("T", " ") }}
+                                    {% else %}
+                                        Never
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form action="/admin/settings/api-keys/revoke/{{ key.id }}" method="POST" onsubmit="return confirm('Are you sure you want to revoke this API token? Any integrations using it will fail.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">
+                                            Revoke
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

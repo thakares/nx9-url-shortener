@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+
+{% block title %}System Diagnostics - BZOD{% endblock %}
+
+{% block active_status %}active{% endblock %}
+
+{% block header_title %}Server Status & Diagnostics{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+    
+    <!-- Left Column: Core Performance Metrics -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            System Status
+        </h3>
+
+        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: var(--text-secondary);">Application Status</span>
+                <span class="badge badge-healthy" style="font-size: 0.85rem;">{{ app_status }}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: var(--text-secondary);">Uptime</span>
+                <span style="font-weight: 600; font-family: monospace;">{{ uptime }}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: var(--text-secondary);">Memory Usage</span>
+                <span style="font-weight: 600; font-family: monospace;">{{ memory_usage }}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: var(--text-secondary);">Analytics Memory Queue Size</span>
+                <span style="font-weight: 600; font-family: monospace; color: {% if queue_size > 100 %}var(--warning-color){% else %}var(--success-color){% endif %};">
+                    {{ queue_size }} items
+                </span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.03);">
+                <span style="color: var(--text-secondary);">Build Version</span>
+                <span style="font-weight: 600; font-family: monospace;">v{{ version }}</span>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: var(--text-secondary);">Git Commit Hash</span>
+                <span style="font-weight: 600; font-family: monospace; color: var(--text-muted);">{{ git_commit }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Database Storage info -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-2.239 10-5V5c0-2.761-4.477-5-10-5S2 2.239 2 5v12c0 2.761 4.477 5 10 5z"/><path d="M2 5c0 2.761 4.477 5 10 5s10-2.761 10-5"/><path d="M2 11c0 2.761 4.477 5 10 5s10-2.761 10-5"/></svg>
+            Database Status
+        </h3>
+
+        <div style="background-color: rgba(15, 23, 42, 0.4); border-radius: 12px; padding: 1.25rem; border: 1px solid rgba(255, 255, 255, 0.03); white-space: pre-wrap; font-family: monospace; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6;">{{ db_status }}</div>
+        
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 1rem; line-height: 1.4;">
+            All SQLite databases are running with Write-Ahead Logging (WAL) enabled, providing concurrent reads and high transactional throughput.
+        </p>
+    </div>
+
+</div>
+{% endblock %}

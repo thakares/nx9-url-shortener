@@ -1,0 +1,30 @@
+[package]
+name = "bzod"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+axum-extra = { version = "0.9", features = ["cookie"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.8", features = ["v4", "serde"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenvy = "0.15"
+askama = { version = "0.12" }
+argon2 = "0.5"
+sha2 = "0.10"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tar = "0.4"
+flate2 = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
+time = "0.3"
+toml = "0.8"
+
+
