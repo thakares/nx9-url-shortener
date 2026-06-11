@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-lt-installed="true"><head>
+<meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>bzo.in - Simple &amp; Private URL Shortener</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+        
+        :root {
+            --bg: #0f1321;
+            --card: #1a2337;
+            --accent: #8b5cf6;
+            --text: #e0e7ff;
+        }
+        
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        
+        header {
+            background: rgba(26, 35, 55, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #2a3a5a;
+            padding: 1.25rem 0;
+        }
+        
+        .nav {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+        
+        .main { padding: 6rem 2rem 4rem; text-align: center; }
+        
+        .beta {
+            display: inline-block;
+            background: #eab308;
+            color: #1e2937;
+            font-size: 0.85rem;
+            padding: 5px 14px;
+            border-radius: 9999px;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        
+        h1 {
+            font-size: 3.2rem;
+            line-height: 1.1;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, #c4b5fd, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .tagline {
+            font-size: 1.35rem;
+            color: #94a3c0;
+            max-width: 700px;
+            margin: 0 auto 3rem;
+        }
+        
+        .shorten-box {
+            background: var(--card);
+            border-radius: 16px;
+            padding: 1.25rem;
+            max-width: 620px;
+            margin: 0 auto 4rem;
+            border: 1px solid #3b4a6b;
+            display: flex;
+            gap: 12px;
+        }
+        
+        input {
+            flex: 1;
+            padding: 16px 20px;
+            font-size: 1.1rem;
+            background: #111827;
+            border: 1px solid #475569;
+            border-radius: 12px;
+            color: white;
+        }
+        
+        button {
+            padding: 16px 36px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        button:hover { background: #a78bfa; }
+        
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        
+        .feature-card {
+            background: var(--card);
+            padding: 2rem 1.75rem;
+            border-radius: 16px;
+            border: 1px solid #3b4a6b;
+            text-align: left;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 3rem 1rem 2rem;
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="nav">
+            <div class="logo">BZOD • bzo.in</div>
+            <a href="https://bzo.in/admin/dashboard" style="color:#a5b4fc; text-decoration:none;">Admin</a>
+        </div>
+    </header>
+
+    <div class="main">
+        <div class="beta">BETA</div>
+        <h1>Short. Clean.<br>Privacy-First.</h1>
+        <p class="tagline">Lightning-fast URL shortener with built-in analytics, custom landing pages, and full self-hosting control.</p>
+
+        <div class="shorten-box">
+            <input type="url" placeholder="Paste your long URL here..." id="urlInput">
+            <button onclick="shorten()">Shorten Now</button>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <h3>🔗 Compact Hex Codes</h3>
+                <p>Short, memorable 4-6 character links that look professional.</p>
+            </div>
+            <div class="feature-card">
+                <h3>📊 Real-time Analytics</h3>
+                <p>Track clicks, countries, referrers with beautiful charts.</p>
+            </div>
+            <div class="feature-card">
+                <h3>🎨 Custom Landing Pages</h3>
+                <p>Beautiful branded pages before redirect (like this one!).</p>
+            </div>
+            <div class="feature-card">
+                <h3>🔒 Self-Hosted &amp; Private</h3>
+                <p>Your data. Your server. No third-party tracking.</p>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Made with ❤️ using <strong>nx9-url-shortener</strong> • 
+        <a href="https://github.com/thakares/nx9-url-shortener" style="color:#a78bfa">Star on GitHub</a></p>
+    </footer>
+
+    <script>
+        function shorten() {
+            const url = document.getElementById('urlInput').value.trim();
+            if (url) {
+                window.location.href = `/?url=${encodeURIComponent(url)}`;
+            }
+        }
+    </script>
+
+</body></html>
