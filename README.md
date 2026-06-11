@@ -1,8 +1,8 @@
-# nx9-url-shortner
+# nx9-url-shortener
 
 A lightweight, self-hosted URL shortener and landing page platform written in Rust.
 
-`nx9-url-shortner` is designed for individuals, organizations, and homelab operators who want complete control over their short links without relying on third-party services.
+`nx9-url-shortener` is designed for individuals, organizations, and homelab operators who want complete control over their short links without relying on third-party services.
 
 Built with Rust, SQLite, Axum, and Askama, it provides URL shortening, landing pages, analytics, audit logging, API access, and a web-based administration interface while maintaining a small deployment footprint.
 
@@ -17,7 +17,7 @@ Create short links using compact hexadecimal identifiers.
 Example:
 
 ```text
-https://<your-domain>/1bb170
+https://<your-short-domain>/1bb170
 ```
 
 Redirects to:
@@ -35,7 +35,7 @@ Create standalone landing pages using dedicated page identifiers.
 Example:
 
 ```text
-https://<your-domain>/p/1a2b
+https://<your-short-domain>/p/1a2b
 ```
 
 ---
@@ -133,6 +133,30 @@ Password: admin
 ```
 
 Change the password immediately after first login.
+
+---
+
+## Screenshots
+
+### Dashboard
+
+![Dashboard](screenshots/dashboard.png)
+
+### Short URL Management
+
+![Short URL Management](screenshots/short-url-panel.png)
+
+### Landing Pages
+
+![Landing Pages](screenshots/landing-page-panel.png)
+
+### Settings
+
+![Settings](screenshots/settings.png)
+
+### Server Status
+
+![Server Status](screenshots/server-status.png)
 
 ---
 
@@ -261,7 +285,7 @@ Internet
 Nginx Proxy Manager
     │
     ▼
-nx9-url-shortner
+nx9-url-shortener
     │
     ▼
 SQLite
@@ -282,6 +306,3 @@ Apache License 2.0
 Sunil Purushottam Thakare
 
 Built using Rust, SQLite, Axum, Askama, and a preference for simple, maintainable software.
-=======
-# nx9-url-shortener
-A simple, self-hosted URL shortener built with Rust and SQLite: no Node.js, no Redis, no external dependencies.
