@@ -1,7 +1,8 @@
 # ==========================================
 # Stage 1: Build
 # ==========================================
-FROM rust:1.82-slim-bookworm AS builder
+# FROM rust:1.82-slim-bookworm AS builder
+FROM rust:1.89-bookworm AS builder
 
 WORKDIR /app
 
@@ -54,14 +55,14 @@ RUN mkdir -p /app/data && chown -R bzod:bzod /app/data
 USER bzod
 
 ENV DATA_DIR=/app/data
-ENV PORT=8080
+ENV PORT=8654
 ENV HOST=0.0.0.0
 ENV COOKIE_SECURE=true
 
-EXPOSE 8080
+EXPOSE 8654
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:$${PORT:-8080}/status || exit 1
+  CMD curl -f http://localhost:$${PORT:-8654}/status || exit 1
 
 ENTRYPOINT ["bzod"]
 CMD ["serve"]

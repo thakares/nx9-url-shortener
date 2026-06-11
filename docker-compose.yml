@@ -1,28 +1,67 @@
+name: app-bzod
+
 services:
   bzod:
+    image: nx9-url-shortener:v0.1.0
+
     build:
       context: .
       dockerfile: Dockerfile
 
     container_name: bzod
 
-    restart: unless-stopped
+    environment:
+      - COOKIE_SECURE=false
+      - DATA_DIR=/app/data
+      - HOST=0.0.0.0
+      - PORT=8654
+      - RUST_LOG=info
 
     ports:
-      - "8654:8654"
+      - mode: ingress
+        target: 8654
+        published: "8654"
+        protocol: tcp
+
+    restart: unless-stopped
 
     volumes:
-      - /DATA/AppData/bzod/data:/app/data
-      - /DATA/AppData/bzod/config:/app/config
+      - type: bind
+        source: /DATA/AppData/bzod/data
+        target: /app/data
+        bind:
+          create_host_path: true
 
-    environment:
-      HOST: 0.0.0.0
-      PORT: 8654
-      DATA_DIR: /app/data
-      COOKIE_SECURE: "false"
+      - type: bind
+        source: /DATA/AppData/bzod/config
+        target: /app/config
+        bind:
+          create_host_path: true
 
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8654/status"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+    networks:
+      - default
+
+    hostname: bzod
+    privileged: false
+
+    cpu_shares: 90
+
+    deploy:
+      resources:
+        limits:
+          memory: 31940M
+
+networks:
+  default:
+    name: app_default
+
+x-casaos:
+  hostname: ""
+  scheme: http
+  index: /
+  port_map: "8654"
+  author: self
+  category: self
+  icon: ""
+  title:
+    custom: nx9-url-shortener
