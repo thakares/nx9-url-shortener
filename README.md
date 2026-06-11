@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # nx9-url-shortner
 
 A lightweight, self-hosted URL shortener and landing page platform written in Rust.
@@ -282,3 +283,7 @@ Apache License 2.0
 Sunil Thakare
 
 Built using Rust, SQLite, Axum, Askama, and a preference for simple, maintainable software.
+=======
+# nx9-url-shortener
+A simple, self-hosted URL shortener built with Rust and SQLite: no Node.js, no Redis, no external dependencies.
+>>>>>>> 1635099085c455f6f734d719f2bb0341d32207d3
