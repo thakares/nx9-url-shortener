@@ -1,10 +1,50 @@
-# nx9-url-shortener
+# BZOD
 
-A lightweight, self-hosted URL shortener and landing page platform written in Rust.
+**A lightweight, self-hosted URL management platform written in Rust.**
 
-`nx9-url-shortener` is designed for individuals, organizations, and homelab operators who want complete control over their short links without relying on third-party services.
+BZOD combines URL shortening, QR code generation, password-protected links, smart preview pages, analytics, audit logging, and lifecycle management into a single self-hosted application with zero external dependencies.
 
-Built with Rust, SQLite, Axum, and Askama, it provides URL shortening, landing pages, analytics, audit logging, API access, and a web-based administration interface while maintaining a small deployment footprint.
+Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, organizations, homelab operators, and businesses that want complete control over their links, analytics, and branding.
+
+---
+
+## Highlights
+
+### v0.2.0
+
+* QR code generation (PNG and SVG)
+* QR scan analytics
+* Password-protected links
+* Smart preview pages
+* Link expiration
+* Audit trail
+* Bulk operations
+* Expanded test coverage
+* Improved health monitoring
+
+---
+
+## Feature Matrix
+
+| Feature                   | Status |
+| ------------------------- | ------ |
+| URL Shortening            | ✅      |
+| Landing Pages             | ✅      |
+| QR Code Generation        | ✅      |
+| QR Analytics              | ✅      |
+| Password-Protected Links  | ✅      |
+| Smart Preview Pages       | ✅      |
+| Link Expiration           | ✅      |
+| One-Time Links            | ✅      |
+| Audit Trail               | ✅      |
+| Bulk Operations           | ✅      |
+| Analytics Dashboard       | ✅      |
+| Health Monitoring         | ✅      |
+| REST API                  | ✅      |
+| CSV Import/Export         | 🚧     |
+| Geo Analytics             | 🚧     |
+| Multi-User Administration | 🚧     |
+| SSO                       | 🚧     |
 
 ---
 
@@ -17,7 +57,7 @@ Create short links using compact hexadecimal identifiers.
 Example:
 
 ```text
-https://<your-short-domain>/1bb170
+https://bzo.in/1bb170
 ```
 
 Redirects to:
@@ -28,6 +68,51 @@ https://very-long-domain-name.com
 
 ---
 
+### QR Code Generation
+
+Generate QR codes for every short URL.
+
+Supported formats:
+
+* PNG
+* SVG
+
+Features:
+
+* Downloadable QR assets
+* QR scan analytics
+* Bulk QR export
+* Print-friendly SVG output
+
+---
+
+### Password-Protected Links
+
+Protect sensitive links using Argon2id-hashed passwords.
+
+Features:
+
+* Password gate
+* Secure session handling
+* Configurable protection
+* Audit logging
+
+---
+
+### Smart Preview Pages
+
+Display branded preview pages before redirecting.
+
+Features:
+
+* Custom title
+* Description
+* Logo support
+* Open Graph metadata
+* Social sharing previews
+
+---
+
 ### Landing Pages
 
 Create standalone landing pages using dedicated page identifiers.
@@ -35,8 +120,22 @@ Create standalone landing pages using dedicated page identifiers.
 Example:
 
 ```text
-https://<your-short-domain>/p/1a2b
+https://bzo.in/p/1a2b
 ```
+
+---
+
+### Link Lifecycle Management
+
+Control link validity.
+
+Features:
+
+* Expiration dates
+* Automatic expiry jobs
+* One-time links
+* Maximum access limits
+* Administrative disabling
 
 ---
 
@@ -45,6 +144,7 @@ https://<your-short-domain>/p/1a2b
 Track:
 
 * Total visits
+* QR scans
 * Country statistics
 * Referrers
 * User agents
@@ -54,17 +154,35 @@ Track:
 
 ---
 
+### Audit Trail
+
+Track administrative actions including:
+
+* Login
+* Logout
+* URL creation
+* URL updates
+* URL deletion
+* QR operations
+* Configuration changes
+
+---
+
 ### Administrative Dashboard
 
 Web-based administration interface featuring:
 
 * URL management
+* QR code management
 * Landing page management
+* Preview page management
 * API token management
 * Audit logs
-* Health checks
+* Link expiration controls
+* Health monitoring
 * Analytics dashboard
 * SVG charts
+* Bulk operations
 
 ---
 
@@ -76,15 +194,26 @@ REST API endpoints for automation and integration.
 /api/v1/*
 ```
 
+Supports:
+
+* URL creation
+* URL management
+* QR generation
+* Analytics access
+* Bulk operations
+
 ---
 
 ### Security
 
 * Password-protected administration interface
+* Password-protected links
+* Argon2id password hashing
 * Session management
 * CSRF protection
 * API token authentication
 * Audit logging
+* Link access controls
 
 ---
 
@@ -103,8 +232,10 @@ No:
 * React
 * Node.js
 * Redis
+* PostgreSQL
+* MongoDB
 * Kubernetes
-* External databases
+* External SaaS
 
 ---
 
@@ -112,27 +243,32 @@ No:
 
 ### Databases
 
-The application uses four SQLite databases.
+BZOD uses four SQLite databases.
 
-| Database     | Purpose                                  |
-| ------------ | ---------------------------------------- |
-| admin.db     | Users, sessions, API keys, audit logs    |
-| content.db   | URLs, landing pages, tags                |
-| analytics.db | Visits and statistics                    |
-| system.db    | Jobs, migrations, backups, health checks |
+| Database     | Purpose                                           |
+| ------------ | ------------------------------------------------- |
+| admin.db     | Users, sessions, API keys                         |
+| content.db   | URLs, landing pages, preview pages, tags          |
+| analytics.db | Visits, QR scans, statistics                      |
+| system.db    | Audit events, jobs, migrations, health monitoring |
 
 ---
 
-## Default Credentials
+## Initial Setup
 
-Initial login:
+Create an administrator account:
 
-```text
-Username: admin
-Password: admin
+### Native Installation
+
+```bash
+cargo run -- create-admin
 ```
 
-Change the password immediately after first login.
+### Docker
+
+```bash
+docker exec -it bzod bzod create-admin
+```
 
 ---
 
@@ -142,9 +278,9 @@ Change the password immediately after first login.
 
 ![Dashboard](screenshots/dashboard.png)
 
-### Short URL Management
+### URL Management
 
-![Short URL Management](screenshots/short-url-panel.png)
+![URL Management](screenshots/short-url-panel.png)
 
 ### Landing Pages
 
@@ -174,7 +310,7 @@ docker compose build
 docker compose up -d
 ```
 
-### View Logs
+### Logs
 
 ```bash
 docker logs -f bzod
@@ -220,13 +356,7 @@ cargo build
 cargo run -- serve
 ```
 
-### Run Migrations
-
-```bash
-cargo run -- migrate
-```
-
-### Create Admin User
+### Create Administrator
 
 ```bash
 cargo run -- create-admin
@@ -263,14 +393,14 @@ src/
 
 Planned features:
 
-* QR code generation
-* Link expiration
-* Link disabling
-* CSV exports
-* Bulk URL import
-* GeoIP integration
+* Vanity URLs
+* CSV import/export
+* Geo analytics
 * Multi-user administration
-* SSO support
+* SSO integration
+* Signed temporary links
+* OpenAPI documentation
+* Webhook support
 
 ---
 
@@ -285,7 +415,7 @@ Internet
 Nginx Proxy Manager
     │
     ▼
-nx9-url-shortener
+BZOD
     │
     ▼
 SQLite
@@ -305,4 +435,5 @@ Apache License 2.0
 
 Sunil Purushottam Thakare
 
-Built using Rust, SQLite, Axum, Askama, and a preference for simple, maintainable software.
+Built with Rust, SQLite, Axum, Askama, and a preference for simple, maintainable software.
+
