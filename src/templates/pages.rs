@@ -1,9 +1,9 @@
+use crate::models::LandingPage;
 use askama::Template;
 use axum::{
-    response::{IntoResponse, Response, Html},
     http::StatusCode,
+    response::{Html, IntoResponse, Response},
 };
-use crate::models::LandingPage;
 
 #[derive(Template)]
 #[template(path = "pages.html")]
@@ -18,7 +18,11 @@ impl IntoResponse for PagesTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Render error: {}", e)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }

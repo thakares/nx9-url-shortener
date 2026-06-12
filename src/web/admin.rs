@@ -1,38 +1,77 @@
 use axum::{
-    extract::{Path, State, Query, ConnectInfo},
+    extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{Redirect, Response, IntoResponse},
+    response::{IntoResponse, Redirect, Response},
     Form,
 };
-use rusqlite::params;
-use axum_extra::extract::CookieJar;
 use axum_extra::extract::cookie::Cookie;
-use serde::Deserialize;
-use std::net::SocketAddr;
+use axum_extra::extract::CookieJar;
 use chrono::Utc;
-use tar::Builder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use rusqlite::params;
+use serde::Deserialize;
+use std::net::SocketAddr;
+use tar::Builder;
 
 use crate::db::admin::{
-    create_user, get_user_count, get_user_by_username, create_session, delete_session,
-    write_audit_log, list_audit_logs, list_api_keys, create_api_key, delete_api_key, set_config, get_config
+    create_api_key, create_session, create_user, delete_api_key, delete_session, get_config,
+    get_user_by_username, get_user_count, list_api_keys, set_config,
+    write_audit_log as write_audit_log_legacy,
+};
+
+#[allow(clippy::too_many_arguments)]
+fn write_audit_log(
+    conn: &rusqlite::Connection,
+    state: &AppState,
+    username: &str,
+    action: &str,
+    object_type: Option<&str>,
+    object_id: Option<&str>,
+    ip_address: Option<&str>,
+    user_agent: Option<&str>,
+) -> rusqlite::Result<crate::models::AuditLog> {
+    let res = write_audit_log_legacy(
+        conn,
+        username,
+        action,
+        object_type,
+        object_id,
+        ip_address,
+        user_agent,
+    );
+
+    // Also write to unified audit events in system.db
+    let system_conn = state.system_db.lock().unwrap();
+    let metadata = format!("IP: {:?}, UA: {:?}", ip_address, user_agent);
+    let _ = crate::db::audit_events::write_audit_event(
+        &system_conn,
+        username,
+        action,
+        object_type.unwrap_or(""),
+        object_id.unwrap_or(""),
+        Some(&metadata),
+    );
+
+    res
+}
+
+use crate::auth::{
+    authenticate_session, generate_csrf_token, generate_token, hash_password, verify_csrf,
+    verify_password, verify_sha256,
+};
+use crate::charts::{generate_bar_chart, generate_line_chart};
+use crate::db::analytics::{
+    get_clicks_trend, get_clicks_trend_raw, get_metric_rankings, get_metric_rankings_raw,
+    get_total_clicks,
 };
 use crate::db::content::{
-    list_urls, create_url, delete_url, get_url_counts, get_landing_page_count,
-    list_landing_pages, create_landing_page, delete_landing_page
+    create_landing_page, delete_landing_page, delete_url, get_landing_page_count, get_url_counts,
+    list_landing_pages, list_urls,
 };
-use crate::db::analytics::{
-    get_total_clicks, get_clicks_trend, get_clicks_trend_raw, get_metric_rankings, get_metric_rankings_raw
-};
-use crate::auth::{
-    authenticate_session, verify_password, verify_sha256, hash_password, generate_token,
-    generate_csrf_token, verify_csrf
-};
-use crate::charts::{generate_line_chart, generate_bar_chart};
-use crate::state::AppState;
 use crate::models::User;
-use crate::utils::{get_client_ip, get_memory_usage, get_db_file_info};
+use crate::state::AppState;
+use crate::utils::{get_client_ip, get_db_file_info, get_memory_usage};
 
 // Helper: Verify session and return user or redirect to login
 async fn require_auth(state: &AppState, jar: &CookieJar) -> Result<(User, String), Redirect> {
@@ -44,10 +83,7 @@ async fn require_auth(state: &AppState, jar: &CookieJar) -> Result<(User, String
 }
 
 // GET /admin
-pub async fn admin_index(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn admin_index(State(state): State<AppState>, jar: CookieJar) -> Response {
     match require_auth(&state, &jar).await {
         Ok(_) => Redirect::to("/admin/dashboard").into_response(),
         Err(redir) => redir.into_response(),
@@ -62,7 +98,7 @@ pub async fn login_get(
 ) -> Response {
     let error = params.get("error").cloned();
     let csrf_token = generate_token(16);
-    
+
     let mut new_jar = jar.clone();
     new_jar = new_jar.add(
         Cookie::build(("bzod_temp_csrf", csrf_token.clone()))
@@ -70,7 +106,7 @@ pub async fn login_get(
             .secure(state.config.cookie_secure)
             .http_only(true)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
-            .build()
+            .build(),
     );
 
     let template = crate::templates::LoginTemplate { error, csrf_token };
@@ -92,7 +128,10 @@ pub async fn login_post(
     connect_info: Option<ConnectInfo<SocketAddr>>,
     Form(form): Form<LoginForm>,
 ) -> Response {
-    let temp_csrf = jar.get("bzod_temp_csrf").map(|c| c.value().to_string()).unwrap_or_default();
+    let temp_csrf = jar
+        .get("bzod_temp_csrf")
+        .map(|c| c.value().to_string())
+        .unwrap_or_default();
     if temp_csrf.is_empty() || temp_csrf != form.csrf_token {
         return Redirect::to("/admin/login?error=Invalid CSRF token").into_response();
     }
@@ -106,16 +145,30 @@ pub async fn login_post(
 
     let user_opt = if user_count == 0 {
         // Bootstrap Phase using BOOTSTRAP_PASSWORD_SHA256
-        if form.username == state.config.admin_username && verify_sha256(&form.password, &state.config.bootstrap_password_sha256) {
+        if form.username == state.config.admin_username
+            && verify_sha256(&form.password, &state.config.bootstrap_password_sha256)
+        {
             let hash = match hash_password(&form.password) {
                 Ok(h) => h,
-                Err(_) => return Redirect::to("/admin/login?error=Internal hashing error").into_response(),
+                Err(_) => {
+                    return Redirect::to("/admin/login?error=Internal hashing error")
+                        .into_response()
+                }
             };
-            
+
             let conn = state.admin_db.lock().unwrap();
             match create_user(&conn, &form.username, &hash) {
                 Ok(u) => {
-                    let _ = write_audit_log(&conn, &u.username, "BOOTSTRAP_USER_PROVISIONED", Some("user"), Some(&u.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                    let _ = write_audit_log(
+                        &conn,
+                        &state,
+                        &u.username,
+                        "BOOTSTRAP_USER_PROVISIONED",
+                        Some("user"),
+                        Some(&u.id),
+                        Some(&ip),
+                        headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                    );
                     Some(u)
                 }
                 Err(_) => None,
@@ -142,11 +195,20 @@ pub async fn login_post(
         Some(user) => {
             let session_token = generate_token(32);
             let expires = (Utc::now() + chrono::Duration::days(30)).to_rfc3339();
-            
+
             {
                 let conn = state.admin_db.lock().unwrap();
                 let _ = create_session(&conn, &session_token, &user.id, &expires);
-                let _ = write_audit_log(&conn, &user.username, "USER_LOGIN", Some("session"), Some(&session_token), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn,
+                    &state,
+                    &user.username,
+                    "USER_LOGIN",
+                    Some("session"),
+                    Some(&session_token),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
 
             let cookie = Cookie::build(("bzod_session", session_token))
@@ -170,7 +232,16 @@ pub async fn login_post(
         None => {
             {
                 let conn = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn, "anonymous", "LOGIN_FAILED", None, None, Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn,
+                    &state,
+                    "anonymous",
+                    "LOGIN_FAILED",
+                    None,
+                    None,
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
             Redirect::to("/admin/login?error=Invalid username or password").into_response()
         }
@@ -178,10 +249,7 @@ pub async fn login_post(
 }
 
 // GET /admin/logout
-pub async fn logout(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> Response {
     if let Ok((_, session_id)) = require_auth(&state, &jar).await {
         let conn = state.admin_db.lock().unwrap();
         let _ = delete_session(&conn, &session_id);
@@ -199,10 +267,7 @@ pub async fn logout(
 }
 
 // GET /admin/dashboard
-pub async fn dashboard_get(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn dashboard_get(State(state): State<AppState>, jar: CookieJar) -> Response {
     let (user, _) = match require_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
@@ -229,10 +294,12 @@ pub async fn dashboard_get(
             .or_else(|_| get_clicks_trend_raw(&conn, "url", "all", 30))
             .unwrap_or_default()
     };
-    
+
     let mut trend_map = std::collections::BTreeMap::new();
     for i in (0..30).rev() {
-        let date_str = (Utc::now() - chrono::Duration::days(i)).format("%Y-%m-%d").to_string();
+        let date_str = (Utc::now() - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
         trend_map.insert(date_str, 0i64);
     }
     for (d, c) in clicks_data {
@@ -277,7 +344,7 @@ pub async fn dashboard_get(
         browsers_chart,
         referrers_chart,
     };
-    
+
     template.into_response()
 }
 
@@ -305,12 +372,24 @@ pub async fn urls_get(
 
     let csrf_token = generate_csrf_token(&session_id);
 
+    let proto = if state.config.cookie_secure {
+        "https"
+    } else {
+        "http"
+    };
+    let base_url = state
+        .config
+        .base_url
+        .clone()
+        .unwrap_or_else(|| format!("{}://localhost:{}", proto, state.config.port));
+
     let template = crate::templates::UrlsTemplate {
         admin_username: user.username,
         urls,
         csrf_token,
         error: query.error,
         tag_filter: query.tag,
+        base_url,
     };
 
     template.into_response()
@@ -324,6 +403,9 @@ pub struct CreateUrlForm {
     pub description: String,
     pub tags: String,
     pub csrf_token: String,
+    pub expires_at: String,
+    pub password: String,
+    pub max_access_count: String,
 }
 
 // POST /admin/urls/create
@@ -349,38 +431,97 @@ pub async fn urls_create(
         code = generate_token(3);
     } else {
         if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Redirect::to("/admin/urls?error=Custom code must be exactly 6 hex characters").into_response();
+            return Redirect::to("/admin/urls?error=Custom code must be exactly 6 hex characters")
+                .into_response();
         }
     }
 
-    let tags_list: Vec<String> = form.tags
+    let expires_at_opt = if form.expires_at.trim().is_empty() {
+        None
+    } else {
+        let mut rfc = form.expires_at.trim().to_string();
+        if rfc.len() == 16 {
+            rfc.push_str(":00Z"); // convert HTML datetime-local to standard UTC RFC3339
+        }
+        Some(rfc)
+    };
+
+    let password_hash_opt = if form.password.trim().is_empty() {
+        None
+    } else {
+        match hash_password(&form.password) {
+            Ok(h) => Some(h),
+            Err(_) => return Redirect::to("/admin/urls?error=Hashing error").into_response(),
+        }
+    };
+
+    let max_access_count_opt = if form.max_access_count.trim().is_empty() {
+        None
+    } else {
+        match form.max_access_count.trim().parse::<i64>() {
+            Ok(c) => Some(c),
+            Err(_) => {
+                return Redirect::to("/admin/urls?error=Invalid max access count").into_response()
+            }
+        }
+    };
+
+    let tags_list: Vec<String> = form
+        .tags
         .split(',')
         .map(|t| t.trim().to_string())
         .filter(|t| !t.is_empty())
         .collect();
 
-    let title_opt = if form.title.trim().is_empty() { None } else { Some(form.title.trim()) };
-    let desc_opt = if form.description.trim().is_empty() { None } else { Some(form.description.trim()) };
+    let title_opt = if form.title.trim().is_empty() {
+        None
+    } else {
+        Some(form.title.trim())
+    };
+    let desc_opt = if form.description.trim().is_empty() {
+        None
+    } else {
+        Some(form.description.trim())
+    };
 
     let res = {
         let conn = state.content_db.lock().unwrap();
-        create_url(&conn, &code, &form.destination, title_opt, desc_opt, &tags_list)
+        crate::db::content::create_url_extended(
+            &conn,
+            &code,
+            &form.destination,
+            title_opt,
+            desc_opt,
+            &tags_list,
+            expires_at_opt.as_deref(),
+            password_hash_opt.as_deref(),
+            max_access_count_opt,
+        )
     };
 
     match res {
         Ok(url) => {
             {
                 let conn = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn, &user.username, "URL_CREATION", Some("url"), Some(&url.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn,
+                    &state,
+                    &user.username,
+                    "URL_CREATION",
+                    Some("url"),
+                    Some(&url.id),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
             Redirect::to("/admin/urls").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _)) if err.code == rusqlite::ErrorCode::ConstraintViolation => {
+        Err(rusqlite::Error::SqliteFailure(err, _))
+            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
             Redirect::to("/admin/urls?error=Short code already exists").into_response()
         }
-        Err(e) => {
-            Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response()
-        }
+        Err(e) => Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response(),
     }
 }
 
@@ -410,11 +551,22 @@ pub async fn urls_delete(
         Ok(_) => {
             {
                 let conn_admin = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn_admin, &user.username, "URL_DELETION", Some("url"), Some(&id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn_admin,
+                    &state,
+                    &user.username,
+                    "URL_DELETION",
+                    Some("url"),
+                    Some(&id),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
             Redirect::to("/admin/urls").into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/urls?error=Failed to delete link: {}", e)).into_response(),
+        Err(e) => {
+            Redirect::to(&format!("/admin/urls?error=Failed to delete link: {}", e)).into_response()
+        }
     }
 }
 
@@ -484,7 +636,8 @@ pub async fn pages_create(
         code = generate_token(2);
     } else {
         if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Redirect::to("/admin/pages?error=Custom code must be exactly 4 hex characters").into_response();
+            return Redirect::to("/admin/pages?error=Custom code must be exactly 4 hex characters")
+                .into_response();
         }
     }
 
@@ -495,18 +648,36 @@ pub async fn pages_create(
 
     let res = {
         let conn = state.content_db.lock().unwrap();
-        create_landing_page(&conn, &code, &clean_slug, &form.title, &form.html_content, &form.state)
+        create_landing_page(
+            &conn,
+            &code,
+            &clean_slug,
+            &form.title,
+            &form.html_content,
+            &form.state,
+        )
     };
 
     match res {
         Ok(page) => {
             {
                 let conn_admin = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn_admin, &user.username, "PAGE_CREATION", Some("page"), Some(&page.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn_admin,
+                    &state,
+                    &user.username,
+                    "PAGE_CREATION",
+                    Some("page"),
+                    Some(&page.id),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
             Redirect::to("/admin/pages").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _)) if err.code == rusqlite::ErrorCode::ConstraintViolation => {
+        Err(rusqlite::Error::SqliteFailure(err, _))
+            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
             Redirect::to("/admin/pages?error=Short code already exists").into_response()
         }
         Err(e) => {
@@ -541,11 +712,21 @@ pub async fn pages_delete(
         Ok(_) => {
             {
                 let conn_admin = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn_admin, &user.username, "PAGE_DELETION", Some("page"), Some(&id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn_admin,
+                    &state,
+                    &user.username,
+                    "PAGE_DELETION",
+                    Some("page"),
+                    Some(&id),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
             Redirect::to("/admin/pages").into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/pages?error=Failed to delete page: {}", e)).into_response(),
+        Err(e) => Redirect::to(&format!("/admin/pages?error=Failed to delete page: {}", e))
+            .into_response(),
     }
 }
 
@@ -575,7 +756,13 @@ pub async fn settings_get(
         let conn = state.admin_db.lock().unwrap();
         get_config(&conn, "retention_days")
             .unwrap_or(None)
-            .unwrap_or_else(|| state.config.data_retention_days.map(|d| d.to_string()).unwrap_or_else(|| "unlimited".to_string()))
+            .unwrap_or_else(|| {
+                state
+                    .config
+                    .data_retention_days
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| "unlimited".to_string())
+            })
     };
 
     let csrf_token = generate_csrf_token(&session_id);
@@ -620,7 +807,16 @@ pub async fn change_password_post(
 
     let conn = state.admin_db.lock().unwrap();
     if !verify_password(&form.current_password, &user.password_hash) {
-        let _ = write_audit_log(&conn, &user.username, "PASSWORD_CHANGE_FAIL", Some("user"), Some(&user.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+        let _ = write_audit_log(
+            &conn,
+            &state,
+            &user.username,
+            "PASSWORD_CHANGE_FAIL",
+            Some("user"),
+            Some(&user.id),
+            Some(&ip),
+            headers.get("user-agent").and_then(|h| h.to_str().ok()),
+        );
         return Redirect::to("/admin/settings?error=Incorrect current password").into_response();
     }
 
@@ -629,15 +825,29 @@ pub async fn change_password_post(
         Err(_) => return Redirect::to("/admin/settings?error=Hashing error").into_response(),
     };
 
-    let res = conn.execute("UPDATE users SET password_hash = ?1 WHERE id = ?2;", params![new_hash, user.id]);
+    let res = conn.execute(
+        "UPDATE users SET password_hash = ?1 WHERE id = ?2;",
+        params![new_hash, user.id],
+    );
     match res {
         Ok(_) => {
-            let _ = write_audit_log(&conn, &user.username, "PASSWORD_CHANGE_SUCCESS", Some("user"), Some(&user.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+            let _ = write_audit_log(
+                &conn,
+                &state,
+                &user.username,
+                "PASSWORD_CHANGE_SUCCESS",
+                Some("user"),
+                Some(&user.id),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
             Redirect::to("/admin/settings?success=Password updated successfully").into_response()
         }
-        Err(e) => {
-            Redirect::to(&format!("/admin/settings?error=Failed to update password: {}", e)).into_response()
-        }
+        Err(e) => Redirect::to(&format!(
+            "/admin/settings?error=Failed to update password: {}",
+            e
+        ))
+        .into_response(),
     }
 }
 
@@ -669,10 +879,21 @@ pub async fn change_retention_post(
     let conn = state.admin_db.lock().unwrap();
     match set_config(&conn, "retention_days", &form.retention) {
         Ok(_) => {
-            let _ = write_audit_log(&conn, &user.username, "RETENTION_POLICY_CHANGED", Some("config"), Some("retention_days"), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+            let _ = write_audit_log(
+                &conn,
+                &state,
+                &user.username,
+                "RETENTION_POLICY_CHANGED",
+                Some("config"),
+                Some("retention_days"),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
             Redirect::to("/admin/settings?success=Retention policy saved").into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/settings?error=Database error: {}", e)).into_response(),
+        Err(e) => {
+            Redirect::to(&format!("/admin/settings?error=Database error: {}", e)).into_response()
+        }
     }
 }
 
@@ -693,10 +914,22 @@ pub async fn compact_db_post(
     match state.db_compact() {
         Ok(_) => {
             let conn = state.admin_db.lock().unwrap();
-            let _ = write_audit_log(&conn, &user.username, "DATABASE_COMPACTION", Some("system"), Some("all_dbs"), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
-            Redirect::to("/admin/settings?success=Database files compacted successfully").into_response()
+            let _ = write_audit_log(
+                &conn,
+                &state,
+                &user.username,
+                "DATABASE_COMPACTION",
+                Some("system"),
+                Some("all_dbs"),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
+            Redirect::to("/admin/settings?success=Database files compacted successfully")
+                .into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/settings?error=Failed to compact: {}", e)).into_response(),
+        Err(e) => {
+            Redirect::to(&format!("/admin/settings?error=Failed to compact: {}", e)).into_response()
+        }
     }
 }
 
@@ -719,7 +952,7 @@ pub async fn download_backup(
     let res = {
         let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
-        
+
         let files = vec!["admin.db", "content.db", "analytics.db", "system.db"];
         let mut add_err = None;
         for f in files {
@@ -731,15 +964,13 @@ pub async fn download_backup(
                 }
             }
         }
-        
+
         match add_err {
             Some(e) => Err(e),
-            None => {
-                match tar.into_inner().and_then(|encoder| encoder.finish()) {
-                    Ok(_) => Ok(()),
-                    Err(e) => Err(e),
-                }
-            }
+            None => match tar.into_inner().and_then(|encoder| encoder.finish()) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e),
+            },
         }
     };
 
@@ -747,7 +978,16 @@ pub async fn download_backup(
         Ok(_) => {
             {
                 let conn = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(&conn, &user.username, "DATABASE_BACKUP", Some("system"), Some("tarball"), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+                let _ = write_audit_log(
+                    &conn,
+                    &state,
+                    &user.username,
+                    "DATABASE_BACKUP",
+                    Some("system"),
+                    Some("tarball"),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
             }
 
             let date_str = Utc::now().format("%Y-%m-%d").to_string();
@@ -757,10 +997,14 @@ pub async fn download_backup(
                 StatusCode::OK,
                 [
                     ("Content-Type", "application/gzip"),
-                    ("Content-Disposition", &format!("attachment; filename=\"{}\"", filename)),
+                    (
+                        "Content-Disposition",
+                        &format!("attachment; filename=\"{}\"", filename),
+                    ),
                 ],
                 buffer,
-            ).into_response()
+            )
+                .into_response()
         }
         Err(e) => {
             Redirect::to(&format!("/admin/settings?error=Backup failed: {}", e)).into_response()
@@ -793,8 +1037,8 @@ pub async fn create_api_key_post(
 
     let ip = get_client_ip(&headers, connect_info);
     let key_secret = format!("bzo_{}", generate_token(16));
-    
-    use sha2::{Sha256, Digest};
+
+    use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(key_secret.as_bytes());
     let hashed_key = hex::encode(hasher.finalize());
@@ -802,13 +1046,24 @@ pub async fn create_api_key_post(
     let conn = state.admin_db.lock().unwrap();
     match create_api_key(&conn, &user.id, &form.key_name, &hashed_key) {
         Ok(api_key) => {
-            let _ = write_audit_log(&conn, &user.username, "API_KEY_CREATED", Some("api_key"), Some(&api_key.id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+            let _ = write_audit_log(
+                &conn,
+                &state,
+                &user.username,
+                "API_KEY_CREATED",
+                Some("api_key"),
+                Some(&api_key.id),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
             Redirect::to(&format!(
                 "/admin/settings?success=Token generated successfully. **IMPORTANT: Copy your token now, it will never be shown again!** Token value: {}",
                 key_secret
             )).into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/settings?error=Database error: {}", e)).into_response(),
+        Err(e) => {
+            Redirect::to(&format!("/admin/settings?error=Database error: {}", e)).into_response()
+        }
     }
 }
 
@@ -836,26 +1091,157 @@ pub async fn revoke_api_key_post(
     let conn = state.admin_db.lock().unwrap();
     match delete_api_key(&conn, &id) {
         Ok(_) => {
-            let _ = write_audit_log(&conn, &user.username, "API_KEY_REVOKED", Some("api_key"), Some(&id), Some(&ip), headers.get("user-agent").and_then(|h| h.to_str().ok()));
+            let _ = write_audit_log(
+                &conn,
+                &state,
+                &user.username,
+                "API_KEY_REVOKED",
+                Some("api_key"),
+                Some(&id),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
             Redirect::to("/admin/settings?success=API Token revoked").into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/settings?error=Failed to revoke key: {}", e)).into_response(),
+        Err(e) => Redirect::to(&format!(
+            "/admin/settings?error=Failed to revoke key: {}",
+            e
+        ))
+        .into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct BulkQrExportForm {
+    pub format: String,
+    pub csrf_token: String,
+}
+
+// POST /admin/settings/bulk-qr
+pub async fn bulk_qr_export_post(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    Form(form): Form<BulkQrExportForm>,
+) -> Response {
+    let (user, session_id) = match require_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    if !verify_csrf(&session_id, &form.csrf_token) {
+        return Redirect::to("/admin/settings?error=Invalid CSRF token").into_response();
+    }
+
+    let ip = get_client_ip(&headers, connect_info);
+
+    let urls = {
+        let conn = state.content_db.lock().unwrap();
+        crate::db::content::list_urls(&conn, 500, 0, None).unwrap_or_default()
+    };
+
+    if urls.is_empty() {
+        return Redirect::to("/admin/settings?error=No shortened URLs found to export")
+            .into_response();
+    }
+
+    let proto = if state.config.cookie_secure {
+        "https"
+    } else {
+        "http"
+    };
+    let host_header = headers
+        .get("host")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("localhost:8654");
+    let base_url = state
+        .config
+        .base_url
+        .clone()
+        .unwrap_or_else(|| format!("{}://{}", proto, host_header));
+
+    match crate::services::bulk::export_qr_zip(&urls, &form.format, &base_url) {
+        Ok(zip_data) => {
+            // Write Audit Log
+            let _ = write_audit_log(
+                &state.admin_db.lock().unwrap(),
+                &state,
+                &user.username,
+                "BULK_QR_EXPORT",
+                Some("bulk"),
+                Some("qr"),
+                Some(&ip),
+                headers.get("user-agent").and_then(|h| h.to_str().ok()),
+            );
+
+            Response::builder()
+                .header("content-type", "application/zip")
+                .header(
+                    "content-disposition",
+                    "attachment; filename=\"qr_codes.zip\"",
+                )
+                .body(axum::body::Body::from(zip_data))
+                .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+        }
+        Err(e) => {
+            Redirect::to(&format!("/admin/settings?error=Export failed: {}", e)).into_response()
+        }
     }
 }
 
 // GET /admin/audit
-pub async fn audit_get(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn audit_get(State(state): State<AppState>, jar: CookieJar) -> Response {
     let (user, _) = match require_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
     };
 
     let logs = {
-        let conn = state.admin_db.lock().unwrap();
-        list_audit_logs(&conn, 100, 0).unwrap_or_default()
+        let conn = state.system_db.lock().unwrap();
+        let events = crate::db::audit_events::list_audit_events(&conn, 100, 0, None, None)
+            .unwrap_or_default();
+        events
+            .into_iter()
+            .map(|e| {
+                let (ip, ua) = if let Some(ref m) = e.metadata {
+                    if m.starts_with("IP: ") {
+                        let parts: Vec<&str> = m.split(", UA: ").collect();
+                        let ip = parts[0]
+                            .trim_start_matches("IP: ")
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .replace("Some(", "")
+                            .replace(")", "");
+                        let ua = if parts.len() > 1 {
+                            parts[1]
+                                .trim_matches('"')
+                                .trim_matches('\'')
+                                .replace("Some(", "")
+                                .replace(")", "")
+                        } else {
+                            "Unknown".to_string()
+                        };
+                        (Some(ip), Some(ua))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+                crate::models::AuditLog {
+                    id: e.id,
+                    timestamp: e.timestamp,
+                    username: e.actor,
+                    action: e.action,
+                    object_type: Some(e.object_type),
+                    object_id: Some(e.object_id),
+                    ip_address: ip,
+                    user_agent: ua,
+                }
+            })
+            .collect()
     };
 
     let template = crate::templates::AuditTemplate {
@@ -867,34 +1253,39 @@ pub async fn audit_get(
 }
 
 // GET /admin/status
-pub async fn status_get(
-    State(state): State<AppState>,
-    jar: CookieJar,
-) -> Response {
+pub async fn status_get(State(state): State<AppState>, jar: CookieJar) -> Response {
     let (user, _) = match require_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
     };
 
     let app_status = "Healthy";
-    
+
     let db_status = {
         let conn_ok = {
             let conn = state.admin_db.lock().unwrap();
             get_user_count(&conn).is_ok()
         };
         if conn_ok {
-            format!("Operational\n\nDatabase Files:\n{}", get_db_file_info(&state.config.data_dir))
+            format!(
+                "Operational\n\nDatabase Files:\n{}",
+                get_db_file_info(&state.config.data_dir)
+            )
         } else {
             "Degraded (Database connections failed)".to_string()
         }
     };
 
-    let queue_size = 0; 
+    let queue_size = 0;
     let memory_usage = get_memory_usage();
-    
+
     let uptime_duration = state.start_time.elapsed();
     let uptime = crate::utils::format_duration(uptime_duration);
+
+    let urls = {
+        let conn = state.content_db.lock().unwrap();
+        crate::db::content::list_urls(&conn, 50, 0, None).unwrap_or_default()
+    };
 
     let template = crate::templates::StatusTemplate {
         admin_username: user.username,
@@ -905,6 +1296,7 @@ pub async fn status_get(
         uptime,
         version: "0.1.0",
         git_commit: "unknown",
+        urls,
     };
 
     template.into_response()

@@ -1,6 +1,6 @@
-use rusqlite::{Connection, params};
+use crate::db::analytics::{clean_referrer, parse_ua};
+use rusqlite::{params, Connection};
 use std::collections::HashMap;
-use crate::db::analytics::{parse_ua, clean_referrer};
 
 // Run aggregation for a specific day
 pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> {
@@ -10,7 +10,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
         let mut stmt = conn.prepare(
             "SELECT target_type, target_id, user_agent, referer, country, status_code FROM visits WHERE date(timestamp) = ?1;"
         )?;
-        
+
         struct RawVisit {
             target_type: String,
             target_id: String,
@@ -18,7 +18,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
             referer: String,
             country: String,
         }
-        
+
         let rows = stmt.query_map(params![date], |row| {
             Ok(RawVisit {
                 target_type: row.get(0)?,
@@ -28,7 +28,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
                 country: row.get(4)?,
             })
         })?;
-        
+
         for r in rows {
             visits.push(r?);
         }
@@ -46,7 +46,11 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
     for v in visits {
         let (browser, os, device) = parse_ua(&v.user_agent);
         let referrer = clean_referrer(&v.referer);
-        let country = if v.country.is_empty() { "Unknown".to_string() } else { v.country.clone() };
+        let country = if v.country.is_empty() {
+            "Unknown".to_string()
+        } else {
+            v.country.clone()
+        };
 
         let targets = vec![
             (v.target_type.clone(), v.target_id.clone()),
@@ -55,22 +59,59 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
 
         for (t_type, t_id) in targets {
             // Clicks
-            *aggregates.entry((t_type.clone(), t_id.clone(), "clicks".to_string(), "".to_string())).or_insert(0) += 1;
-            
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "clicks".to_string(),
+                    "".to_string(),
+                ))
+                .or_insert(0) += 1;
+
             // Country
-            *aggregates.entry((t_type.clone(), t_id.clone(), "country".to_string(), country.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "country".to_string(),
+                    country.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // Browser
-            *aggregates.entry((t_type.clone(), t_id.clone(), "browser".to_string(), browser.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "browser".to_string(),
+                    browser.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // OS
-            *aggregates.entry((t_type.clone(), t_id.clone(), "os".to_string(), os.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((t_type.clone(), t_id.clone(), "os".to_string(), os.clone()))
+                .or_insert(0) += 1;
 
             // Device
-            *aggregates.entry((t_type.clone(), t_id.clone(), "device".to_string(), device.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "device".to_string(),
+                    device.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // Referrer
-            *aggregates.entry((t_type.clone(), t_id.clone(), "referrer".to_string(), referrer.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "referrer".to_string(),
+                    referrer.clone(),
+                ))
+                .or_insert(0) += 1;
         }
     }
 
@@ -78,7 +119,10 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
     let tx = conn.transaction()?;
     {
         // Delete old aggregates for this day
-        tx.execute("DELETE FROM daily_summaries WHERE date = ?1;", params![date])?;
+        tx.execute(
+            "DELETE FROM daily_summaries WHERE date = ?1;",
+            params![date],
+        )?;
 
         let mut insert_stmt = tx.prepare(
             "INSERT INTO daily_summaries (date, target_type, target_id, metric_type, metric_key, metric_value)
@@ -86,14 +130,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
         )?;
 
         for ((t_type, t_id, m_type, m_key), value) in aggregates {
-            insert_stmt.execute(params![
-                date,
-                t_type,
-                t_id,
-                m_type,
-                m_key,
-                value
-            ])?;
+            insert_stmt.execute(params![date, t_type, t_id, m_type, m_key, value])?;
         }
     }
     tx.commit()?;
@@ -108,7 +145,10 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
 pub fn aggregate_month_from_daily(conn: &mut Connection, year_month: &str) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        tx.execute("DELETE FROM monthly_summaries WHERE year_month = ?1;", params![year_month])?;
+        tx.execute(
+            "DELETE FROM monthly_summaries WHERE year_month = ?1;",
+            params![year_month],
+        )?;
         tx.execute(
             "INSERT INTO monthly_summaries (year_month, target_type, target_id, metric_type, metric_key, metric_value)
              SELECT ?1, target_type, target_id, metric_type, metric_key, SUM(metric_value)
@@ -125,7 +165,10 @@ pub fn aggregate_month_from_daily(conn: &mut Connection, year_month: &str) -> ru
 pub fn aggregate_year_from_daily(conn: &mut Connection, year: &str) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        tx.execute("DELETE FROM yearly_summaries WHERE year = ?1;", params![year])?;
+        tx.execute(
+            "DELETE FROM yearly_summaries WHERE year = ?1;",
+            params![year],
+        )?;
         tx.execute(
             "INSERT INTO yearly_summaries (year, target_type, target_id, metric_type, metric_key, metric_value)
              SELECT ?1, target_type, target_id, metric_type, metric_key, SUM(metric_value)

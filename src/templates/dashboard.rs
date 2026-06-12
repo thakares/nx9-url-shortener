@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
-    response::{IntoResponse, Response, Html},
     http::StatusCode,
+    response::{Html, IntoResponse, Response},
 };
 
 #[derive(Template)]
@@ -23,7 +23,11 @@ impl IntoResponse for DashboardTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Render error: {}", e)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }

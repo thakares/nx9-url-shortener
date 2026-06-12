@@ -1,16 +1,18 @@
-use std::sync::Mutex;
-use rusqlite::{Connection, params};
-use uuid::Uuid;
 use chrono::Utc;
+use rusqlite::{params, Connection};
+use std::sync::Mutex;
+use uuid::Uuid;
 
-pub mod healthcheck;
-pub mod retention;
 pub mod aggregate;
 pub mod backup;
+pub mod expiry;
+pub mod healthcheck;
+pub mod retention;
 
-pub use healthcheck::{run_link_checker, perform_link_check};
+pub use aggregate::{perform_aggregation, run_aggregator};
+pub use expiry::run_expiry_checker;
+pub use healthcheck::{perform_link_check, run_link_checker};
 pub use retention::run_retention_cleaner;
-pub use aggregate::{run_aggregator, perform_aggregation};
 
 pub fn log_job_start(conn: &Mutex<Connection>, job_name: &str) -> String {
     let id = Uuid::new_v4().to_string();

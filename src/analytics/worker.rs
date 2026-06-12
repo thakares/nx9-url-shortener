@@ -1,11 +1,11 @@
+use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::{interval, MissedTickBehavior};
-use std::time::Duration;
-use tracing::{info, error};
+use tracing::{error, info};
 
+use crate::db::analytics::insert_visits_batch;
 use crate::db::Db;
 use crate::models::VisitRecord;
-use crate::db::analytics::insert_visits_batch;
 
 pub async fn run_worker(db: Db, mut receiver: mpsc::Receiver<VisitRecord>) {
     let mut batch = Vec::new();

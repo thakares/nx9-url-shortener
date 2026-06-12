@@ -1,17 +1,21 @@
-use rusqlite::{Connection, params};
-use uuid::Uuid;
+use crate::models::{ApiKey, AuditLog, Session, User};
 use chrono::Utc;
-use crate::models::{User, Session, ApiKey, AuditLog};
+use rusqlite::{params, Connection};
+use uuid::Uuid;
 
-pub fn create_user(conn: &Connection, username: &str, password_hash: &str) -> rusqlite::Result<User> {
+pub fn create_user(
+    conn: &Connection,
+    username: &str,
+    password_hash: &str,
+) -> rusqlite::Result<User> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    
+
     conn.execute(
         "INSERT INTO users (id, username, password_hash, created_at) VALUES (?1, ?2, ?3, ?4);",
         params![id, username, password_hash, created_at],
     )?;
-    
+
     Ok(User {
         id,
         username: username.to_string(),
@@ -21,9 +25,11 @@ pub fn create_user(conn: &Connection, username: &str, password_hash: &str) -> ru
 }
 
 pub fn get_user_by_username(conn: &Connection, username: &str) -> rusqlite::Result<Option<User>> {
-    let mut stmt = conn.prepare("SELECT id, username, password_hash, created_at FROM users WHERE username = ?1;")?;
+    let mut stmt = conn.prepare(
+        "SELECT id, username, password_hash, created_at FROM users WHERE username = ?1;",
+    )?;
     let mut rows = stmt.query(params![username])?;
-    
+
     if let Some(row) = rows.next()? {
         Ok(Some(User {
             id: row.get(0)?,
@@ -37,9 +43,10 @@ pub fn get_user_by_username(conn: &Connection, username: &str) -> rusqlite::Resu
 }
 
 pub fn get_user_by_id(conn: &Connection, id: &str) -> rusqlite::Result<Option<User>> {
-    let mut stmt = conn.prepare("SELECT id, username, password_hash, created_at FROM users WHERE id = ?1;")?;
+    let mut stmt =
+        conn.prepare("SELECT id, username, password_hash, created_at FROM users WHERE id = ?1;")?;
     let mut rows = stmt.query(params![id])?;
-    
+
     if let Some(row) = rows.next()? {
         Ok(Some(User {
             id: row.get(0)?,
@@ -63,12 +70,12 @@ pub fn create_session(
     expires_at_rfc3339: &str,
 ) -> rusqlite::Result<Session> {
     let created_at = Utc::now().to_rfc3339();
-    
+
     conn.execute(
         "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?1, ?2, ?3, ?4);",
         params![session_id, user_id, expires_at_rfc3339, created_at],
     )?;
-    
+
     Ok(Session {
         id: session_id.to_string(),
         user_id: user_id.to_string(),
@@ -78,9 +85,10 @@ pub fn create_session(
 }
 
 pub fn get_session(conn: &Connection, session_id: &str) -> rusqlite::Result<Option<Session>> {
-    let mut stmt = conn.prepare("SELECT id, user_id, expires_at, created_at FROM sessions WHERE id = ?1;")?;
+    let mut stmt =
+        conn.prepare("SELECT id, user_id, expires_at, created_at FROM sessions WHERE id = ?1;")?;
     let mut rows = stmt.query(params![session_id])?;
-    
+
     if let Some(row) = rows.next()? {
         Ok(Some(Session {
             id: row.get(0)?,
@@ -112,12 +120,12 @@ pub fn create_api_key(
 ) -> rusqlite::Result<ApiKey> {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
-    
+
     conn.execute(
         "INSERT INTO api_keys (id, user_id, key_hash, name, created_at) VALUES (?1, ?2, ?3, ?4, ?5);",
         params![id, user_id, key_hash, name, created_at],
     )?;
-    
+
     Ok(ApiKey {
         id,
         user_id: user_id.to_string(),
@@ -133,7 +141,7 @@ pub fn get_api_key_by_hash(conn: &Connection, key_hash: &str) -> rusqlite::Resul
         "SELECT id, user_id, key_hash, name, created_at, last_used_at FROM api_keys WHERE key_hash = ?1;"
     )?;
     let mut rows = stmt.query(params![key_hash])?;
-    
+
     if let Some(row) = rows.next()? {
         Ok(Some(ApiKey {
             id: row.get(0)?,
@@ -162,7 +170,7 @@ pub fn list_api_keys(conn: &Connection, user_id: &str) -> rusqlite::Result<Vec<A
             last_used_at: row.get(5)?,
         })
     })?;
-    
+
     let mut keys = Vec::new();
     for key in rows {
         keys.push(key?);
@@ -177,7 +185,10 @@ pub fn delete_api_key(conn: &Connection, id: &str) -> rusqlite::Result<()> {
 
 pub fn update_api_key_last_used(conn: &Connection, id: &str) -> rusqlite::Result<()> {
     let now = Utc::now().to_rfc3339();
-    conn.execute("UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2;", params![now, id])?;
+    conn.execute(
+        "UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2;",
+        params![now, id],
+    )?;
     Ok(())
 }
 
@@ -192,13 +203,13 @@ pub fn write_audit_log(
 ) -> rusqlite::Result<AuditLog> {
     let id = Uuid::new_v4().to_string();
     let timestamp = Utc::now().to_rfc3339();
-    
+
     conn.execute(
         "INSERT INTO audit_logs (id, timestamp, username, action, object_type, object_id, ip_address, user_agent) 
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
         params![id, timestamp, username, action, object_type, object_id, ip_address, user_agent],
     )?;
-    
+
     Ok(AuditLog {
         id,
         timestamp,
@@ -211,10 +222,14 @@ pub fn write_audit_log(
     })
 }
 
-pub fn list_audit_logs(conn: &Connection, limit: i64, offset: i64) -> rusqlite::Result<Vec<AuditLog>> {
+pub fn list_audit_logs(
+    conn: &Connection,
+    limit: i64,
+    offset: i64,
+) -> rusqlite::Result<Vec<AuditLog>> {
     let mut stmt = conn.prepare(
         "SELECT id, timestamp, username, action, object_type, object_id, ip_address, user_agent 
-         FROM audit_logs ORDER BY timestamp DESC LIMIT ?1 OFFSET ?2;"
+         FROM audit_logs ORDER BY timestamp DESC LIMIT ?1 OFFSET ?2;",
     )?;
     let rows = stmt.query_map(params![limit, offset], |row| {
         Ok(AuditLog {
@@ -228,7 +243,7 @@ pub fn list_audit_logs(conn: &Connection, limit: i64, offset: i64) -> rusqlite::
             user_agent: row.get(7)?,
         })
     })?;
-    
+
     let mut logs = Vec::new();
     for log in rows {
         logs.push(log?);
@@ -247,7 +262,7 @@ pub fn set_config(conn: &Connection, key: &str, value: &str) -> rusqlite::Result
 pub fn get_config(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
     let mut stmt = conn.prepare("SELECT value FROM config WHERE key = ?1;")?;
     let mut rows = stmt.query(params![key])?;
-    
+
     if let Some(row) = rows.next()? {
         let val: String = row.get(0)?;
         Ok(Some(val))

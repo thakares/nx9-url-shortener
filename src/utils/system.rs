@@ -30,7 +30,12 @@ pub fn get_db_file_info(data_dir: &Path) -> String {
         if path.exists() {
             if let Ok(metadata) = std::fs::metadata(&path) {
                 let size = metadata.len();
-                stats.push_str(&format!("{}: {} bytes ({:.2} MB)\n", name, size, size as f64 / 1_048_576.0));
+                stats.push_str(&format!(
+                    "{}: {} bytes ({:.2} MB)\n",
+                    name,
+                    size,
+                    size as f64 / 1_048_576.0
+                ));
             }
         } else {
             stats.push_str(&format!("{}: File not created yet\n", name));

@@ -1,17 +1,18 @@
-use reqwest::Client;
-use std::time::Duration;
-use tracing::{info, error};
-use uuid::Uuid;
 use chrono::Utc;
+use reqwest::Client;
 use rusqlite::params;
+use std::time::{Duration, Instant};
+use tracing::{error, info};
+use uuid::Uuid;
 
+use super::{log_job_end, log_job_start};
 use crate::db::Db;
-use super::{log_job_start, log_job_end};
 
 pub async fn run_link_checker(db: Db, interval_mins: u64) {
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .user_agent("bzod-link-checker/0.1")
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .unwrap_or_default();
 
@@ -19,7 +20,7 @@ pub async fn run_link_checker(db: Db, interval_mins: u64) {
         // Sleep first to give server time to start up
         tokio::time::sleep(Duration::from_secs(interval_mins * 60)).await;
         info!("Running background link health check...");
-        
+
         let job_id = log_job_start(&db.system, "link_checker");
         match perform_link_check(&db, &client).await {
             Ok(_) => log_job_end(&db.system, &job_id, "success", None),
@@ -32,19 +33,29 @@ pub async fn run_link_checker(db: Db, interval_mins: u64) {
     }
 }
 
-pub async fn perform_link_check(db: &Db, client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn perform_link_check(
+    db: &Db,
+    client: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
     let urls = {
         let conn = db.content.lock().unwrap();
         crate::db::content::list_urls_for_health_check(&conn)?
     };
 
     for (id, dest) in urls {
-        let (status, status_code, err_msg) = check_url_health(client, &dest).await;
+        let (status, detail_status, status_code, latency_ms, err_msg) =
+            check_url_health(client, &dest).await;
         {
             let conn = db.content.lock().unwrap();
-            crate::db::content::update_url_health(&conn, &id, &status)?;
+            crate::db::content::update_url_health_extended(
+                &conn,
+                &id,
+                &status,
+                &detail_status,
+                Some(latency_ms),
+            )?;
         }
-        
+
         // Log to system.db.health_checks
         {
             let conn = db.system.lock().unwrap();
@@ -64,31 +75,77 @@ pub async fn perform_link_check(db: &Db, client: &Client) -> Result<(), Box<dyn 
     Ok(())
 }
 
-async fn check_url_health(client: &Client, url: &str) -> (String, Option<u16>, Option<String>) {
-    let res = client.get(url)
-        .timeout(Duration::from_secs(5))
-        .send()
-        .await;
+/// Check URL health with detailed classification and latency measurement.
+///
+/// Returns: (general_status, detail_status, status_code, latency_ms, error_message)
+async fn check_url_health(
+    client: &Client,
+    url: &str,
+) -> (String, String, Option<u16>, i64, Option<String>) {
+    let start = Instant::now();
+    let res = client.get(url).timeout(Duration::from_secs(5)).send().await;
+    let latency_ms = start.elapsed().as_millis() as i64;
 
     match res {
         Ok(response) => {
             let status = response.status();
             let code = status.as_u16();
             if status.is_success() || status.is_redirection() {
-                ("healthy".to_string(), Some(code), None)
-            } else if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::GONE {
-                ("dead".to_string(), Some(code), Some(format!("HTTP {}", code)))
+                (
+                    "healthy".to_string(),
+                    "healthy".to_string(),
+                    Some(code),
+                    latency_ms,
+                    None,
+                )
+            } else if status == reqwest::StatusCode::NOT_FOUND
+                || status == reqwest::StatusCode::GONE
+            {
+                (
+                    "dead".to_string(),
+                    "dead".to_string(),
+                    Some(code),
+                    latency_ms,
+                    Some(format!("HTTP {}", code)),
+                )
             } else {
-                ("suspect".to_string(), Some(code), Some(format!("HTTP {}", code)))
+                (
+                    "suspect".to_string(),
+                    format!("http_{}", code),
+                    Some(code),
+                    latency_ms,
+                    Some(format!("HTTP {}", code)),
+                )
             }
         }
         Err(err) => {
             let err_str = err.to_string();
-            if err.is_timeout() || err.is_connect() {
-                ("suspect".to_string(), None, Some(err_str))
+            let detail = if err.is_timeout() {
+                "timeout".to_string()
+            } else if err.is_connect() {
+                if err_str.contains("dns") || err_str.contains("resolve") {
+                    "dns_failure".to_string()
+                } else if err_str.contains("tls")
+                    || err_str.contains("ssl")
+                    || err_str.contains("certificate")
+                {
+                    "tls_error".to_string()
+                } else {
+                    "connection_refused".to_string()
+                }
+            } else if err.is_redirect() {
+                "redirect_loop".to_string()
             } else {
-                ("dead".to_string(), None, Some(err_str))
-            }
+                "unknown_error".to_string()
+            };
+
+            let general = if err.is_timeout() || err.is_connect() {
+                "suspect"
+            } else {
+                "dead"
+            };
+
+            (general.to_string(), detail, None, latency_ms, Some(err_str))
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::db::Db;
-use crate::models::AuditLog;
 use crate::error::AppError;
+use crate::models::AuditLog;
 
 pub fn log_action(
     db: &Db,

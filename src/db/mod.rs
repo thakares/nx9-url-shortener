@@ -1,15 +1,20 @@
+use crate::config::Config;
+use crate::db::migrations::{
+    run_migrations, ADMIN_MIGRATIONS, ANALYTICS_MIGRATIONS, CONTENT_MIGRATIONS, SYSTEM_MIGRATIONS,
+};
+use crate::db::sqlite::{enable_foreign_keys, enable_wal};
+use rusqlite::Connection;
 use std::fs;
 use std::sync::{Arc, Mutex};
-use rusqlite::Connection;
-use crate::config::Config;
-use crate::db::migrations::{run_migrations, ADMIN_MIGRATIONS, CONTENT_MIGRATIONS, ANALYTICS_MIGRATIONS, SYSTEM_MIGRATIONS};
-use crate::db::sqlite::{enable_foreign_keys, enable_wal};
 
-pub mod migrations;
-pub mod sqlite;
 pub mod admin;
-pub mod content;
 pub mod analytics;
+pub mod audit_events;
+pub mod content;
+pub mod migrations;
+pub mod preview;
+pub mod qr;
+pub mod sqlite;
 
 #[derive(Clone)]
 pub struct Db {
@@ -53,13 +58,25 @@ impl Db {
         enable_wal(&system_conn, "system")?;
 
         // Enable foreign key support
-        info!(database = "admin", "Enabling foreign key enforcement on admin.db");
+        info!(
+            database = "admin",
+            "Enabling foreign key enforcement on admin.db"
+        );
         enable_foreign_keys(&admin_conn, "admin")?;
-        info!(database = "content", "Enabling foreign key enforcement on content.db");
+        info!(
+            database = "content",
+            "Enabling foreign key enforcement on content.db"
+        );
         enable_foreign_keys(&content_conn, "content")?;
-        info!(database = "analytics", "Enabling foreign key enforcement on analytics.db");
+        info!(
+            database = "analytics",
+            "Enabling foreign key enforcement on analytics.db"
+        );
         enable_foreign_keys(&analytics_conn, "analytics")?;
-        info!(database = "system", "Enabling foreign key enforcement on system.db");
+        info!(
+            database = "system",
+            "Enabling foreign key enforcement on system.db"
+        );
         enable_foreign_keys(&system_conn, "system")?;
 
         // 1. Run migrations for system.db first, as it receives secondary audit records
@@ -70,11 +87,26 @@ impl Db {
 
         // 2. Run migrations for other databases with system.db logging
         info!("Running admin migrations");
-        run_migrations(&mut admin_conn, "admin", ADMIN_MIGRATIONS, Some(&system_arc))?;
+        run_migrations(
+            &mut admin_conn,
+            "admin",
+            ADMIN_MIGRATIONS,
+            Some(&system_arc),
+        )?;
         info!("Running content migrations");
-        run_migrations(&mut content_conn, "content", CONTENT_MIGRATIONS, Some(&system_arc))?;
+        run_migrations(
+            &mut content_conn,
+            "content",
+            CONTENT_MIGRATIONS,
+            Some(&system_arc),
+        )?;
         info!("Running analytics migrations");
-        run_migrations(&mut analytics_conn, "analytics", ANALYTICS_MIGRATIONS, Some(&system_arc))?;
+        run_migrations(
+            &mut analytics_conn,
+            "analytics",
+            ANALYTICS_MIGRATIONS,
+            Some(&system_arc),
+        )?;
 
         Ok(Self {
             admin: Arc::new(Mutex::new(admin_conn)),
@@ -115,12 +147,12 @@ mod db_init_tests {
         let mut config = Config::load();
         config.data_dir = temp_dir.clone();
         let db = Db::init(&config);
-        
+
         // Cleanup
         if temp_dir.exists() {
             let _ = std::fs::remove_dir_all(&temp_dir);
         }
-        
+
         assert!(db.is_ok(), "Failed to init DB: {:?}", db.err());
     }
 }

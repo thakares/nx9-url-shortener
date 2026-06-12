@@ -1,9 +1,9 @@
+use crate::models::ApiKey;
 use askama::Template;
 use axum::{
-    response::{IntoResponse, Response, Html},
     http::StatusCode,
+    response::{Html, IntoResponse, Response},
 };
-use crate::models::ApiKey;
 
 #[derive(Template)]
 #[template(path = "settings.html")]
@@ -20,7 +20,11 @@ impl IntoResponse for SettingsTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Render error: {}", e)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }

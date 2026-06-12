@@ -1,14 +1,16 @@
-use std::path::PathBuf;
-use tracing::info;
 use crate::config::Config;
 use crate::db::Db;
+use std::path::PathBuf;
+use tracing::info;
 
 pub async fn run(
     data_dir: Option<String>,
     dry_run: bool,
     mut config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(d) = data_dir { config.data_dir = PathBuf::from(d); }
+    if let Some(d) = data_dir {
+        config.data_dir = PathBuf::from(d);
+    }
 
     if dry_run {
         info!("Dry run enabled: pending database migrations will be reported but not applied.");

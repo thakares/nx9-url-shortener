@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 // General SHA-256 hash helper
 pub fn sha256_hash(data: &str) -> String {

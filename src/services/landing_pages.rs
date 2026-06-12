@@ -1,6 +1,6 @@
 use crate::db::Db;
-use crate::models::LandingPage;
 use crate::error::AppError;
+use crate::models::LandingPage;
 
 pub fn create_landing_page(
     db: &Db,
@@ -11,7 +11,8 @@ pub fn create_landing_page(
     state: &str,
 ) -> Result<LandingPage, AppError> {
     let conn = db.content.lock().unwrap();
-    let page = crate::db::content::create_landing_page(&conn, code, slug, title, html_content, state)?;
+    let page =
+        crate::db::content::create_landing_page(&conn, code, slug, title, html_content, state)?;
     Ok(page)
 }
 

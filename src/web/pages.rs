@@ -1,17 +1,17 @@
 use axum::{
-    extract::{Path, State, ConnectInfo},
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
-    response::{Response, Html, IntoResponse},
+    response::{Html, IntoResponse, Response},
 };
+use chrono::Utc;
 use std::net::SocketAddr;
 use uuid::Uuid;
-use chrono::Utc;
 
-use crate::state::AppState;
-use crate::models::VisitRecord;
-use crate::utils::get_client_ip;
 use crate::analytics::get_client_country;
+use crate::models::VisitRecord;
 use crate::services::landing_pages::get_landing_page_by_code;
+use crate::state::AppState;
+use crate::utils::get_client_ip;
 
 // GET /p/:code and GET /p/:code/*slug
 // Resolve and render landing page
@@ -40,15 +40,18 @@ pub async fn resolve_page(
             // Record view analytics
             let ip = get_client_ip(&headers, connect_info);
             let country = get_client_country(&headers);
-            let user_agent = headers.get("user-agent")
+            let user_agent = headers
+                .get("user-agent")
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("Unknown")
                 .to_string();
-            let referer = headers.get("referer")
+            let referer = headers
+                .get("referer")
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("Direct")
                 .to_string();
-            let accept_language = headers.get("accept-language")
+            let accept_language = headers
+                .get("accept-language")
                 .and_then(|h| h.to_str().ok())
                 .unwrap_or("Unknown")
                 .to_string();

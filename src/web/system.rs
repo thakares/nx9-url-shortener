@@ -1,15 +1,15 @@
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response, Json},
+    response::{IntoResponse, Json, Response},
 };
 use axum_extra::extract::CookieJar;
 use serde::Serialize;
 
+use crate::auth::{authenticate_api_key, authenticate_session};
 use crate::db::admin::get_user_count;
 use crate::state::AppState;
-use crate::utils::{get_memory_usage, get_db_file_info};
-use crate::auth::{authenticate_session, authenticate_api_key};
+use crate::utils::{get_db_file_info, get_memory_usage};
 
 // Helper: authenticate system request via header or session cookie
 fn authenticate_request(state: &AppState, jar: &CookieJar, headers: &HeaderMap) -> bool {
@@ -51,8 +51,9 @@ pub async fn status_endpoint(
         // Return public basic status for container/load-balancer health checks
         return (
             StatusCode::OK,
-            Json(serde_json::json!({ "application": "Healthy" }))
-        ).into_response();
+            Json(serde_json::json!({ "application": "Healthy" })),
+        )
+            .into_response();
     }
 
     let is_db_ok = {
@@ -61,7 +62,10 @@ pub async fn status_endpoint(
     };
 
     let db_status = if is_db_ok {
-        format!("Connected (WAL Mode enabled). Files Info:\n{}", get_db_file_info(&state.config.data_dir))
+        format!(
+            "Connected (WAL Mode enabled). Files Info:\n{}",
+            get_db_file_info(&state.config.data_dir)
+        )
     } else {
         "Disconnected".to_string()
     };
@@ -71,12 +75,13 @@ pub async fn status_endpoint(
     Json(StatusResponse {
         application: "Healthy",
         database: db_status,
-        queue_size: 0, 
+        queue_size: 0,
         memory_usage: get_memory_usage(),
         uptime_seconds: uptime,
         version: "0.1.0",
         git_commit: "unknown",
-    }).into_response()
+    })
+    .into_response()
 }
 
 // GET /metrics
@@ -104,7 +109,7 @@ pub async fn metrics_endpoint(
         let conn = state.analytics_db.lock().unwrap();
         (
             crate::db::analytics::get_total_clicks(&conn).unwrap_or(0),
-            crate::db::analytics::get_total_page_views(&conn).unwrap_or(0)
+            crate::db::analytics::get_total_page_views(&conn).unwrap_or(0),
         )
     };
 
@@ -168,5 +173,6 @@ bzod_uptime_seconds {uptime}
         StatusCode::OK,
         [("Content-Type", "text/plain; version=0.0.4; charset=utf-8")],
         metrics_text,
-    ).into_response()
+    )
+        .into_response()
 }

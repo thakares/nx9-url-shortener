@@ -108,6 +108,32 @@
             </div>
         </div>
 
+        <!-- Bulk QR Code Export -->
+        <div class="card">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><rect x="7" y="7" width="3" height="3"></rect><rect x="14" y="7" width="3" height="3"></rect><rect x="7" y="14" width="3" height="3"></rect><rect x="14" y="14" width="3" height="3"></rect></svg>
+                Bulk QR Code Export
+            </h3>
+
+            <form action="/admin/settings/bulk-qr" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                
+                <div class="form-group">
+                    <label for="format">Export Format</label>
+                    <select id="format" name="format">
+                        <option value="png" selected>PNG Images (256x256)</option>
+                        <option value="svg">SVG Vector Graphics</option>
+                    </select>
+                </div>
+
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem; line-height: 1.4;">
+                    Generates a ZIP archive containing QR codes for all shortened links in your registry, alongside a <code>manifest.csv</code> file mapping codes to their destinations.
+                </p>
+
+                <button type="submit" class="btn" style="width: 100%; background: var(--primary-grad);">Download ZIP Archive</button>
+            </form>
+        </div>
+
     </div>
 
     <!-- Right Column: API Keys -->

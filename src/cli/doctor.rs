@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-use tracing::info;
 use crate::config::Config;
 use crate::db::sqlite;
 use rusqlite::Connection;
+use std::path::PathBuf;
+use tracing::info;
 
 /// Run comprehensive database diagnostics.
 ///
@@ -12,7 +12,9 @@ pub async fn run(
     data_dir: Option<String>,
     mut config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(d) = data_dir { config.data_dir = PathBuf::from(d); }
+    if let Some(d) = data_dir {
+        config.data_dir = PathBuf::from(d);
+    }
 
     info!("Running BZOD database diagnostics...");
     println!("BZOD Database Doctor");
@@ -35,27 +37,35 @@ pub async fn run(
         }
 
         match Connection::open(&db_path) {
-            Ok(conn) => {
-                match sqlite::collect_health_report(&conn, db_name) {
-                    Ok(report) => {
-                        println!("Database: {}", report.database);
-                        println!("  Path:             {:?}", db_path);
-                        println!("  Schema version:   {}", report.schema_version);
-                        println!("  Journal mode:     {}", report.journal_mode);
-                        println!("  Foreign keys:     {}", if report.foreign_keys_enabled { "enabled" } else { "DISABLED" });
-                        println!("  Integrity:        {}", if report.integrity_ok { "ok" } else { "FAILED" });
-
-                        if !report.integrity_ok || !report.foreign_keys_enabled {
-                            all_healthy = false;
+            Ok(conn) => match sqlite::collect_health_report(&conn, db_name) {
+                Ok(report) => {
+                    println!("Database: {}", report.database);
+                    println!("  Path:             {:?}", db_path);
+                    println!("  Schema version:   {}", report.schema_version);
+                    println!("  Journal mode:     {}", report.journal_mode);
+                    println!(
+                        "  Foreign keys:     {}",
+                        if report.foreign_keys_enabled {
+                            "enabled"
+                        } else {
+                            "DISABLED"
                         }
-                    }
-                    Err(e) => {
-                        println!("Database: {}", db_name);
-                        println!("  Status: ERROR collecting health report: {}", e);
+                    );
+                    println!(
+                        "  Integrity:        {}",
+                        if report.integrity_ok { "ok" } else { "FAILED" }
+                    );
+
+                    if !report.integrity_ok || !report.foreign_keys_enabled {
                         all_healthy = false;
                     }
                 }
-            }
+                Err(e) => {
+                    println!("Database: {}", db_name);
+                    println!("  Status: ERROR collecting health report: {}", e);
+                    all_healthy = false;
+                }
+            },
             Err(e) => {
                 println!("Database: {}", db_name);
                 println!("  Status: FAILED to open: {}", e);

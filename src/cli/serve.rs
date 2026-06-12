@@ -1,11 +1,11 @@
+use crate::analytics::AnalyticsQueue;
+use crate::config::Config;
+use crate::db::Db;
+use crate::state::AppState;
+use crate::web::create_router;
 use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
-use crate::config::Config;
-use crate::db::Db;
-use crate::analytics::AnalyticsQueue;
-use crate::state::AppState;
-use crate::web::create_router;
 
 pub async fn run(
     host: Option<String>,
@@ -13,16 +13,22 @@ pub async fn run(
     data_dir: Option<String>,
     mut config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(h) = host { config.host = h; }
-    if let Some(p) = port { config.port = p; }
-    if let Some(d) = data_dir { config.data_dir = PathBuf::from(d); }
+    if let Some(h) = host {
+        config.host = h;
+    }
+    if let Some(p) = port {
+        config.port = p;
+    }
+    if let Some(d) = data_dir {
+        config.data_dir = PathBuf::from(d);
+    }
 
     info!("Starting BZOD server on {}:{}", config.host, config.port);
     info!("Database directory: {:?}", config.data_dir);
 
     // Init DBs
     let db = Db::init(&config)?;
-    
+
     // Init Queue
     let queue = AnalyticsQueue::new(db.clone(), 1000);
 
@@ -52,6 +58,11 @@ pub async fn run(
         crate::jobs::backup::run_backup_scheduler(backup_db, backup_config).await;
     });
 
+    let expiry_db = db.clone();
+    tokio::spawn(async move {
+        crate::jobs::run_expiry_checker(expiry_db).await;
+    });
+
     let state = AppState {
         admin_db: db.admin.clone(),
         content_db: db.content.clone(),
@@ -67,7 +78,7 @@ pub async fn run(
     let router = create_router(state);
     let addr = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    
+
     info!("Listening for requests on http://{}", addr);
     axum::serve(listener, router).await?;
 

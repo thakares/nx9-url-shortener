@@ -1,6 +1,6 @@
-use tokio::sync::mpsc;
-use crate::models::VisitRecord;
 use crate::db::Db;
+use crate::models::VisitRecord;
+use tokio::sync::mpsc;
 
 #[derive(Clone)]
 pub struct AnalyticsQueue {

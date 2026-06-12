@@ -1,16 +1,18 @@
-use std::path::PathBuf;
-use std::io::{self, Write};
-use tracing::{info, error};
+use crate::auth::hash_password;
 use crate::config::Config;
 use crate::db::Db;
-use crate::auth::hash_password;
+use std::io::{self, Write};
+use std::path::PathBuf;
+use tracing::{error, info};
 
 pub async fn run(
     username: Option<String>,
     data_dir: Option<String>,
     mut config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(d) = data_dir { config.data_dir = PathBuf::from(d); }
+    if let Some(d) = data_dir {
+        config.data_dir = PathBuf::from(d);
+    }
     let db = Db::init(&config)?;
 
     let final_username = match username {
@@ -32,7 +34,10 @@ pub async fn run(
     let hash = hash_password(&password).map_err(|e| e.to_string())?;
     let conn = db.admin.lock().unwrap();
     let u = crate::db::admin::create_user(&conn, &final_username, &hash)?;
-    info!("Successfully created admin user: {} (ID: {})", u.username, u.id);
+    info!(
+        "Successfully created admin user: {} (ID: {})",
+        u.username, u.id
+    );
 
     Ok(())
 }

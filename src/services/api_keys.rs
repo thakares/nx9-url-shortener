@@ -1,6 +1,6 @@
 use crate::db::Db;
-use crate::models::ApiKey;
 use crate::error::AppError;
+use crate::models::ApiKey;
 
 pub fn create_api_key(
     db: &Db,

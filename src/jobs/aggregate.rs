@@ -1,15 +1,15 @@
 use std::time::Duration;
-use tracing::{info, error};
+use tracing::{error, info};
 
-use crate::db::Db;
+use super::{log_job_end, log_job_start};
 use crate::analytics::aggregate_day;
-use super::{log_job_start, log_job_end};
+use crate::db::Db;
 
 pub async fn run_aggregator(db: Db, interval_mins: u64) {
     loop {
         tokio::time::sleep(Duration::from_secs(interval_mins * 60)).await;
         info!("Running background analytics aggregator...");
-        
+
         let job_id = log_job_start(&db.system, "analytics_aggregator");
         match perform_aggregation(&db).await {
             Ok(_) => log_job_end(&db.system, &job_id, "success", None),

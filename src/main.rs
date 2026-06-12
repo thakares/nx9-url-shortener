@@ -1,20 +1,26 @@
+use bzod::cli::{Cli, Commands};
+use bzod::config::Config;
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
-use bzod::config::Config;
-use bzod::cli::{Cli, Commands};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up tracing subscriber
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .init();
 
     let cli = Cli::parse();
     let config = Config::load();
 
     match cli.command {
-        Commands::Serve { host, port, data_dir } => {
+        Commands::Serve {
+            host,
+            port,
+            data_dir,
+        } => {
             bzod::cli::serve::run(host, port, data_dir, config).await?;
         }
         Commands::Backup { out, data_dir } => {

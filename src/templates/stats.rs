@@ -1,9 +1,9 @@
+use crate::models::AuditLog;
 use askama::Template;
 use axum::{
-    response::{IntoResponse, Response, Html},
     http::StatusCode,
+    response::{Html, IntoResponse, Response},
 };
-use crate::models::AuditLog;
 
 #[derive(Template)]
 #[template(path = "status_ui.html")]
@@ -16,6 +16,7 @@ pub struct StatusTemplate {
     pub uptime: String,
     pub version: &'static str,
     pub git_commit: &'static str,
+    pub urls: Vec<crate::models::Url>,
 }
 
 #[derive(Template)]
@@ -29,7 +30,11 @@ impl IntoResponse for StatusTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Render error: {}", e)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }
@@ -38,7 +43,11 @@ impl IntoResponse for AuditTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
-            Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Render error: {}", e)).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
         }
     }
 }

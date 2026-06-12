@@ -14,7 +14,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy configuration files
-COPY Cargo.toml ./
+# COPY Cargo.toml ./
+COPY Cargo.toml Cargo.lock ./
 
 # Pre-build dependencies to cache them
 RUN mkdir src && echo "fn main() {}" > src/main.rs
@@ -47,8 +48,8 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /app/target/release/bzod /usr/local/bin/bzod
 
 # Create non-root user and data directory
-RUN groupadd -g 10001 bzod && \
-    useradd -u 10001 -g bzod -m -s /bin/bash bzod
+RUN groupadd -g 1000 bzod && \
+    useradd -u 1000 -g bzod -m -s /bin/bash bzod
 
 RUN mkdir -p /app/data && chown -R bzod:bzod /app/data
 

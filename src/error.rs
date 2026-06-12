@@ -1,6 +1,6 @@
 use axum::{
-    response::{IntoResponse, Response},
     http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use std::fmt;
 use std::path::PathBuf;
@@ -12,17 +12,36 @@ use std::path::PathBuf;
 #[derive(Debug)]
 pub enum DatabaseInitError {
     /// Data directory could not be created or accessed
-    DataDirCreate { path: PathBuf, source: std::io::Error },
+    DataDirCreate {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     /// SQLite connection could not be opened
-    ConnectionOpen { database: String, path: PathBuf, source: rusqlite::Error },
+    ConnectionOpen {
+        database: String,
+        path: PathBuf,
+        source: rusqlite::Error,
+    },
     /// PRAGMA configuration failed (WAL, foreign_keys, etc.)
-    PragmaConfig { database: String, pragma: String, source: rusqlite::Error },
+    PragmaConfig {
+        database: String,
+        pragma: String,
+        source: rusqlite::Error,
+    },
     /// Migration execution failed
-    MigrationFailed { database: String, version: u32, name: String, source: Box<dyn std::error::Error + Send + Sync> },
+    MigrationFailed {
+        database: String,
+        version: u32,
+        name: String,
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     /// Database integrity check failed
     IntegrityCheckFailed { database: String, message: String },
     /// WAL mode could not be enabled (returned unexpected mode)
-    WalModeFailed { database: String, actual_mode: String },
+    WalModeFailed {
+        database: String,
+        actual_mode: String,
+    },
 }
 
 impl fmt::Display for DatabaseInitError {
@@ -31,20 +50,48 @@ impl fmt::Display for DatabaseInitError {
             Self::DataDirCreate { path, source } => {
                 write!(f, "Failed to create data directory {:?}: {}", path, source)
             }
-            Self::ConnectionOpen { database, path, source } => {
-                write!(f, "Failed to open {}.db at {:?}: {}", database, path, source)
+            Self::ConnectionOpen {
+                database,
+                path,
+                source,
+            } => {
+                write!(
+                    f,
+                    "Failed to open {}.db at {:?}: {}",
+                    database, path, source
+                )
             }
-            Self::PragmaConfig { database, pragma, source } => {
+            Self::PragmaConfig {
+                database,
+                pragma,
+                source,
+            } => {
                 write!(f, "PRAGMA {} failed on {}.db: {}", pragma, database, source)
             }
-            Self::MigrationFailed { database, version, name, source } => {
-                write!(f, "Migration v{} ({}) failed on {}.db: {}", version, name, database, source)
+            Self::MigrationFailed {
+                database,
+                version,
+                name,
+                source,
+            } => {
+                write!(
+                    f,
+                    "Migration v{} ({}) failed on {}.db: {}",
+                    version, name, database, source
+                )
             }
             Self::IntegrityCheckFailed { database, message } => {
                 write!(f, "Integrity check failed on {}.db: {}", database, message)
             }
-            Self::WalModeFailed { database, actual_mode } => {
-                write!(f, "WAL mode not enabled on {}.db (got '{}')", database, actual_mode)
+            Self::WalModeFailed {
+                database,
+                actual_mode,
+            } => {
+                write!(
+                    f,
+                    "WAL mode not enabled on {}.db (got '{}')",
+                    database, actual_mode
+                )
             }
         }
     }

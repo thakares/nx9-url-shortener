@@ -14,8 +14,9 @@ use tracing::info;
 /// Uses `query_row` with `PRAGMA journal_mode=WAL` which both sets and returns
 /// the actual mode. Returns an error if the database does not confirm WAL mode.
 pub fn enable_wal(conn: &Connection, db_name: &str) -> Result<(), rusqlite::Error> {
-    let actual_mode: String =
-        conn.query_row("PRAGMA journal_mode=WAL;", [], |row| row.get::<_, String>(0))?;
+    let actual_mode: String = conn.query_row("PRAGMA journal_mode=WAL;", [], |row| {
+        row.get::<_, String>(0)
+    })?;
 
     info!(database = db_name, mode = %actual_mode, "WAL mode configured");
 
@@ -36,7 +37,11 @@ pub fn enable_foreign_keys(conn: &Connection, db_name: &str) -> Result<(), rusql
     let enabled: bool =
         conn.pragma_query_value(None, "foreign_keys", |row| row.get::<_, bool>(0))?;
 
-    info!(database = db_name, foreign_keys = enabled, "Foreign key enforcement configured");
+    info!(
+        database = db_name,
+        foreign_keys = enabled,
+        "Foreign key enforcement configured"
+    );
 
     if !enabled {
         return Err(rusqlite::Error::QueryReturnedNoRows);
@@ -183,8 +188,7 @@ mod tests {
     #[test]
     fn test_collect_health_report() {
         let conn = memory_conn();
-        let report =
-            collect_health_report(&conn, "test").expect("Failed to collect health report");
+        let report = collect_health_report(&conn, "test").expect("Failed to collect health report");
         assert_eq!(report.database, "test");
         assert!(report.integrity_ok);
     }

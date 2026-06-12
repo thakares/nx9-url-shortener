@@ -1,4 +1,4 @@
-use rand::{RngCore, thread_rng};
+use rand::{thread_rng, RngCore};
 
 // Generate a secure random token (hex-encoded)
 pub fn generate_token(bytes_len: usize) -> String {

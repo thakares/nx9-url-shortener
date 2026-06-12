@@ -1,9 +1,9 @@
+use crate::analytics::queue::AnalyticsQueue;
+use crate::config::Config;
+use crate::db::Db;
+use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use rusqlite::Connection;
-use crate::config::Config;
-use crate::analytics::queue::AnalyticsQueue;
-use crate::db::Db;
 
 #[derive(Clone)]
 pub struct AppState {

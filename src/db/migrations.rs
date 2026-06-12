@@ -27,7 +27,12 @@ pub fn run_migrations(
 
     if current_version < target_version {
         for m in migrations.iter().filter(|m| m.version > current_version) {
-            info!(database = db_name, version = m.version, name = m.name, "Applying migration");
+            info!(
+                database = db_name,
+                version = m.version,
+                name = m.name,
+                "Applying migration"
+            );
 
             let tx = conn.transaction()?;
             tx.execute_batch(m.sql)?;
@@ -35,7 +40,12 @@ pub fn run_migrations(
 
             crate::db::sqlite::set_user_version(conn, m.version as i32)?;
 
-            info!(database = db_name, version = m.version, name = m.name, "Migration completed");
+            info!(
+                database = db_name,
+                version = m.version,
+                name = m.name,
+                "Migration completed"
+            );
 
             // Write audit record to system.db.migrations
             if let Some(sys_db_mutex) = system_db_opt {
@@ -58,7 +68,11 @@ pub fn run_migrations(
             }
         }
     } else {
-        info!(database = db_name, version = current_version, "Database up to date");
+        info!(
+            database = db_name,
+            version = current_version,
+            "Database up to date"
+        );
     }
 
     Ok(())
@@ -77,7 +91,10 @@ pub fn print_migration_plan(
     println!("  Current version: {current_version}");
     println!("  Target version:  {target_version}");
 
-    let pending: Vec<&Migration> = migrations.iter().filter(|m| m.version > current_version).collect();
+    let pending: Vec<&Migration> = migrations
+        .iter()
+        .filter(|m| m.version > current_version)
+        .collect();
 
     if pending.is_empty() {
         println!("  Status: up to date");
@@ -94,11 +111,10 @@ pub fn print_migration_plan(
 // Migration definitions
 // ---------------------------------------------------------------------------
 
-pub const ADMIN_MIGRATIONS: &[Migration] = &[
-    Migration {
-        version: 1,
-        name: "initial_schema",
-        sql: r#"
+pub const ADMIN_MIGRATIONS: &[Migration] = &[Migration {
+    version: 1,
+    name: "initial_schema",
+    sql: r#"
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
@@ -140,8 +156,7 @@ pub const ADMIN_MIGRATIONS: &[Migration] = &[
         value TEXT NOT NULL
     );
     "#,
-    },
-];
+}];
 
 pub const CONTENT_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -185,6 +200,49 @@ pub const CONTENT_MIGRATIONS: &[Migration] = &[
 
     CREATE INDEX IF NOT EXISTS idx_urls_code ON urls(code);
     CREATE INDEX IF NOT EXISTS idx_pages_code ON landing_pages(code);
+    "#,
+    },
+    Migration {
+        version: 2,
+        name: "features_expansion",
+        sql: r#"
+    -- Expiring Links
+    ALTER TABLE urls ADD COLUMN expires_at TEXT NULL;
+    ALTER TABLE urls ADD COLUMN expired INTEGER NOT NULL DEFAULT 0;
+
+    -- Password Protected Links
+    ALTER TABLE urls ADD COLUMN password_hash TEXT NULL;
+
+    -- Link Health Dashboard (extended columns)
+    ALTER TABLE urls ADD COLUMN last_status TEXT;
+    ALTER TABLE urls ADD COLUMN last_latency_ms INTEGER;
+
+    -- One-Time Links
+    ALTER TABLE urls ADD COLUMN max_access_count INTEGER NULL;
+    ALTER TABLE urls ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0;
+
+    -- Smart Landing Pages / Link Preview
+    CREATE TABLE IF NOT EXISTS link_preview (
+        id TEXT PRIMARY KEY,
+        url_id TEXT NOT NULL UNIQUE,
+        title TEXT,
+        description TEXT,
+        logo_url TEXT,
+        button_text TEXT DEFAULT 'Continue',
+        FOREIGN KEY(url_id) REFERENCES urls(id) ON DELETE CASCADE
+    );
+
+    -- QR Code style metadata
+    CREATE TABLE IF NOT EXISTS qr_codes (
+        id TEXT PRIMARY KEY,
+        url_id TEXT NOT NULL,
+        style TEXT NOT NULL DEFAULT 'default',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(url_id) REFERENCES urls(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_urls_expired ON urls(expired);
+    CREATE INDEX IF NOT EXISTS idx_urls_expires_at ON urls(expires_at);
     "#,
     },
 ];
@@ -241,6 +299,22 @@ pub const ANALYTICS_MIGRATIONS: &[Migration] = &[
     CREATE INDEX IF NOT EXISTS idx_visits_target ON visits(target_type, target_id);
     "#,
     },
+    Migration {
+        version: 2,
+        name: "qr_access_log",
+        sql: r#"
+    CREATE TABLE IF NOT EXISTS qr_access_log (
+        id TEXT PRIMARY KEY,
+        url_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        ip TEXT,
+        user_agent TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_qr_access_url ON qr_access_log(url_id);
+    CREATE INDEX IF NOT EXISTS idx_qr_access_ts ON qr_access_log(timestamp);
+    "#,
+    },
 ];
 
 pub const SYSTEM_MIGRATIONS: &[Migration] = &[
@@ -289,6 +363,25 @@ pub const SYSTEM_MIGRATIONS: &[Migration] = &[
         timestamp TEXT NOT NULL,
         details TEXT NOT NULL
     );
+    "#,
+    },
+    Migration {
+        version: 2,
+        name: "audit_events",
+        sql: r#"
+    CREATE TABLE IF NOT EXISTS audit_events (
+        id TEXT PRIMARY KEY,
+        actor TEXT NOT NULL,
+        action TEXT NOT NULL,
+        object_type TEXT NOT NULL,
+        object_id TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        metadata TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_events(actor);
+    CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_events(action);
     "#,
     },
 ];

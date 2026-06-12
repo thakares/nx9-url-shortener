@@ -1,10 +1,10 @@
+use crate::auth::session::authenticate_api_key;
+use crate::models::User;
+use crate::state::AppState;
 use axum::{
-    extract::{FromRequestParts, FromRef},
+    extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
 };
-use crate::state::AppState;
-use crate::models::User;
-use crate::auth::session::authenticate_api_key;
 
 // Extractor: Authenticate API requests using Bearer token
 pub struct ApiUser(pub User);
@@ -19,7 +19,8 @@ where
 
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         let app_state = AppState::from_ref(state);
-        let auth_header = parts.headers
+        let auth_header = parts
+            .headers
             .get("Authorization")
             .and_then(|h| h.to_str().ok())
             .ok_or((StatusCode::UNAUTHORIZED, "Missing Authorization header"))?;

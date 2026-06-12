@@ -1,11 +1,11 @@
-use rusqlite::{Connection, params};
-use std::collections::HashMap;
 use crate::models::VisitRecord;
+use rusqlite::{params, Connection};
+use std::collections::HashMap;
 
 // Custom User-Agent parser to avoid bloated dependencies
 pub fn parse_ua(ua: &str) -> (String, String, String) {
     let ua_lower = ua.to_lowercase();
-    
+
     let os = if ua_lower.contains("windows") {
         "Windows".to_string()
     } else if ua_lower.contains("macintosh") || ua_lower.contains("mac os x") {
@@ -18,7 +18,8 @@ pub fn parse_ua(ua: &str) -> (String, String, String) {
         "Android".to_string()
     } else if ua_lower.contains("linux") {
         "Linux".to_string()
-    } else if ua_lower.contains("iphone") || ua_lower.contains("ipad") || ua_lower.contains("ipod") {
+    } else if ua_lower.contains("iphone") || ua_lower.contains("ipad") || ua_lower.contains("ipod")
+    {
         "iOS".to_string()
     } else {
         "Other".to_string()
@@ -38,7 +39,11 @@ pub fn parse_ua(ua: &str) -> (String, String, String) {
         "Other".to_string()
     };
 
-    let device = if ua_lower.contains("mobile") || ua_lower.contains("android") || ua_lower.contains("iphone") || ua_lower.contains("ipod") {
+    let device = if ua_lower.contains("mobile")
+        || ua_lower.contains("android")
+        || ua_lower.contains("iphone")
+        || ua_lower.contains("ipod")
+    {
         "Mobile".to_string()
     } else if ua_lower.contains("ipad") || ua_lower.contains("tablet") {
         "Tablet".to_string()
@@ -54,15 +59,17 @@ pub fn clean_referrer(referer: &str) -> String {
     if referer.is_empty() || referer == "direct" {
         return "Direct".to_string();
     }
-    
+
     if let Ok(url) = reqwest::Url::parse(referer) {
         if let Some(host) = url.host_str() {
             return host.trim_start_matches("www.").to_string();
         }
     }
-    
+
     // Fallback if not a valid URL
-    let cleaned = referer.trim_start_matches("https://").trim_start_matches("http://");
+    let cleaned = referer
+        .trim_start_matches("https://")
+        .trim_start_matches("http://");
     let cleaned = cleaned.split('/').next().unwrap_or("Direct");
     if cleaned.is_empty() {
         "Direct".to_string()
@@ -78,7 +85,7 @@ pub fn insert_visits_batch(conn: &mut Connection, records: &[VisitRecord]) -> ru
             "INSERT INTO visits (id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);"
         )?;
-        
+
         for r in records {
             stmt.execute(params![
                 r.id,
@@ -99,16 +106,25 @@ pub fn insert_visits_batch(conn: &mut Connection, records: &[VisitRecord]) -> ru
 }
 
 pub fn get_total_clicks(conn: &Connection) -> rusqlite::Result<i64> {
-    conn.query_row("SELECT COUNT(*) FROM visits WHERE target_type = 'url';", [], |row| row.get(0))
+    conn.query_row(
+        "SELECT COUNT(*) FROM visits WHERE target_type = 'url';",
+        [],
+        |row| row.get(0),
+    )
 }
 
 pub fn get_total_page_views(conn: &Connection) -> rusqlite::Result<i64> {
-    conn.query_row("SELECT COUNT(*) FROM visits WHERE target_type = 'page';", [], |row| row.get(0))
+    conn.query_row(
+        "SELECT COUNT(*) FROM visits WHERE target_type = 'page';",
+        [],
+        |row| row.get(0),
+    )
 }
 
 // Get the date range of visits in the DB
 pub fn get_visits_date_range(conn: &Connection) -> rusqlite::Result<Option<(String, String)>> {
-    let mut stmt = conn.prepare("SELECT MIN(date(timestamp)), MAX(date(timestamp)) FROM visits;")?;
+    let mut stmt =
+        conn.prepare("SELECT MIN(date(timestamp)), MAX(date(timestamp)) FROM visits;")?;
     let mut rows = stmt.query([])?;
     if let Some(row) = rows.next()? {
         let min_date: Option<String> = row.get(0)?;
@@ -128,7 +144,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
         let mut stmt = conn.prepare(
             "SELECT target_type, target_id, user_agent, referer, country, status_code FROM visits WHERE date(timestamp) = ?1;"
         )?;
-        
+
         struct RawVisit {
             target_type: String,
             target_id: String,
@@ -136,7 +152,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
             referer: String,
             country: String,
         }
-        
+
         let rows = stmt.query_map(params![date], |row| {
             Ok(RawVisit {
                 target_type: row.get(0)?,
@@ -146,7 +162,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
                 country: row.get(4)?,
             })
         })?;
-        
+
         for r in rows {
             visits.push(r?);
         }
@@ -156,7 +172,6 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
         return Ok(());
     }
 
-
     // 2. Compute metrics in-memory
     // Key structure: (target_type, target_id, metric_type, metric_key) -> count
     let mut aggregates: HashMap<(String, String, String, String), i64> = HashMap::new();
@@ -165,7 +180,11 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
     for v in visits {
         let (browser, os, device) = parse_ua(&v.user_agent);
         let referrer = clean_referrer(&v.referer);
-        let country = if v.country.is_empty() { "Unknown".to_string() } else { v.country.clone() };
+        let country = if v.country.is_empty() {
+            "Unknown".to_string()
+        } else {
+            v.country.clone()
+        };
 
         let targets = vec![
             (v.target_type.clone(), v.target_id.clone()),
@@ -174,22 +193,59 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
 
         for (t_type, t_id) in targets {
             // Clicks
-            *aggregates.entry((t_type.clone(), t_id.clone(), "clicks".to_string(), "".to_string())).or_insert(0) += 1;
-            
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "clicks".to_string(),
+                    "".to_string(),
+                ))
+                .or_insert(0) += 1;
+
             // Country
-            *aggregates.entry((t_type.clone(), t_id.clone(), "country".to_string(), country.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "country".to_string(),
+                    country.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // Browser
-            *aggregates.entry((t_type.clone(), t_id.clone(), "browser".to_string(), browser.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "browser".to_string(),
+                    browser.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // OS
-            *aggregates.entry((t_type.clone(), t_id.clone(), "os".to_string(), os.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((t_type.clone(), t_id.clone(), "os".to_string(), os.clone()))
+                .or_insert(0) += 1;
 
             // Device
-            *aggregates.entry((t_type.clone(), t_id.clone(), "device".to_string(), device.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "device".to_string(),
+                    device.clone(),
+                ))
+                .or_insert(0) += 1;
 
             // Referrer
-            *aggregates.entry((t_type.clone(), t_id.clone(), "referrer".to_string(), referrer.clone())).or_insert(0) += 1;
+            *aggregates
+                .entry((
+                    t_type.clone(),
+                    t_id.clone(),
+                    "referrer".to_string(),
+                    referrer.clone(),
+                ))
+                .or_insert(0) += 1;
         }
     }
 
@@ -197,7 +253,10 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
     let tx = conn.transaction()?;
     {
         // Delete old aggregates for this day
-        tx.execute("DELETE FROM daily_summaries WHERE date = ?1;", params![date])?;
+        tx.execute(
+            "DELETE FROM daily_summaries WHERE date = ?1;",
+            params![date],
+        )?;
 
         let mut insert_stmt = tx.prepare(
             "INSERT INTO daily_summaries (date, target_type, target_id, metric_type, metric_key, metric_value)
@@ -205,14 +264,7 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
         )?;
 
         for ((t_type, t_id, m_type, m_key), value) in aggregates {
-            insert_stmt.execute(params![
-                date,
-                t_type,
-                t_id,
-                m_type,
-                m_key,
-                value
-            ])?;
+            insert_stmt.execute(params![date, t_type, t_id, m_type, m_key, value])?;
         }
     }
     tx.commit()?;
@@ -227,7 +279,10 @@ pub fn aggregate_day(conn: &mut Connection, date: &str) -> rusqlite::Result<()> 
 fn aggregate_month_from_daily(conn: &mut Connection, year_month: &str) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        tx.execute("DELETE FROM monthly_summaries WHERE year_month = ?1;", params![year_month])?;
+        tx.execute(
+            "DELETE FROM monthly_summaries WHERE year_month = ?1;",
+            params![year_month],
+        )?;
         tx.execute(
             "INSERT INTO monthly_summaries (year_month, target_type, target_id, metric_type, metric_key, metric_value)
              SELECT ?1, target_type, target_id, metric_type, metric_key, SUM(metric_value)
@@ -244,7 +299,10 @@ fn aggregate_month_from_daily(conn: &mut Connection, year_month: &str) -> rusqli
 fn aggregate_year_from_daily(conn: &mut Connection, year: &str) -> rusqlite::Result<()> {
     let tx = conn.transaction()?;
     {
-        tx.execute("DELETE FROM yearly_summaries WHERE year = ?1;", params![year])?;
+        tx.execute(
+            "DELETE FROM yearly_summaries WHERE year = ?1;",
+            params![year],
+        )?;
         tx.execute(
             "INSERT INTO yearly_summaries (year, target_type, target_id, metric_type, metric_key, metric_value)
              SELECT ?1, target_type, target_id, metric_type, metric_key, SUM(metric_value)
@@ -262,7 +320,10 @@ fn aggregate_year_from_daily(conn: &mut Connection, year: &str) -> rusqlite::Res
 pub fn retention_cleanup(conn: &Connection, retention_days: i64) -> rusqlite::Result<usize> {
     let limit_date = chrono::Utc::now() - chrono::Duration::days(retention_days);
     let limit_str = limit_date.to_rfc3339();
-    let count = conn.execute("DELETE FROM visits WHERE timestamp < ?1;", params![limit_str])?;
+    let count = conn.execute(
+        "DELETE FROM visits WHERE timestamp < ?1;",
+        params![limit_str],
+    )?;
     Ok(count)
 }
 
@@ -274,18 +335,20 @@ pub fn get_clicks_trend(
     target_id: &str,
     limit_days: i64,
 ) -> rusqlite::Result<Vec<(String, i64)>> {
-    let limit_date = (chrono::Utc::now() - chrono::Duration::days(limit_days)).format("%Y-%m-%d").to_string();
-    
+    let limit_date = (chrono::Utc::now() - chrono::Duration::days(limit_days))
+        .format("%Y-%m-%d")
+        .to_string();
+
     let mut stmt = conn.prepare(
         "SELECT date, SUM(metric_value) FROM daily_summaries 
          WHERE target_type = ?1 AND target_id = ?2 AND metric_type = 'clicks' AND date >= ?3
-         GROUP BY date ORDER BY date ASC;"
+         GROUP BY date ORDER BY date ASC;",
     )?;
-    
+
     let rows = stmt.query_map(params![target_type, target_id, limit_date], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
-    
+
     let mut res = Vec::new();
     for r in rows {
         res.push(r?);
@@ -301,17 +364,17 @@ pub fn get_clicks_trend_raw(
     limit_days: i64,
 ) -> rusqlite::Result<Vec<(String, i64)>> {
     let limit_date = (chrono::Utc::now() - chrono::Duration::days(limit_days)).to_rfc3339();
-    
+
     let mut stmt = conn.prepare(
         "SELECT date(timestamp) as d, COUNT(*) FROM visits 
          WHERE target_type = ?1 AND target_id = ?2 AND timestamp >= ?3
-         GROUP BY d ORDER BY d ASC;"
+         GROUP BY d ORDER BY d ASC;",
     )?;
-    
+
     let rows = stmt.query_map(params![target_type, target_id, limit_date], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
-    
+
     let mut res = Vec::new();
     for r in rows {
         res.push(r?);
@@ -326,18 +389,18 @@ pub fn get_hourly_trend_raw(
     limit_days: i64,
 ) -> rusqlite::Result<Vec<(String, i64)>> {
     let limit_date = (chrono::Utc::now() - chrono::Duration::days(limit_days)).to_rfc3339();
-    
+
     // SQLite strftime('%H', timestamp) extracts the hour
     let mut stmt = conn.prepare(
         "SELECT strftime('%H', timestamp) as h, COUNT(*) FROM visits 
          WHERE target_type = ?1 AND target_id = ?2 AND timestamp >= ?3
-         GROUP BY h ORDER BY h ASC;"
+         GROUP BY h ORDER BY h ASC;",
     )?;
-    
+
     let rows = stmt.query_map(params![target_type, target_id, limit_date], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
-    
+
     let mut res = Vec::new();
     for r in rows {
         res.push(r?);
@@ -355,13 +418,13 @@ pub fn get_metric_rankings(
     let mut stmt = conn.prepare(
         "SELECT metric_key, SUM(metric_value) as val FROM daily_summaries 
          WHERE target_type = ?1 AND target_id = ?2 AND metric_type = ?3
-         GROUP BY metric_key ORDER BY val DESC LIMIT ?4;"
+         GROUP BY metric_key ORDER BY val DESC LIMIT ?4;",
     )?;
-    
+
     let rows = stmt.query_map(params![target_type, target_id, metric_type, limit], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     })?;
-    
+
     let mut res = Vec::new();
     for r in rows {
         res.push(r?);
@@ -378,30 +441,32 @@ pub fn get_metric_rankings_raw(
 ) -> rusqlite::Result<Vec<(String, i64)>> {
     // Falls back to direct query on visits
     let mut res = Vec::new();
-    
+
     match metric_type {
         "country" => {
             let mut stmt = conn.prepare(
                 "SELECT country, COUNT(*) as c FROM visits 
                  WHERE target_type = ?1 AND target_id = ?2 
-                 GROUP BY country ORDER BY c DESC LIMIT ?3;"
+                 GROUP BY country ORDER BY c DESC LIMIT ?3;",
             )?;
             let rows = stmt.query_map(params![target_type, target_id, limit], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?;
-            for r in rows { res.push(r?); }
+            for r in rows {
+                res.push(r?);
+            }
         }
         "referrer" => {
             let mut stmt = conn.prepare(
                 "SELECT referer, COUNT(*) as c FROM visits 
                  WHERE target_type = ?1 AND target_id = ?2 
-                 GROUP BY referer ORDER BY c DESC LIMIT ?3;"
+                 GROUP BY referer ORDER BY c DESC LIMIT ?3;",
             )?;
             let rows = stmt.query_map(params![target_type, target_id, limit], |row| {
                 let raw_ref: String = row.get(0)?;
                 Ok((clean_referrer(&raw_ref), row.get::<_, i64>(1)?))
             })?;
-            
+
             // Re-aggregate because clean_referrer might group different referrers
             let mut grouped: HashMap<String, i64> = HashMap::new();
             for r in rows {
@@ -416,12 +481,12 @@ pub fn get_metric_rankings_raw(
             let mut stmt = conn.prepare(
                 "SELECT user_agent, COUNT(*) as c FROM visits 
                  WHERE target_type = ?1 AND target_id = ?2 
-                 GROUP BY user_agent;"
+                 GROUP BY user_agent;",
             )?;
             let rows = stmt.query_map(params![target_type, target_id], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?;
-            
+
             let mut grouped: HashMap<String, i64> = HashMap::new();
             for r in rows {
                 let (ua, count) = r?;
@@ -439,7 +504,7 @@ pub fn get_metric_rankings_raw(
         }
         _ => {}
     }
-    
+
     Ok(res)
 }
 
@@ -449,24 +514,58 @@ mod tests {
 
     #[test]
     fn test_parse_ua_browsers() {
-        let firefox_linux = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0";
+        let firefox_linux =
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0";
         let chrome_win = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
         let safari_mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15";
         let android_phone = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36";
 
-        assert_eq!(parse_ua(firefox_linux), ("Firefox".to_string(), "Linux".to_string(), "Desktop".to_string()));
-        assert_eq!(parse_ua(chrome_win), ("Chrome".to_string(), "Windows".to_string(), "Desktop".to_string()));
-        assert_eq!(parse_ua(safari_mac), ("Safari".to_string(), "macOS".to_string(), "Desktop".to_string()));
-        assert_eq!(parse_ua(android_phone), ("Chrome".to_string(), "Android".to_string(), "Mobile".to_string()));
+        assert_eq!(
+            parse_ua(firefox_linux),
+            (
+                "Firefox".to_string(),
+                "Linux".to_string(),
+                "Desktop".to_string()
+            )
+        );
+        assert_eq!(
+            parse_ua(chrome_win),
+            (
+                "Chrome".to_string(),
+                "Windows".to_string(),
+                "Desktop".to_string()
+            )
+        );
+        assert_eq!(
+            parse_ua(safari_mac),
+            (
+                "Safari".to_string(),
+                "macOS".to_string(),
+                "Desktop".to_string()
+            )
+        );
+        assert_eq!(
+            parse_ua(android_phone),
+            (
+                "Chrome".to_string(),
+                "Android".to_string(),
+                "Mobile".to_string()
+            )
+        );
     }
 
     #[test]
     fn test_clean_referrer() {
         assert_eq!(clean_referrer("direct"), "Direct");
         assert_eq!(clean_referrer(""), "Direct");
-        assert_eq!(clean_referrer("https://github.com/rust-lang/rust"), "github.com");
-        assert_eq!(clean_referrer("http://www.google.com/search?q=rust"), "google.com");
+        assert_eq!(
+            clean_referrer("https://github.com/rust-lang/rust"),
+            "github.com"
+        );
+        assert_eq!(
+            clean_referrer("http://www.google.com/search?q=rust"),
+            "google.com"
+        );
         assert_eq!(clean_referrer("reddit.com/r/rust"), "reddit.com");
     }
 }
-

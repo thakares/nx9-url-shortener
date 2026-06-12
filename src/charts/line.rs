@@ -37,7 +37,11 @@ pub fn generate_line_chart(data: &[(String, i64)]) -> String {
 
     // Coordinates calculations
     let count = data.len();
-    let step_x = if count > 1 { chart_w / (count - 1) as f64 } else { chart_w };
+    let step_x = if count > 1 {
+        chart_w / (count - 1) as f64
+    } else {
+        chart_w
+    };
 
     let mut points = Vec::new();
     for (i, &(_, val)) in data.iter().enumerate() {
@@ -70,15 +74,23 @@ pub fn generate_line_chart(data: &[(String, i64)]) -> String {
     for (i, (label, _)) in data.iter().enumerate() {
         if i % label_step == 0 || i == count - 1 {
             let x = points[i].0;
-            let short_label = if label.len() == 10 { &label[5..] } else { label };
+            let short_label = if label.len() == 10 {
+                &label[5..]
+            } else {
+                label
+            };
             x_labels.push_str(&format!(
                 r##"<text x="{}" y="{}" fill="{}" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">{}</text>"##,
                 x, height - 15.0, DEFAULT_TEXT_COLOR, short_label
             ));
-            
+
             x_labels.push_str(&format!(
                 r##"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke="{}" stroke-width="1"/>"##,
-                x, pad_top + chart_h, x, pad_top + chart_h + 5.0, DEFAULT_GRID_COLOR
+                x,
+                pad_top + chart_h,
+                x,
+                pad_top + chart_h + 5.0,
+                DEFAULT_GRID_COLOR
             ));
         }
     }

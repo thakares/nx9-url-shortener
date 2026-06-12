@@ -1,4 +1,4 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 // Deterministic CSRF token derived from session token
 pub fn generate_csrf_token(session_id: &str) -> String {

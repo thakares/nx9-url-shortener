@@ -1,6 +1,6 @@
 use crate::db::Db;
-use crate::models::Url;
 use crate::error::AppError;
+use crate::models::Url;
 
 pub fn create_url(
     db: &Db,

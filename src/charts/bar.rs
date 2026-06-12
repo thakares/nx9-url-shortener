@@ -14,7 +14,7 @@ pub fn generate_bar_chart(data: &[(String, i64)]) -> String {
     let pad_left = 130.0;
     let pad_right = 70.0;
     let width = 600.0;
-    
+
     let height = pad_top + pad_bottom + (data.len() as f64 * (bar_height + gap)) - gap;
     let chart_w = width - pad_left - pad_right;
 
@@ -27,7 +27,7 @@ pub fn generate_bar_chart(data: &[(String, i64)]) -> String {
     for (i, (label, val)) in data.iter().enumerate() {
         let y = pad_top + (i as f64 * (bar_height + gap));
         let bar_w = (*val as f64 / max_x) * chart_w;
-        
+
         let pct = if total_count > 0 {
             (*val as f64 / total_count as f64) * 100.0
         } else {

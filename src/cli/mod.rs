@@ -1,13 +1,13 @@
 use clap::{Parser, Subcommand};
 
-pub mod serve;
 pub mod backup;
-pub mod restore;
-pub mod migrate;
-pub mod stats;
-pub mod validate;
 pub mod create_admin;
 pub mod doctor;
+pub mod migrate;
+pub mod restore;
+pub mod serve;
+pub mod stats;
+pub mod validate;
 
 #[derive(Parser)]
 #[command(name = "bzod")]
