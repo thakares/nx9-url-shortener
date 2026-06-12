@@ -1,10 +1,10 @@
-# BZOD
+# nx9-url-shortener
 
 **A lightweight, self-hosted URL management platform written in Rust.**
 
-BZOD combines URL shortening, QR code generation, password-protected links, smart preview pages, analytics, audit logging, and lifecycle management into a single self-hosted application with zero external dependencies.
+nx9-url-shortener combines URL shortening, QR code generation, password-protected links, smart preview pages, analytics, audit logging, and lifecycle management into a single self-hosted application with zero external dependencies.
 
-Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, organizations, homelab operators, and businesses that want complete control over their links, analytics, and branding.
+Built with Rust, SQLite, Axum, and Askama, nx9-url-shortener is designed for individuals, organizations, homelab operators, and businesses that want complete control over their links, analytics, and branding.
 
 ---
 
@@ -57,7 +57,7 @@ Create short links using compact hexadecimal identifiers.
 Example:
 
 ```text
-https://bzo.in/1bb170
+https://your-short-domain/1bb170
 ```
 
 Redirects to:
@@ -120,7 +120,7 @@ Create standalone landing pages using dedicated page identifiers.
 Example:
 
 ```text
-https://bzo.in/p/1a2b
+https://your-short-domain/p/1a2b
 ```
 
 ---
@@ -243,7 +243,7 @@ No:
 
 ### Databases
 
-BZOD uses four SQLite databases.
+nx9-url-shortener uses four SQLite databases.
 
 | Database     | Purpose                                           |
 | ------------ | ------------------------------------------------- |
@@ -267,7 +267,7 @@ cargo run -- create-admin
 ### Docker
 
 ```bash
-docker exec -it bzod bzod create-admin
+docker exec -it nx9-url-shortener nx9-url-shortener create-admin
 ```
 
 ---
@@ -313,7 +313,7 @@ docker compose up -d
 ### Logs
 
 ```bash
-docker logs -f bzod
+docker logs -f nx9-url-shortener
 ```
 
 ---
@@ -322,9 +322,9 @@ docker logs -f bzod
 
 ```yaml
 services:
-  bzod:
+  nx9-url-shortener:
     build: .
-    container_name: bzod
+    container_name: nx9-url-shortener
     restart: unless-stopped
 
     ports:
@@ -415,7 +415,7 @@ Internet
 Nginx Proxy Manager
     │
     ▼
-BZOD
+nx9-url-shortener
     │
     ▼
 SQLite
