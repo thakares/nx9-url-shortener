@@ -1,0 +1,52 @@
+# Dependencies & Build artifacts
+target/
+**/target/
+
+# Environment & secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Development & testing files
+.git/
+.gitignore
+.github/
+.gitattributes
+
+# Documentation & notes
+README*.md
+docs/
+CONTRIBUTING.md
+CHANGELOG.md
+LICENSE
+
+# Logs & temporary files
+*.log
+*.tmp
+data/
+backups/
+
+# Editor & IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker related
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+.docker/
+
+# Test files
+tests/
+__tests__/
+*.test.*
+*.spec.*
+
+# Other unnecessary files
+node_modules/
+dist/
+build/
