@@ -7,6 +7,8 @@ use axum::{
 
 pub fn create_router(state: AppState) -> Router {
     Router::new()
+        // --- Root Landing Page ---
+        .route("/", get(pages::root_landing))
         // --- Public Redirection Routes ---
         .route("/:code", get(redirect::resolve_redirect))
         .route("/p/:code", get(pages::resolve_page))

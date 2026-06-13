@@ -1,7 +1,6 @@
 # ==========================================
 # Stage 1: Build
 # ==========================================
-# FROM rust:1.82-slim-bookworm AS builder
 FROM rust:1.89-bookworm AS builder
 
 WORKDIR /app
@@ -13,45 +12,51 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy configuration files
-# COPY Cargo.toml ./
+# Copy Cargo metadata
 COPY Cargo.toml Cargo.lock ./
 
-# Pre-build dependencies to cache them
+# Pre-build dependencies for layer caching
 RUN mkdir src && echo "fn main() {}" > src/main.rs
 RUN cargo build --release
 RUN rm -rf src
 
-# Copy source and templates
+# Copy application source
 COPY src ./src
 COPY templates ./templates
+COPY www ./www
 
-# Trigger rebuilding with actual source
+# Build application
 RUN touch src/main.rs
 RUN cargo build --release
 
 # ==========================================
-# Stage 2: Runner
+# Stage 2: Runtime
 # ==========================================
 FROM debian:bookworm-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Runtime dependencies
 RUN apt-get update && apt-get install -y \
     openssl \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
+# Application binary
 COPY --from=builder /app/target/release/bzod /usr/local/bin/bzod
 
-# Create non-root user and data directory
+# Runtime assets
+COPY templates ./templates
+COPY www ./www
+
+# Create non-root user
 RUN groupadd -g 1000 bzod && \
     useradd -u 1000 -g bzod -m -s /bin/bash bzod
 
-RUN mkdir -p /app/data && chown -R bzod:bzod /app/data
+# Create writable data directory
+RUN mkdir -p /app/data && \
+    chown -R bzod:bzod /app
 
 USER bzod
 

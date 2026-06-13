@@ -77,3 +77,47 @@ pub async fn resolve_page(
         None => (StatusCode::NOT_FOUND, "Landing page not found").into_response(),
     }
 }
+
+// GET /
+// Serve static root landing page from www/index.html
+pub async fn root_landing() -> Response {
+    let mut target_path = std::path::PathBuf::from("www/index.html");
+    
+    if !target_path.exists() {
+        // Search relative to executable
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let path1 = exe_dir.join("www/index.html");
+                if path1.exists() {
+                    target_path = path1;
+                } else if let Some(parent1) = exe_dir.parent() {
+                    let path2 = parent1.join("www/index.html");
+                    if path2.exists() {
+                        target_path = path2;
+                    } else if let Some(parent2) = parent1.parent() {
+                        let path3 = parent2.join("www/index.html");
+                        if path3.exists() {
+                            target_path = path3;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !target_path.exists() {
+        // Search in CARGO_MANIFEST_DIR
+        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            let path = std::path::PathBuf::from(manifest_dir).join("www/index.html");
+            if path.exists() {
+                target_path = path;
+            }
+        }
+    }
+
+    match std::fs::read_to_string(&target_path) {
+        Ok(content) => Html(content).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
+    }
+}
+
