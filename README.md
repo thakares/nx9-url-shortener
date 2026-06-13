@@ -368,8 +368,9 @@ cargo run -- create-admin
 cargo test
 ```
 
----
+## Development & Testing
 
+See [docs/TESTING.md](docs/TESTING.md) for comprehensive testing, validation, backup, restore, disaster recovery, and release procedures.
 ## Project Structure
 
 ```text
