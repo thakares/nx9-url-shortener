@@ -1,5 +1,5 @@
 # ==========================================
-# Stage 1: Build
+# Stage 1: Builder (with optimized caching)
 # ==========================================
 FROM rust:1.89-bookworm AS builder
 
@@ -9,28 +9,27 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Cargo metadata
+# Copy only Cargo files first (best caching)
 COPY Cargo.toml Cargo.lock ./
 
-# Pre-build dependencies for layer caching
-RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release
-RUN rm -rf src
+# Create dummy source for dependency caching
+RUN mkdir -p src && \
+    echo "fn main() { println!(\"dummy\"); }" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src target/release/deps/bzod*
 
-# Copy application source
+# Copy real source code + assets
 COPY src ./src
 COPY templates ./templates
 COPY www ./www
 
-# Build application
-RUN touch src/main.rs
+# Build the real application
 RUN cargo build --release
 
 # ==========================================
-# Stage 2: Runtime
+# Stage 2: Runtime (slim)
 # ==========================================
 FROM debian:bookworm-slim
 
@@ -43,32 +42,32 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Application binary
+# Copy binary from builder
 COPY --from=builder /app/target/release/bzod /usr/local/bin/bzod
 
-# Runtime assets
-COPY templates ./templates
-COPY www ./www
+# Copy assets
+COPY --from=builder /app/templates ./templates
+COPY --from=builder /app/www ./www
 
 # Create non-root user
 RUN groupadd -g 1000 bzod && \
     useradd -u 1000 -g bzod -m -s /bin/bash bzod
 
-# Create writable data directory
+# Create data directory
 RUN mkdir -p /app/data && \
     chown -R bzod:bzod /app
 
 USER bzod
 
-ENV DATA_DIR=/app/data
-ENV PORT=8654
-ENV HOST=0.0.0.0
-ENV COOKIE_SECURE=true
+ENV DATA_DIR=/app/data \
+    PORT=8654 \
+    HOST=0.0.0.0 \
+    COOKIE_SECURE=true
 
 EXPOSE 8654
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:$${PORT:-8654}/status || exit 1
+  CMD curl -f http://localhost:${PORT}/status || exit 1
 
 ENTRYPOINT ["bzod"]
 CMD ["serve"]
