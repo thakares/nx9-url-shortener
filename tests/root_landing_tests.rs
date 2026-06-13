@@ -6,14 +6,19 @@ use std::fs;
 async fn test_root_landing_page() {
     // --- Test case 1: Successful serving ---
     // Read expected content
-    let expected_content = fs::read_to_string("www/index.html").expect("www/index.html must exist for test");
+    let expected_content =
+        fs::read_to_string("www/index.html").expect("www/index.html must exist for test");
 
     let response = root_landing().await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(
-        response.headers().get("content-type").unwrap().to_str().unwrap().contains("text/html")
-    );
+    assert!(response
+        .headers()
+        .get("content-type")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .contains("text/html"));
 
     // Convert response body to bytes using axum::body::to_bytes
     let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -28,13 +33,11 @@ async fn test_root_landing_page() {
     let temp_path = "www/index.html.tmp_test_bak";
     fs::rename(orig_path, temp_path).unwrap();
 
-    let response_res = tokio::spawn(async move {
-        root_landing().await
-    }).await;
+    let response_res = tokio::spawn(async move { root_landing().await }).await;
 
     // Restore index.html immediately in case of panic/error
     let rename_res = fs::rename(temp_path, orig_path);
-    
+
     // Now verify the response status
     let response = response_res.unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);

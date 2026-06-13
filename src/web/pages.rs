@@ -82,7 +82,7 @@ pub async fn resolve_page(
 // Serve static root landing page from www/index.html
 pub async fn root_landing() -> Response {
     let mut target_path = std::path::PathBuf::from("www/index.html");
-    
+
     if !target_path.exists() {
         // Search relative to executable
         if let Ok(exe_path) = std::env::current_exe() {
@@ -120,4 +120,3 @@ pub async fn root_landing() -> Response {
         Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
 }
-
