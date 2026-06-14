@@ -1,4 +1,4 @@
-# BZOD
+# nx9-url-shortener (the BZOD daemon)
 
 **A lightweight, self-hosted URL management platform written in Rust.**
 
