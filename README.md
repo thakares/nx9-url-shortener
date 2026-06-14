@@ -158,6 +158,25 @@ Features:
 * Open Graph metadata
 
 ---
+### CLI Commands
+
+```bash
+# Core commands
+bzod serve
+bzod create-admin
+bzod doctor
+bzod stats
+
+# URL management
+bzod shorten https://example.com
+bzod shorten https://example.com --slug !campaign
+bzod expand 1bb170
+bzod expand !campaign
+
+# Maintenance
+bzod backup
+bzod restore --file backup_20250614.tar.gz
+bzod migrate
 
 ### QR Code Generation
 
