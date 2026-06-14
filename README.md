@@ -125,6 +125,7 @@ Landing Page
 ```
 https://bzo.in/p/!company-profile
 ```
+---
 ## CLI
 ```
 bzod shorten https://example.com
@@ -132,7 +133,6 @@ bzod shorten https://example.com --slug !office
 bzod expand !office
 ```
 ---
-
 ### Landing Pages
 
 Create standalone landing pages hosted directly by BZOD.
