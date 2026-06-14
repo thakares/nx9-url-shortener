@@ -161,24 +161,26 @@ Features:
 ---
 ### CLI Commands
 
+Core commands
 ```bash
-# Core commands
 bzod serve
 bzod create-admin
 bzod doctor
 bzod stats
-
-# URL management
+```
+URL management
+```bash
 bzod shorten https://example.com
 bzod shorten https://example.com --slug !campaign
 bzod expand 1bb170
 bzod expand !campaign
-
-# Maintenance
+```
+Maintenance
+```bash
 bzod backup
 bzod restore --file backup_20250614.tar.gz
 bzod migrate
-
+```
 ### QR Code Generation
 
 Generate QR codes for every short URL.
