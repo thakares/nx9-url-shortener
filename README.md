@@ -31,7 +31,7 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 ## Feature Matrix
 
 | Feature                   | Status |
-| ------------------------- | ------ |
+|---------------------------| ------ |
 | URL Shortening            | ✅      |
 | Custom Slugs              | ✅      |
 | Landing Pages             | ✅      |
@@ -41,7 +41,7 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 | Password-Protected Links  | ✅      |
 | Smart Preview Pages       | ✅      |
 | Link Expiration           | ✅      |
-| One-Time Links            | ✅      |
+| One/Multi-Time Links      | ✅      |
 | Audit Trail               | ✅      |
 | Analytics Dashboard       | ✅      |
 | Health Monitoring         | ✅      |
