@@ -68,7 +68,19 @@ https://your-domain/1bb170
 ```
 
 ---
+## Design Principles
 
+BZOD is intentionally designed around a few principles:
+
+- Self-hosted first
+- SQLite-first architecture
+- Minimal operational complexity
+- Recovery over convenience
+- Human-readable administration
+- No external service dependencies
+- No vendor lock-in
+
+Features are added only when they improve usability without increasing architectural complexity.
 ### Custom Slugs
 
 Create memorable human-readable links.
@@ -99,7 +111,25 @@ Examples:
 !meeting-room
 !client_a
 ```
+## Practical Examples
 
+Generated URL
+
+https://bzo.in/1b926e
+
+Custom Slug
+
+https://bzo.in/!office
+
+Landing Page
+
+https://bzo.in/p/!company-profile
+
+CLI
+
+bzod shorten https://example.com
+bzod shorten https://example.com --slug !office
+bzod expand !office
 ---
 
 ### Landing Pages
