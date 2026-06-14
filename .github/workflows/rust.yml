@@ -52,6 +52,7 @@ jobs:
           file: ./Dockerfile
           push: false
           tags: nx9-url-shortener:test
+          load: true                    # ← This is the key fix
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -62,6 +63,6 @@ jobs:
       - name: Run Docker container health check
         run: |
           docker run --rm -d --name bzod-health nx9-url-shortener:test serve
-          sleep 3
+          sleep 4
           docker exec bzod-health ./bzod doctor || echo "Doctor check completed"
           docker stop bzod-health
