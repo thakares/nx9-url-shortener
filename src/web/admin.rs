@@ -399,6 +399,7 @@ pub async fn urls_get(
 pub struct CreateUrlForm {
     pub destination: String,
     pub code: String,
+    pub custom_slug: String,
     pub title: String,
     pub description: String,
     pub tags: String,
@@ -406,6 +407,9 @@ pub struct CreateUrlForm {
     pub expires_at: String,
     pub password: String,
     pub max_access_count: String,
+    pub utm_source: String,
+    pub utm_medium: String,
+    pub utm_campaign: String,
 }
 
 // POST /admin/urls/create
@@ -426,13 +430,48 @@ pub async fn urls_create(
     }
 
     let ip = get_client_ip(&headers, connect_info);
-    let mut code = form.code.trim().to_lowercase();
+
+    // Custom Slug takes priority if provided
+    let mut code = form.custom_slug.trim().to_lowercase();
     if code.is_empty() {
-        code = generate_token(3);
-    } else {
-        if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Redirect::to("/admin/urls?error=Custom code must be exactly 6 hex characters")
+        code = form.code.trim().to_lowercase();
+        if code.is_empty() {
+            code = generate_token(3);
+        } else {
+            if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Redirect::to(
+                    "/admin/urls?error=Custom code must be exactly 6 hex characters",
+                )
                 .into_response();
+            }
+        }
+    } else {
+        if !crate::utils::validation::validate_custom_slug(&code) {
+            return Redirect::to("/admin/urls?error=Custom slug must start with ! followed by 1-24 characters of a-z, 0-9, -, _")
+                .into_response();
+        }
+    }
+
+    let mut dest = form.destination.trim().to_string();
+    if let Ok(mut parsed) = reqwest::Url::parse(&dest) {
+        let mut has_utm = false;
+        {
+            let mut query = parsed.query_pairs_mut();
+            if !form.utm_source.trim().is_empty() {
+                query.append_pair("utm_source", form.utm_source.trim());
+                has_utm = true;
+            }
+            if !form.utm_medium.trim().is_empty() {
+                query.append_pair("utm_medium", form.utm_medium.trim());
+                has_utm = true;
+            }
+            if !form.utm_campaign.trim().is_empty() {
+                query.append_pair("utm_campaign", form.utm_campaign.trim());
+                has_utm = true;
+            }
+        }
+        if has_utm {
+            dest = parsed.to_string();
         }
     }
 
@@ -489,7 +528,7 @@ pub async fn urls_create(
         crate::db::content::create_url_extended(
             &conn,
             &code,
-            &form.destination,
+            &dest,
             title_opt,
             desc_opt,
             &tags_list,
@@ -519,7 +558,7 @@ pub async fn urls_create(
         Err(rusqlite::Error::SqliteFailure(err, _))
             if err.code == rusqlite::ErrorCode::ConstraintViolation =>
         {
-            Redirect::to("/admin/urls?error=Short code already exists").into_response()
+            Redirect::to("/admin/urls?error=Short code/slug already exists").into_response()
         }
         Err(e) => Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response(),
     }
@@ -608,6 +647,7 @@ pub struct CreatePageForm {
     pub title: String,
     pub slug: String,
     pub code: String,
+    pub custom_slug: String,
     pub state: String,
     pub html_content: String,
     pub csrf_token: String,
@@ -631,12 +671,24 @@ pub async fn pages_create(
     }
 
     let ip = get_client_ip(&headers, connect_info);
-    let mut code = form.code.trim().to_lowercase();
+
+    // Custom Slug takes priority if provided
+    let mut code = form.custom_slug.trim().to_lowercase();
     if code.is_empty() {
-        code = generate_token(2);
+        code = form.code.trim().to_lowercase();
+        if code.is_empty() {
+            code = generate_token(2);
+        } else {
+            if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+                return Redirect::to(
+                    "/admin/pages?error=Custom code must be exactly 4 hex characters",
+                )
+                .into_response();
+            }
+        }
     } else {
-        if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Redirect::to("/admin/pages?error=Custom code must be exactly 4 hex characters")
+        if !crate::utils::validation::validate_custom_slug(&code) {
+            return Redirect::to("/admin/pages?error=Custom slug must start with ! followed by 1-24 characters of a-z, 0-9, -, _")
                 .into_response();
         }
     }
@@ -1300,4 +1352,189 @@ pub async fn status_get(State(state): State<AppState>, jar: CookieJar) -> Respon
     };
 
     template.into_response()
+}
+
+// POST /admin/settings/restore
+pub async fn restore_backup_post(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    connect_info: Option<ConnectInfo<SocketAddr>>,
+    mut multipart: axum::extract::Multipart,
+) -> Response {
+    let (user, session_id) = match require_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    let ip = get_client_ip(&headers, connect_info);
+    let mut file_bytes = Vec::new();
+    let mut confirm_text = String::new();
+    let mut csrf_token = String::new();
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        if name == "backup_file" {
+            if let Ok(bytes) = field.bytes().await {
+                file_bytes = bytes.to_vec();
+            }
+        } else if name == "confirm_text" {
+            if let Ok(text) = field.text().await {
+                confirm_text = text.trim().to_string();
+            }
+        } else if name == "csrf_token" {
+            if let Ok(token) = field.text().await {
+                csrf_token = token.trim().to_string();
+            }
+        }
+    }
+
+    if !verify_csrf(&session_id, &csrf_token) {
+        return Redirect::to("/admin/settings?error=Invalid CSRF token").into_response();
+    }
+
+    if confirm_text != "RESTORE" {
+        return Redirect::to("/admin/settings?error=Confirmation text must be exactly 'RESTORE'")
+            .into_response();
+    }
+
+    if file_bytes.is_empty() {
+        return Redirect::to("/admin/settings?error=No backup file uploaded").into_response();
+    }
+
+    // Save uploaded archive to a temporary file
+    let temp_file_path =
+        std::env::temp_dir().join(format!("bzod_restore_{}.tar.gz", uuid::Uuid::new_v4()));
+    if let Err(e) = std::fs::write(&temp_file_path, &file_bytes) {
+        return Redirect::to(&format!(
+            "/admin/settings?error=Failed to write temp file: {}",
+            e
+        ))
+        .into_response();
+    }
+
+    // Log RESTORE_INITIATED audit event before restore
+    {
+        let conn = state.admin_db.lock().unwrap();
+        let _ = write_audit_log(
+            &conn,
+            &state,
+            &user.username,
+            "RESTORE_INITIATED",
+            Some("system"),
+            Some("tarball"),
+            Some(&ip),
+            headers.get("user-agent").and_then(|h| h.to_str().ok()),
+        );
+    }
+
+    // Call the perform_restore engine inside closed connection blocks
+    let restore_res = {
+        // Temporarily suspend access to active SQLite connections
+        let mut admin_conn = state.admin_db.lock().unwrap();
+        let mut content_conn = state.content_db.lock().unwrap();
+        let mut analytics_conn = state.analytics_db.lock().unwrap();
+        let mut system_conn = state.system_db.lock().unwrap();
+
+        // 1. Close current connections by replacing them with dummy in-memory DBs
+        *admin_conn = match rusqlite::Connection::open_in_memory() {
+            Ok(c) => c,
+            Err(e) => {
+                return Redirect::to(&format!(
+                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
+                    e
+                ))
+                .into_response()
+            }
+        };
+        *content_conn = match rusqlite::Connection::open_in_memory() {
+            Ok(c) => c,
+            Err(e) => {
+                return Redirect::to(&format!(
+                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
+                    e
+                ))
+                .into_response()
+            }
+        };
+        *analytics_conn = match rusqlite::Connection::open_in_memory() {
+            Ok(c) => c,
+            Err(e) => {
+                return Redirect::to(&format!(
+                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
+                    e
+                ))
+                .into_response()
+            }
+        };
+        *system_conn = match rusqlite::Connection::open_in_memory() {
+            Ok(c) => c,
+            Err(e) => {
+                return Redirect::to(&format!(
+                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
+                    e
+                ))
+                .into_response()
+            }
+        };
+
+        // 2. Perform restore unpacking/validation
+        let res = crate::cli::restore::perform_restore(&temp_file_path, &state.config.data_dir);
+
+        // 3. Reinitialize database connections
+        let new_admin = rusqlite::Connection::open(state.config.data_dir.join("admin.db"));
+        let new_content = rusqlite::Connection::open(state.config.data_dir.join("content.db"));
+        let new_analytics = rusqlite::Connection::open(state.config.data_dir.join("analytics.db"));
+        let new_system = rusqlite::Connection::open(state.config.data_dir.join("system.db"));
+
+        match (new_admin, new_content, new_analytics, new_system) {
+            (Ok(adm), Ok(cnt), Ok(any), Ok(sys)) => {
+                let _ = crate::db::sqlite::enable_wal(&adm, "admin");
+                let _ = crate::db::sqlite::enable_wal(&cnt, "content");
+                let _ = crate::db::sqlite::enable_wal(&any, "analytics");
+                let _ = crate::db::sqlite::enable_wal(&sys, "system");
+
+                let _ = crate::db::sqlite::enable_foreign_keys(&adm, "admin");
+                let _ = crate::db::sqlite::enable_foreign_keys(&cnt, "content");
+                let _ = crate::db::sqlite::enable_foreign_keys(&any, "analytics");
+                let _ = crate::db::sqlite::enable_foreign_keys(&sys, "system");
+
+                *admin_conn = adm;
+                *content_conn = cnt;
+                *analytics_conn = any;
+                *system_conn = sys;
+            }
+            _ => {
+                return Redirect::to("/admin/settings?error=Failed to reopen restored databases")
+                    .into_response();
+            }
+        }
+
+        res
+    };
+
+    let _ = std::fs::remove_file(&temp_file_path);
+
+    match restore_res {
+        Ok(_) => {
+            // Write database restore success log to newly restored admin db
+            {
+                let conn = state.admin_db.lock().unwrap();
+                let _ = write_audit_log(
+                    &conn,
+                    &state,
+                    &user.username,
+                    "DATABASE_RESTORE",
+                    Some("system"),
+                    Some("tarball"),
+                    Some(&ip),
+                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
+                );
+            }
+            Redirect::to("/admin/login").into_response()
+        }
+        Err(e) => {
+            Redirect::to(&format!("/admin/settings?error=Restore failed: {}", e)).into_response()
+        }
+    }
 }

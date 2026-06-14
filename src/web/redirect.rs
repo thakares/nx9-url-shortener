@@ -24,8 +24,8 @@ pub async fn resolve_redirect(
     headers: HeaderMap,
     connect_info: Option<ConnectInfo<SocketAddr>>,
 ) -> Response {
-    // Basic validation of code (must be 6 hex characters)
-    if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+    // Basic validation of code (must be 6 hex characters or a valid custom slug)
+    if !crate::utils::validation::validate_redirect_code(&code) {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 

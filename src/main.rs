@@ -44,6 +44,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Doctor { data_dir } => {
             bzod::cli::doctor::run(data_dir, config).await?;
         }
+        Commands::Shorten {
+            target_url,
+            slug,
+            data_dir,
+        } => {
+            bzod::cli::shorten::run(target_url, slug, data_dir, config).await?;
+        }
+        Commands::Expand { code, data_dir } => {
+            bzod::cli::expand::run(code, data_dir, config).await?;
+        }
     }
 
     Ok(())

@@ -48,6 +48,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/admin/settings/compact", post(admin::compact_db_post))
         .route("/admin/settings/backup", get(admin::download_backup))
+        .route("/admin/settings/restore", post(admin::restore_backup_post))
         .route("/admin/settings/bulk-qr", post(admin::bulk_qr_export_post))
         .route(
             "/admin/settings/api-keys/create",

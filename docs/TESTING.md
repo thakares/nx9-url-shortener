@@ -223,8 +223,25 @@ Overall status: HEALTHY
 and original record counts preserved.
 
 ---
+## 9. Disaster Recovery Scenario
 
-## 9. Disaster Recovery Test
+1. Create backup
+2. Stop container
+3. Delete databases
+4. Restore from backup
+5. Fix permissions
+6. Restart container
+7. Validate:
+    - URLs
+    - Landing pages
+    - Audit logs
+    - Settings
+    - Analytics
+    - Status page
+
+Expected Result:
+System fully restored without data loss.
+## 10. Disaster Recovery Test
 
 This is the most important test.
 
@@ -255,7 +272,7 @@ Expected Result:
 
 ---
 
-## 10. Database Health Verification
+## 11. Database Health Verification
 
 Run:
 
@@ -281,7 +298,7 @@ Overall status: HEALTHY
 
 ---
 
-## 11. SQLite Integrity Checks
+## 12. SQLite Integrity Checks
 
 Manual verification.
 
@@ -302,7 +319,7 @@ for all databases.
 
 ---
 
-## 12. Web Interface Verification
+## 13. Web Interface Verification
 
 Start server.
 
@@ -321,7 +338,7 @@ Verify:
 
 ---
 
-## 13. Docker Verification
+## 14. Docker Verification
 
 Build image.
 
@@ -357,7 +374,7 @@ inside container.
 
 ---
 
-## 14. Upgrade Verification
+## 15. Upgrade Verification
 
 1. Create backup.
 2. Upgrade binary.

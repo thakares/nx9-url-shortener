@@ -33,6 +33,11 @@
                 <label for="code">Short Code (6-Hex, optional)</label>
                 <input type="text" id="code" name="code" class="form-input" placeholder="e.g. 4f8c1a (auto-generated if empty)" pattern="[0-9a-fA-F]{6}" title="Must be exactly 6 hex characters (0-9, a-f)">
             </div>
+
+            <div class="form-group">
+                <label for="custom_slug">Custom Slug (optional)</label>
+                <input type="text" id="custom_slug" name="custom_slug" class="form-input" placeholder="e.g. !home (! followed by a-z, 0-9, -, _)" pattern="![a-z0-9\-_]{1,24}" title="Must start with ! followed by 1-24 characters (a-z, 0-9, -, _)">
+            </div>
             
             <div class="form-group">
                 <label for="title">Title (optional)</label>
@@ -62,6 +67,30 @@
             <div class="form-group">
                 <label for="max_access_count">Access Limit / One-Time (optional)</label>
                 <input type="number" id="max_access_count" name="max_access_count" class="form-input" placeholder="e.g. 10 (auto-expires after N clicks)" min="1">
+            </div>
+
+            <div class="form-group" style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0.75rem;">
+                <label style="font-weight: 600; font-size: 0.85rem; display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                    <input type="checkbox" id="enable_utm" onchange="document.getElementById('utm_fields').style.display = this.checked ? 'flex' : 'none';" style="margin-right: 0.25rem;">
+                    Add Campaign Tracking (UTM)
+                </label>
+            </div>
+            
+            <div id="utm_fields" style="display: none; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <div class="form-group">
+                        <label for="utm_source" style="font-size: 0.75rem;">UTM Source</label>
+                        <input type="text" id="utm_source" name="utm_source" placeholder="e.g. bzod" class="form-input" style="padding: 0.35rem 0.5rem;">
+                    </div>
+                    <div class="form-group">
+                        <label for="utm_medium" style="font-size: 0.75rem;">UTM Medium</label>
+                        <input type="text" id="utm_medium" name="utm_medium" placeholder="e.g. shortlink" class="form-input" style="padding: 0.35rem 0.5rem;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="utm_campaign" style="font-size: 0.75rem;">UTM Campaign</label>
+                    <input type="text" id="utm_campaign" name="utm_campaign" placeholder="e.g. office" class="form-input" style="padding: 0.35rem 0.5rem;">
+                </div>
             </div>
             
             <button type="submit" class="btn" style="width: 100%; margin-top: 0.5rem;">Create Link</button>

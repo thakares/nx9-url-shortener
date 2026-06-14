@@ -51,6 +51,20 @@ pub async fn perform_backup(
         std::fs::create_dir_all(&out_dir)?;
     }
 
+    // Force checkpoint on all databases to flush WAL contents to the main DB files
+    if let Ok(conn) = db.admin.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.content.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.analytics.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.system.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+
     let date_str = Utc::now().format("%Y-%m-%d-%H%M%S").to_string();
     let tar_name = format!("{}-bzod-backup.tar.gz", date_str);
     let tar_path = out_dir.join(tar_name);

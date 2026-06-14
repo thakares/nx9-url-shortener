@@ -3,9 +3,11 @@ use clap::{Parser, Subcommand};
 pub mod backup;
 pub mod create_admin;
 pub mod doctor;
+pub mod expand;
 pub mod migrate;
 pub mod restore;
 pub mod serve;
+pub mod shorten;
 pub mod stats;
 pub mod validate;
 
@@ -69,6 +71,23 @@ pub enum Commands {
     },
     /// Run database diagnostics and health checks
     Doctor {
+        #[arg(long)]
+        data_dir: Option<String>,
+    },
+    /// Shorten a URL (Feature 3)
+    Shorten {
+        /// The destination URL to shorten
+        target_url: String,
+        /// Custom slug (starting with ! followed by a-z, 0-9, -, _)
+        #[arg(long)]
+        slug: Option<String>,
+        #[arg(long)]
+        data_dir: Option<String>,
+    },
+    /// Expand a shortened code or custom slug to its destination URL (Feature 4)
+    Expand {
+        /// The short code or custom slug to expand
+        code: String,
         #[arg(long)]
         data_dir: Option<String>,
     },

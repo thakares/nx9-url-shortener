@@ -72,7 +72,7 @@ pub async fn qr_handler(
     let code = parts[0];
     let ext = parts[1].to_lowercase();
 
-    if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+    if !crate::utils::validation::validate_redirect_code(code) {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 

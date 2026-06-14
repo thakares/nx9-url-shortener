@@ -105,6 +105,27 @@
                         Generates a tarball of admin.db, content.db, and analytics.db.
                     </p>
                 </div>
+
+                <div style="border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: 0.5rem;">
+                    <form action="/admin/settings/restore" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <label for="backup_file" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">Restore Database from Backup</label>
+                        <input type="file" id="backup_file" name="backup_file" class="form-input" style="padding: 0.35rem 0.5rem; margin-bottom: 0.75rem;" required accept=".tar.gz">
+                        
+                        <p style="font-size: 0.8rem; color: #fca5a5; margin-bottom: 0.75rem; line-height: 1.4; font-weight: 500;">
+                            Warning: This operation will overwrite all current data.
+                        </p>
+                        
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label for="confirm_text" style="font-size: 0.75rem; color: var(--text-secondary);">Type RESTORE to continue:</label>
+                            <input type="text" id="confirm_text" name="confirm_text" class="form-input" placeholder="RESTORE" required autocomplete="off">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-danger" style="width: 100%; justify-content: center;">
+                            Restore Backup
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
 

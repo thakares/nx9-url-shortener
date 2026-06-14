@@ -21,7 +21,7 @@ pub async fn resolve_page(
     headers: HeaderMap,
     connect_info: Option<ConnectInfo<SocketAddr>>,
 ) -> Response {
-    if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+    if !crate::utils::validation::validate_page_code(&code) {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 

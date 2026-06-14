@@ -33,6 +33,9 @@ pub struct CreateUrlRequest {
     pub expires_at: Option<String>,
     pub password: Option<String>,
     pub max_access_count: Option<i64>,
+    pub utm_source: Option<String>,
+    pub utm_medium: Option<String>,
+    pub utm_campaign: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -84,14 +87,44 @@ pub async fn api_create_url(
     if code.is_empty() {
         code = generate_token(3); // 6 hex
     } else {
-        if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !crate::utils::validation::validate_redirect_code(&code) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(ApiError {
-                    error: "Short code must be 6 hex characters".to_string(),
+                    error: "Short code must be 6 hex characters or a custom slug starting with !"
+                        .to_string(),
                 }),
             )
                 .into_response();
+        }
+    }
+
+    let mut dest = payload.destination.trim().to_string();
+    if let Ok(mut parsed) = reqwest::Url::parse(&dest) {
+        let mut has_utm = false;
+        {
+            let mut query = parsed.query_pairs_mut();
+            if let Some(ref src) = payload.utm_source {
+                if !src.trim().is_empty() {
+                    query.append_pair("utm_source", src.trim());
+                    has_utm = true;
+                }
+            }
+            if let Some(ref med) = payload.utm_medium {
+                if !med.trim().is_empty() {
+                    query.append_pair("utm_medium", med.trim());
+                    has_utm = true;
+                }
+            }
+            if let Some(ref camp) = payload.utm_campaign {
+                if !camp.trim().is_empty() {
+                    query.append_pair("utm_campaign", camp.trim());
+                    has_utm = true;
+                }
+            }
+        }
+        if has_utm {
+            dest = parsed.to_string();
         }
     }
 
@@ -121,7 +154,7 @@ pub async fn api_create_url(
     match crate::db::content::create_url_extended(
         &conn,
         &code,
-        &payload.destination,
+        &dest,
         payload.title.as_deref(),
         payload.description.as_deref(),
         &tags,
@@ -390,11 +423,11 @@ pub async fn api_create_page(
     if code.is_empty() {
         code = generate_token(2); // 4 hex
     } else {
-        if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+        if !crate::utils::validation::validate_page_code(&code) {
             return (
                 StatusCode::BAD_REQUEST,
                 Json(ApiError {
-                    error: "Short code must be 4 hex characters".to_string(),
+                    error: "Short code must be 4 hex characters or start with ! followed by 1-24 characters of a-z, 0-9, -, _".to_string(),
                 }),
             )
                 .into_response();

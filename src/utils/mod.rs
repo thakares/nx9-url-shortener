@@ -3,6 +3,7 @@ pub mod network;
 pub mod random;
 pub mod system;
 pub mod time;
+pub mod validation;
 
 pub use hashing::sha256_hash;
 pub use network::get_client_ip;
