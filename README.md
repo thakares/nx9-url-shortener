@@ -114,22 +114,23 @@ Examples:
 ## Practical Examples
 
 Generated URL
-
+```
 https://bzo.in/1b926e
-
+```
 Custom Slug
-
+```
 https://bzo.in/!office
-
+```
 Landing Page
-
+```
 https://bzo.in/p/!company-profile
-
-CLI
-
+```
+## CLI
+```
 bzod shorten https://example.com
 bzod shorten https://example.com --slug !office
 bzod expand !office
+```
 ---
 
 ### Landing Pages
