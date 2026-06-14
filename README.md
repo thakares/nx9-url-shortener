@@ -656,6 +656,12 @@ SQLite
 HTTPS is strongly recommended.
 
 ---
+## Documentation
+
+- [Testing Guide](docs/TESTING.md)
+- [Docker Deployment Guide](docs/DOCKER-Deploy.md)
+
+---
 
 ## License
 
