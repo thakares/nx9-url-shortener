@@ -1,9 +1,11 @@
+pub mod analytics;
 pub mod dashboard;
 pub mod pages;
 pub mod settings;
 pub mod stats;
 pub mod urls;
 
+pub use analytics::{PageAnalyticsTemplate, UrlAnalyticsTemplate, VisitorLogEntry};
 pub use dashboard::DashboardTemplate;
 pub use pages::PagesTemplate;
 pub use settings::SettingsTemplate;

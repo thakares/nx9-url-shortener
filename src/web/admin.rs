@@ -63,15 +63,22 @@ use crate::auth::{
 use crate::charts::{generate_bar_chart, generate_line_chart};
 use crate::db::analytics::{
     get_clicks_trend, get_clicks_trend_raw, get_metric_rankings, get_metric_rankings_raw,
-    get_total_clicks,
+    get_total_clicks, get_target_unique_visitors, get_monthly_clicks_trend,
+    get_visits_schema_columns, get_target_visits_paginated, get_target_visits_all_in_memory,
+    get_target_visit_total_filtered, parse_ua, clean_referrer,
 };
 use crate::db::content::{
     create_landing_page, delete_landing_page, delete_url, get_landing_page_count, get_url_counts,
-    list_landing_pages, list_urls,
+    list_landing_pages, list_urls, get_url_count_by_tag, get_url_by_id, get_landing_page_by_id,
 };
 use crate::models::User;
 use crate::state::AppState;
 use crate::utils::{get_client_ip, get_db_file_info, get_memory_usage};
+
+const PAGE_SIZE: usize = 25;
+const ANALYTICS_PAGE_SIZE: usize = 50;
+const MAX_JSON_EXPORT_ROWS: usize = 50_000;
+
 
 // Helper: Verify session and return user or redirect to login
 async fn require_auth(state: &AppState, jar: &CookieJar) -> Result<(User, String), Redirect> {
@@ -353,6 +360,7 @@ pub async fn dashboard_get(State(state): State<AppState>, jar: CookieJar) -> Res
 pub struct UrlsQuery {
     pub tag: Option<String>,
     pub error: Option<String>,
+    pub page: Option<usize>,
 }
 
 pub async fn urls_get(
@@ -365,9 +373,26 @@ pub async fn urls_get(
         Err(redir) => return redir.into_response(),
     };
 
-    let urls = {
+    let (urls, total_pages, page, visible_pages) = {
         let conn = state.content_db.lock().unwrap();
-        list_urls(&conn, 100, 0, query.tag.as_deref()).unwrap_or_default()
+        let total_records = if let Some(tag_str) = query.tag.as_deref() {
+            get_url_count_by_tag(&conn, tag_str).unwrap_or(0)
+        } else {
+            get_url_counts(&conn).map(|(t, _, _)| t).unwrap_or(0)
+        };
+        let calculated_total_pages = (total_records as usize).div_ceil(PAGE_SIZE);
+        let total_pages = std::cmp::max(1, calculated_total_pages);
+        let requested_page = query.page.unwrap_or(1);
+        let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+        let offset = (current_page - 1) * PAGE_SIZE;
+
+        let urls = list_urls(&conn, PAGE_SIZE as i64, offset as i64, query.tag.as_deref()).unwrap_or_default();
+        
+        let start_page = current_page.saturating_sub(3).max(1);
+        let end_page = std::cmp::min(total_pages, current_page + 3);
+        let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+        (urls, total_pages, current_page, visible_pages)
     };
 
     let csrf_token = generate_csrf_token(&session_id);
@@ -390,10 +415,14 @@ pub async fn urls_get(
         error: query.error,
         tag_filter: query.tag,
         base_url,
+        current_page: page,
+        total_pages,
+        visible_pages,
     };
 
     template.into_response()
 }
+
 
 #[derive(Deserialize)]
 pub struct CreateUrlForm {
@@ -613,6 +642,7 @@ pub async fn urls_delete(
 #[derive(Deserialize)]
 pub struct PagesQuery {
     pub error: Option<String>,
+    pub page: Option<usize>,
 }
 
 pub async fn pages_get(
@@ -625,9 +655,22 @@ pub async fn pages_get(
         Err(redir) => return redir.into_response(),
     };
 
-    let pages = {
+    let (pages, total_pages, page, visible_pages) = {
         let conn = state.content_db.lock().unwrap();
-        list_landing_pages(&conn, 100, 0).unwrap_or_default()
+        let total_records = get_landing_page_count(&conn).unwrap_or(0);
+        let calculated_total_pages = (total_records as usize).div_ceil(PAGE_SIZE);
+        let total_pages = std::cmp::max(1, calculated_total_pages);
+        let requested_page = query.page.unwrap_or(1);
+        let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+        let offset = (current_page - 1) * PAGE_SIZE;
+
+        let pages = list_landing_pages(&conn, PAGE_SIZE as i64, offset as i64).unwrap_or_default();
+        
+        let start_page = current_page.saturating_sub(3).max(1);
+        let end_page = std::cmp::min(total_pages, current_page + 3);
+        let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+        (pages, total_pages, current_page, visible_pages)
     };
 
     let csrf_token = generate_csrf_token(&session_id);
@@ -637,6 +680,9 @@ pub async fn pages_get(
         pages,
         csrf_token,
         error: query.error,
+        current_page: page,
+        total_pages,
+        visible_pages,
     };
 
     template.into_response()
@@ -1538,3 +1584,694 @@ pub async fn restore_backup_post(
         }
     }
 }
+
+#[derive(Deserialize)]
+pub struct AnalyticsQuery {
+    pub analytics_page: Option<usize>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+}
+
+fn validate_date_filters(date_from: Option<&str>, date_to: Option<&str>) -> Result<(Option<String>, Option<String>), StatusCode> {
+    let from_parsed = match date_from {
+        Some(df) if !df.is_empty() => {
+            match chrono::NaiveDate::parse_from_str(df, "%Y-%m-%d") {
+                Ok(d) => Some(d),
+                Err(_) => return Err(StatusCode::BAD_REQUEST),
+            }
+        }
+        _ => None,
+    };
+    let to_parsed = match date_to {
+        Some(dt) if !dt.is_empty() => {
+            match chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+                Ok(d) => Some(d),
+                Err(_) => return Err(StatusCode::BAD_REQUEST),
+            }
+        }
+        _ => None,
+    };
+    if let (Some(f), Some(t)) = (from_parsed, to_parsed) {
+        if f > t {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
+    Ok((
+        from_parsed.map(|d| d.format("%Y-%m-%d").to_string()),
+        to_parsed.map(|d| d.format("%Y-%m-%d").to_string()),
+    ))
+}
+
+fn escape_csv_field(field: &str) -> String {
+    let needs_escaping = field.contains(',')
+        || field.contains('"')
+        || field.contains('\n')
+        || field.contains('\r');
+    if needs_escaping {
+        let escaped = field.replace('"', "\"\"");
+        format!("\"{}\"", escaped)
+    } else {
+        field.to_string()
+    }
+}
+
+struct DbExportStream {
+    receiver: tokio::sync::mpsc::Receiver<Result<axum::body::Bytes, std::convert::Infallible>>,
+}
+
+impl futures_util::stream::Stream for DbExportStream {
+    type Item = Result<axum::body::Bytes, std::convert::Infallible>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.receiver.poll_recv(cx)
+    }
+}
+
+async fn perform_csv_export(
+    state: AppState,
+    target_type: &'static str,
+    id: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Response {
+    let (clean_date_from, clean_date_to) = match validate_date_filters(
+        date_from.as_deref(),
+        date_to.as_deref(),
+    ) {
+        Ok(res) => res,
+        Err(status) => return status.into_response(),
+    };
+
+    let target_exists = {
+        let conn = state.content_db.lock().unwrap();
+        if target_type == "url" {
+            get_url_by_id(&conn, &id).map(|u| u.is_some()).unwrap_or(false)
+        } else {
+            get_landing_page_by_id(&conn, &id).map(|p| p.is_some()).unwrap_or(false)
+        }
+    };
+    if !target_exists {
+        return (StatusCode::NOT_FOUND, "Target not found").into_response();
+    }
+
+    let count = {
+        let conn = state.analytics_db.lock().unwrap();
+        get_target_visit_total_filtered(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        ).unwrap_or(0)
+    };
+
+    let (has_utm_source, has_utm_campaign) = {
+        let conn = state.analytics_db.lock().unwrap();
+        let cols = get_visits_schema_columns(&conn).unwrap_or_default();
+        (cols.contains("utm_source"), cols.contains("utm_campaign"))
+    };
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(32);
+    let analytics_db = state.analytics_db.clone();
+    let target_id = id.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let conn = analytics_db.lock().unwrap();
+        
+        let mut header = "Timestamp,IP Address,Country,Referrer,Browser,User-Agent".to_string();
+        if has_utm_source {
+            header.push_str(",UTM Source");
+        }
+        if has_utm_campaign {
+            header.push_str(",UTM Campaign");
+        }
+        header.push('\n');
+        
+        if tx.blocking_send(Ok(axum::body::Bytes::from(header))).is_err() {
+            return;
+        }
+
+        let select_fields = if has_utm_source && has_utm_campaign {
+            "timestamp, ip_address, country, referer, user_agent, utm_source, utm_campaign"
+        } else if has_utm_source {
+            "timestamp, ip_address, country, referer, user_agent, utm_source"
+        } else if has_utm_campaign {
+            "timestamp, ip_address, country, referer, user_agent, utm_campaign"
+        } else {
+            "timestamp, ip_address, country, referer, user_agent"
+        };
+
+        let mut sql = format!("SELECT {} FROM visits WHERE target_type = ?1 AND target_id = ?2", select_fields);
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+            Box::new(target_type.to_string()),
+            Box::new(target_id),
+        ];
+
+        if let Some(df) = clean_date_from.as_deref() {
+            sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+            params.push(Box::new(format!("{}T00:00:00Z", df)));
+        }
+
+        if let Some(dt) = clean_date_to.as_deref() {
+            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+                let next_day = parsed_date + chrono::Duration::days(1);
+                sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
+                params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+            }
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC, id DESC");
+
+        let mut stmt = match conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut rows = match stmt.query(rusqlite::params_from_iter(param_refs)) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+
+        let mut csv_buffer = String::new();
+
+        while let Ok(Some(row)) = rows.next() {
+            let timestamp: String = row.get(0).unwrap_or_default();
+            let ip_address: String = row.get(1).unwrap_or_default();
+            let country: String = row.get(2).unwrap_or_default();
+            let referer: String = row.get(3).unwrap_or_default();
+            let user_agent: String = row.get(4).unwrap_or_default();
+
+            let (browser, _, _) = parse_ua(&user_agent);
+            let referrer = clean_referrer(&referer);
+            let country_display = if country.is_empty() { "Unknown".to_string() } else { country };
+
+            let mut line = format!(
+                "{},{},{},{},{},{}",
+                escape_csv_field(&timestamp),
+                escape_csv_field(&ip_address),
+                escape_csv_field(&country_display),
+                escape_csv_field(&referrer),
+                escape_csv_field(&browser),
+                escape_csv_field(&user_agent)
+            );
+
+            let mut col_idx = 5;
+            if has_utm_source {
+                let utm_src: String = row.get(col_idx).unwrap_or_default();
+                line.push_str(&format!(",{}", escape_csv_field(&utm_src)));
+                col_idx += 1;
+            }
+            if has_utm_campaign {
+                let utm_camp: String = row.get(col_idx).unwrap_or_default();
+                line.push_str(&format!(",{}", escape_csv_field(&utm_camp)));
+            }
+            line.push('\n');
+
+            csv_buffer.push_str(&line);
+            if csv_buffer.len() >= 8192 {
+                let bytes = axum::body::Bytes::from(csv_buffer);
+                if tx.blocking_send(Ok(bytes)).is_err() {
+                    return;
+                }
+                csv_buffer = String::new();
+            }
+        }
+
+        if !csv_buffer.is_empty() {
+            let _ = tx.blocking_send(Ok(axum::body::Bytes::from(csv_buffer)));
+        }
+    });
+
+    let stream = DbExportStream { receiver: rx };
+    let filename = if target_type == "url" {
+        format!("url_{}_analytics.csv", id)
+    } else {
+        format!("page_{}_analytics.csv", id)
+    };
+
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "text/csv"),
+            ("Content-Disposition", &format!("attachment; filename=\"{}\"", filename)),
+            ("X-BZOD-Export-Records", &count.to_string()),
+        ],
+        axum::body::Body::from_stream(stream),
+    ).into_response()
+}
+
+async fn perform_json_export(
+    state: AppState,
+    target_type: &'static str,
+    id: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Response {
+    let (clean_date_from, clean_date_to) = match validate_date_filters(
+        date_from.as_deref(),
+        date_to.as_deref(),
+    ) {
+        Ok(res) => res,
+        Err(status) => return status.into_response(),
+    };
+
+    let target_exists = {
+        let conn = state.content_db.lock().unwrap();
+        if target_type == "url" {
+            get_url_by_id(&conn, &id).map(|u| u.is_some()).unwrap_or(false)
+        } else {
+            get_landing_page_by_id(&conn, &id).map(|p| p.is_some()).unwrap_or(false)
+        }
+    };
+    if !target_exists {
+        return (StatusCode::NOT_FOUND, "Target not found").into_response();
+    }
+
+    let count = {
+        let conn = state.analytics_db.lock().unwrap();
+        get_target_visit_total_filtered(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        ).unwrap_or(0)
+    };
+
+    if count > MAX_JSON_EXPORT_ROWS as i64 {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+
+    let visits_raw = {
+        let conn = state.analytics_db.lock().unwrap();
+        match get_target_visits_all_in_memory(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        ) {
+            Ok(v) => v,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
+    };
+
+    #[derive(serde::Serialize)]
+    struct JsonExportRow {
+        timestamp: String,
+        ip_address: String,
+        country: String,
+        referrer: String,
+        browser: String,
+        user_agent: String,
+    }
+
+    let export_rows: Vec<JsonExportRow> = visits_raw
+        .into_iter()
+        .map(|r| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let country_display = if r.country.is_empty() { "Unknown".to_string() } else { r.country };
+            JsonExportRow {
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: country_display,
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+            }
+        })
+        .collect();
+
+    let body_str = match serde_json::to_string(&export_rows) {
+        Ok(s) => s,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response(),
+    };
+
+    let filename = if target_type == "url" {
+        format!("url_{}_analytics.json", id)
+    } else {
+        format!("page_{}_analytics.json", id)
+    };
+
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "application/json"),
+            ("Content-Disposition", &format!("attachment; filename=\"{}\"", filename)),
+            ("X-BZOD-Export-Records", &count.to_string()),
+        ],
+        body_str,
+    ).into_response()
+}
+
+// GET /admin/analytics/url/:id
+pub async fn url_analytics_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _) = match require_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    let url = {
+        let conn = state.content_db.lock().unwrap();
+        match get_url_by_id(&conn, &id) {
+            Ok(Some(u)) => u,
+            Ok(None) => return (StatusCode::NOT_FOUND, "URL not found").into_response(),
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
+    };
+
+    let conn = state.analytics_db.lock().unwrap();
+
+    let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
+    let has_utm_source = schema_cols.contains("utm_source");
+    let has_utm_campaign = schema_cols.contains("utm_campaign");
+    if has_utm_source || has_utm_campaign {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "UTM mapping verification failed").into_response();
+    }
+
+    let (clean_date_from, clean_date_to) = match validate_date_filters(
+        query.date_from.as_deref(),
+        query.date_to.as_deref(),
+    ) {
+        Ok(res) => res,
+        Err(status) => return status.into_response(),
+    };
+
+    let total_clicks = get_target_visit_total_filtered(
+        &conn,
+        "url",
+        &id,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    ).unwrap_or(0);
+
+    let unique_visitors = get_target_unique_visitors(&conn, "url", &id).unwrap_or(0);
+    let qr_scans = crate::db::qr::get_qr_scan_count(&conn, &id).unwrap_or(0);
+    let direct_clicks = (total_clicks - qr_scans).max(0);
+
+    let clicks_data = get_clicks_trend(&conn, "url", &id, 30)
+        .or_else(|_| get_clicks_trend_raw(&conn, "url", &id, 30))
+        .unwrap_or_default();
+    let mut trend_map = std::collections::BTreeMap::new();
+    for i in (0..30).rev() {
+        let date_str = (Utc::now() - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        trend_map.insert(date_str, 0i64);
+    }
+    for (d, c) in clicks_data {
+        trend_map.insert(d, c);
+    }
+    let formatted_trend: Vec<(String, i64)> = trend_map.into_iter().collect();
+    let traffic_chart = generate_line_chart(&formatted_trend);
+
+    let monthly_data = get_monthly_clicks_trend(&conn, "url", &id, 12).unwrap_or_default();
+    let monthly_chart = generate_line_chart(&monthly_data);
+
+    let countries_data = get_metric_rankings(&conn, "url", &id, "country", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "country", 5))
+        .unwrap_or_default();
+    let countries_chart = generate_bar_chart(&countries_data);
+
+    let referrers_data = get_metric_rankings(&conn, "url", &id, "referrer", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "referrer", 5))
+        .unwrap_or_default();
+    let referrers_chart = generate_bar_chart(&referrers_data);
+
+    let browsers_data = get_metric_rankings(&conn, "url", &id, "browser", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "browser", 5))
+        .unwrap_or_default();
+    let browsers_chart = generate_bar_chart(&browsers_data);
+
+    let calculated_total_pages = (total_clicks as usize).div_ceil(ANALYTICS_PAGE_SIZE);
+    let total_pages = std::cmp::max(1, calculated_total_pages);
+    let requested_page = query.analytics_page.unwrap_or(1);
+    let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+    let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
+
+    let visits_raw = get_target_visits_paginated(
+        &conn,
+        "url",
+        &id,
+        ANALYTICS_PAGE_SIZE as i64,
+        offset as i64,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    ).unwrap_or_default();
+
+    let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
+        .into_iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let sr = offset + idx + 1;
+            crate::templates::VisitorLogEntry {
+                sr,
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: if r.country.is_empty() { "Unknown".to_string() } else { r.country },
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+                utm_source: "-".to_string(),
+                utm_campaign: "-".to_string(),
+            }
+        })
+        .collect();
+
+    let start_page = current_page.saturating_sub(3).max(1);
+    let end_page = std::cmp::min(total_pages, current_page + 3);
+    let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+    let page_start = if total_clicks == 0 { 0 } else { offset + 1 };
+    let page_end = if total_clicks == 0 { 0 } else { std::cmp::min(total_clicks as usize, offset + ANALYTICS_PAGE_SIZE) };
+
+    let template = crate::templates::UrlAnalyticsTemplate {
+        admin_username: user.username,
+        url,
+        total_clicks,
+        unique_visitors,
+        qr_scans,
+        direct_clicks,
+        traffic_chart,
+        monthly_chart,
+        countries_chart,
+        referrers_chart,
+        browsers_chart,
+        visits,
+        current_page,
+        total_pages,
+        visible_pages,
+        total_records: total_clicks,
+        page_start,
+        page_end,
+        date_from: clean_date_from,
+        date_to: clean_date_to,
+    };
+
+    template.into_response()
+}
+
+// GET /admin/analytics/page/:id
+pub async fn page_analytics_get(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _) = match require_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    let page = {
+        let conn = state.content_db.lock().unwrap();
+        match get_landing_page_by_id(&conn, &id) {
+            Ok(Some(p)) => p,
+            Ok(None) => return (StatusCode::NOT_FOUND, "Landing page not found").into_response(),
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
+    };
+
+    let conn = state.analytics_db.lock().unwrap();
+
+    let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
+    let has_utm_source = schema_cols.contains("utm_source");
+    let has_utm_campaign = schema_cols.contains("utm_campaign");
+    if has_utm_source || has_utm_campaign {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "UTM mapping verification failed").into_response();
+    }
+
+    let (clean_date_from, clean_date_to) = match validate_date_filters(
+        query.date_from.as_deref(),
+        query.date_to.as_deref(),
+    ) {
+        Ok(res) => res,
+        Err(status) => return status.into_response(),
+    };
+
+    let total_views = get_target_visit_total_filtered(
+        &conn,
+        "page",
+        &id,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    ).unwrap_or(0);
+
+    let unique_visitors = get_target_unique_visitors(&conn, "page", &id).unwrap_or(0);
+
+    let clicks_data = get_clicks_trend(&conn, "page", &id, 30)
+        .or_else(|_| get_clicks_trend_raw(&conn, "page", &id, 30))
+        .unwrap_or_default();
+    let mut trend_map = std::collections::BTreeMap::new();
+    for i in (0..30).rev() {
+        let date_str = (Utc::now() - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        trend_map.insert(date_str, 0i64);
+    }
+    for (d, c) in clicks_data {
+        trend_map.insert(d, c);
+    }
+    let formatted_trend: Vec<(String, i64)> = trend_map.into_iter().collect();
+    let traffic_chart = generate_line_chart(&formatted_trend);
+
+    let monthly_data = get_monthly_clicks_trend(&conn, "page", &id, 12).unwrap_or_default();
+    let monthly_chart = generate_line_chart(&monthly_data);
+
+    let countries_data = get_metric_rankings(&conn, "page", &id, "country", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "page", &id, "country", 5))
+        .unwrap_or_default();
+    let countries_chart = generate_bar_chart(&countries_data);
+
+    let referrers_data = get_metric_rankings(&conn, "page", &id, "referrer", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "page", &id, "referrer", 5))
+        .unwrap_or_default();
+    let referrers_chart = generate_bar_chart(&referrers_data);
+
+    let calculated_total_pages = (total_views as usize).div_ceil(ANALYTICS_PAGE_SIZE);
+    let total_pages = std::cmp::max(1, calculated_total_pages);
+    let requested_page = query.analytics_page.unwrap_or(1);
+    let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+    let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
+
+    let visits_raw = get_target_visits_paginated(
+        &conn,
+        "page",
+        &id,
+        ANALYTICS_PAGE_SIZE as i64,
+        offset as i64,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    ).unwrap_or_default();
+
+    let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
+        .into_iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let sr = offset + idx + 1;
+            crate::templates::VisitorLogEntry {
+                sr,
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: if r.country.is_empty() { "Unknown".to_string() } else { r.country },
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+                utm_source: "-".to_string(),
+                utm_campaign: "-".to_string(),
+            }
+        })
+        .collect();
+
+    let start_page = current_page.saturating_sub(3).max(1);
+    let end_page = std::cmp::min(total_pages, current_page + 3);
+    let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+    let page_start = if total_views == 0 { 0 } else { offset + 1 };
+    let page_end = if total_views == 0 { 0 } else { std::cmp::min(total_views as usize, offset + ANALYTICS_PAGE_SIZE) };
+
+    let template = crate::templates::PageAnalyticsTemplate {
+        admin_username: user.username,
+        page,
+        total_views,
+        unique_visitors,
+        traffic_chart,
+        monthly_chart,
+        countries_chart,
+        referrers_chart,
+        visits,
+        current_page,
+        total_pages,
+        visible_pages,
+        total_records: total_views,
+        page_start,
+        page_end,
+        date_from: clean_date_from,
+        date_to: clean_date_to,
+    };
+
+    template.into_response()
+}
+
+pub async fn url_analytics_csv_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    if require_auth(&state, &jar).await.is_err() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    perform_csv_export(state, "url", id, query.date_from, query.date_to).await
+}
+
+pub async fn url_analytics_json_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    if require_auth(&state, &jar).await.is_err() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    perform_json_export(state, "url", id, query.date_from, query.date_to).await
+}
+
+pub async fn page_analytics_csv_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    if require_auth(&state, &jar).await.is_err() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    perform_csv_export(state, "page", id, query.date_from, query.date_to).await
+}
+
+pub async fn page_analytics_json_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    if require_auth(&state, &jar).await.is_err() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+    perform_json_export(state, "page", id, query.date_from, query.date_to).await
+}
+

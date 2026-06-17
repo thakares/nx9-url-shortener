@@ -121,6 +121,7 @@
                         <th>QR Code</th>
                         <th>Health</th>
                         <th>Tags</th>
+                        <th>Analytics</th>
                         <th>Created</th>
                         <th>Action</th>
                     </tr>
@@ -128,7 +129,7 @@
                 <tbody>
                     {% if urls.is_empty() %}
                         <tr>
-                            <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            <td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
                                 No shortened URLs registered. Create one to get started!
                             </td>
                         </tr>
@@ -213,6 +214,11 @@
                                         {% endfor %}
                                     </div>
                                 </td>
+                                <td>
+                                    <a href="/admin/analytics/url/{{ url.id }}" class="btn btn-secondary" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                        📊 Analytics
+                                    </a>
+                                </td>
                                 <td style="font-size: 0.8rem; color: var(--text-secondary);">
                                     {{ url.created_at[0..10] }}
                                 </td>
@@ -229,6 +235,33 @@
                     {% endif %}
                 </tbody>
             </table>
+        </div>
+        
+        <!-- Pagination Controls -->
+        <div class="pagination" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 1rem; border-top: 1px solid var(--border-color);">
+            {% if current_page > 1 %}
+                <a href="/admin/urls?page=1{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
+                <a href="/admin/urls?page={{ current_page - 1 }}{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>
+            {% else %}
+                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</span>
+                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</span>
+            {% endif %}
+
+            {% for p in visible_pages %}
+                {% if self.is_current(p) %}
+                    <span class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; font-weight: bold;">[{{ p }}]</span>
+                {% else %}
+                    <a href="/admin/urls?page={{ p }}{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">{{ p }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if current_page < total_pages %}
+                <a href="/admin/urls?page={{ current_page + 1 }}{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</a>
+                <a href="/admin/urls?page={{ total_pages }}{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</a>
+            {% else %}
+                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</span>
+                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</span>
+            {% endif %}
         </div>
     </div>
 </div>

@@ -14,7 +14,17 @@ pub struct UrlsTemplate {
     pub error: Option<String>,
     pub tag_filter: Option<String>,
     pub base_url: String,
+    pub current_page: usize,
+    pub total_pages: usize,
+    pub visible_pages: Vec<usize>,
 }
+
+impl UrlsTemplate {
+    pub fn is_current(&self, page: &usize) -> bool {
+        *page == self.current_page
+    }
+}
+
 
 impl IntoResponse for UrlsTemplate {
     fn into_response(self) -> Response {

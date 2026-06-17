@@ -508,6 +508,227 @@ pub fn get_metric_rankings_raw(
     Ok(res)
 }
 
+/// Returns the raw visit counts for a specific target ID.
+pub fn get_target_visit_count(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM visits WHERE target_type = ?1 AND target_id = ?2;",
+        params![target_type, target_id],
+        |row| row.get(0),
+    )
+}
+
+/// Returns the distinct IP count (Unique Visitors) for a specific target ID.
+pub fn get_target_unique_visitors(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+) -> rusqlite::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(DISTINCT ip_address) FROM visits WHERE target_type = ?1 AND target_id = ?2;",
+        params![target_type, target_id],
+        |row| row.get(0),
+    )
+}
+
+/// Fetches the monthly clicks trend for a specific target ID, falling back to a raw visits query if monthly_summaries are empty.
+pub fn get_monthly_clicks_trend(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+    limit_months: i64,
+) -> rusqlite::Result<Vec<(String, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT year_month, SUM(metric_value) FROM monthly_summaries
+         WHERE target_type = ?1 AND target_id = ?2 AND metric_type = 'clicks'
+         GROUP BY year_month ORDER BY year_month ASC LIMIT ?3;"
+    )?;
+    let rows = stmt.query_map(params![target_type, target_id, limit_months], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    let mut res = Vec::new();
+    for r in rows {
+        res.push(r?);
+    }
+
+    if res.is_empty() {
+        // Fallback to raw visits
+        let mut stmt = conn.prepare(
+            "SELECT strftime('%Y-%m', timestamp) as m, COUNT(*) FROM visits
+             WHERE target_type = ?1 AND target_id = ?2
+             GROUP BY m ORDER BY m ASC LIMIT ?3;"
+        )?;
+        let rows = stmt.query_map(params![target_type, target_id, limit_months], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        for r in rows {
+            res.push(r?);
+        }
+    }
+
+    Ok(res)
+}
+
+pub fn get_visits_schema_columns(conn: &Connection) -> rusqlite::Result<std::collections::HashSet<String>> {
+    let mut columns = std::collections::HashSet::new();
+    let mut stmt = conn.prepare("PRAGMA table_info(visits);")?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let name: String = row.get("name")?;
+        columns.insert(name);
+    }
+    Ok(columns)
+}
+
+pub fn get_target_visits_paginated(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+    limit: i64,
+    offset: i64,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+) -> rusqlite::Result<Vec<VisitRecord>> {
+    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+        Box::new(target_type.to_string()),
+        Box::new(target_id.to_string()),
+    ];
+
+    if let Some(df) = date_from {
+        sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+        params.push(Box::new(format!("{}T00:00:00Z", df)));
+    }
+
+    if let Some(dt) = date_to {
+        if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+            let next_day = parsed_date + chrono::Duration::days(1);
+            sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
+            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+        }
+    }
+
+    sql.push_str(" ORDER BY timestamp DESC, id DESC LIMIT ?");
+    sql.push_str(&(params.len() + 1).to_string());
+    params.push(Box::new(limit));
+
+    sql.push_str(" OFFSET ?");
+    sql.push_str(&(params.len() + 1).to_string());
+    params.push(Box::new(offset));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
+        Ok(VisitRecord {
+            id: row.get("id")?,
+            target_type: row.get("target_type")?,
+            target_id: row.get("target_id")?,
+            timestamp: row.get("timestamp")?,
+            ip_address: row.get("ip_address")?,
+            user_agent: row.get("user_agent")?,
+            referer: row.get("referer")?,
+            accept_language: row.get("accept_language")?,
+            country: row.get("country")?,
+            status_code: row.get("status_code")?,
+        })
+    })?;
+
+    let mut visits = Vec::new();
+    for r in rows {
+        visits.push(r?);
+    }
+    Ok(visits)
+}
+
+pub fn get_target_visits_all_in_memory(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+) -> rusqlite::Result<Vec<VisitRecord>> {
+    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+        Box::new(target_type.to_string()),
+        Box::new(target_id.to_string()),
+    ];
+
+    if let Some(df) = date_from {
+        sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+        params.push(Box::new(format!("{}T00:00:00Z", df)));
+    }
+
+    if let Some(dt) = date_to {
+        if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+            let next_day = parsed_date + chrono::Duration::days(1);
+            sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
+            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+        }
+    }
+
+    sql.push_str(" ORDER BY timestamp DESC, id DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let rows = stmt.query_map(rusqlite::params_from_iter(param_refs), |row| {
+        Ok(VisitRecord {
+            id: row.get("id")?,
+            target_type: row.get("target_type")?,
+            target_id: row.get("target_id")?,
+            timestamp: row.get("timestamp")?,
+            ip_address: row.get("ip_address")?,
+            user_agent: row.get("user_agent")?,
+            referer: row.get("referer")?,
+            accept_language: row.get("accept_language")?,
+            country: row.get("country")?,
+            status_code: row.get("status_code")?,
+        })
+    })?;
+
+    let mut visits = Vec::new();
+    for r in rows {
+        visits.push(r?);
+    }
+    Ok(visits)
+}
+
+pub fn get_target_visit_total_filtered(
+    conn: &Connection,
+    target_type: &str,
+    target_id: &str,
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+) -> rusqlite::Result<i64> {
+    if date_from.is_none() && date_to.is_none() {
+        return get_target_visit_count(conn, target_type, target_id);
+    }
+
+    let mut sql = "SELECT COUNT(*) FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
+        Box::new(target_type.to_string()),
+        Box::new(target_id.to_string()),
+    ];
+
+    if let Some(df) = date_from {
+        sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+        params.push(Box::new(format!("{}T00:00:00Z", df)));
+    }
+
+    if let Some(dt) = date_to {
+        if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+            let next_day = parsed_date + chrono::Duration::days(1);
+            sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
+            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+        }
+    }
+
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    conn.query_row(&sql, rusqlite::params_from_iter(param_refs), |row| row.get(0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -12,7 +12,17 @@ pub struct PagesTemplate {
     pub pages: Vec<LandingPage>,
     pub csrf_token: String,
     pub error: Option<String>,
+    pub current_page: usize,
+    pub total_pages: usize,
+    pub visible_pages: Vec<usize>,
 }
+
+impl PagesTemplate {
+    pub fn is_current(&self, page: &usize) -> bool {
+        *page == self.current_page
+    }
+}
+
 
 impl IntoResponse for PagesTemplate {
     fn into_response(self) -> Response {

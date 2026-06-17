@@ -47,6 +47,19 @@ pub fn get_tags_for_url(conn: &Connection, url_id: &str) -> rusqlite::Result<Vec
     Ok(tags)
 }
 
+/// Get the total count of URLs associated with a specific tag name.
+pub fn get_url_count_by_tag(conn: &Connection, tag: &str) -> rusqlite::Result<i64> {
+    let tag_name = tag.trim().to_lowercase();
+    conn.query_row(
+        "SELECT COUNT(*) FROM urls u
+         JOIN url_tags ut ON u.id = ut.url_id
+         JOIN tags t ON ut.tag_id = t.id
+         WHERE t.name = ?1;",
+        params![tag_name],
+        |row| row.get(0),
+    )
+}
+
 /// The full column list used in all URL SELECT queries.
 const URL_COLUMNS: &str = "id, code, destination, title, description, status, created_at, updated_at, expires_at, expired, password_hash, last_status, last_latency_ms, max_access_count, access_count";
 

@@ -29,3 +29,5 @@ toml = "0.8"
 qrcode = "0.14"
 image = "0.25"
 zip = { version = "2.1", default-features = false, features = ["deflate"] }
+futures-util = "0.3"
+
