@@ -10,8 +10,28 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 
 ## Highlights
 
-### v0.3.0
+### v0.4.0
 
+* Raw visitor activity logs
+* Analytics drill-down pages
+* Visitor pagination
+* Advanced sliding-window pagination
+* CSV analytics export
+* JSON analytics export
+* Date-filtered analytics
+* Landing page analytics
+* Human-readable custom slugs
+* Root landing page support
+* UTM campaign builder
+* Built-in backup and restore
+* CLI shorten command
+* CLI expand command
+* QR code generation
+* Password-protected links
+* Smart preview pages
+* Analytics dashboard
+* Audit logging
+* Health monitoring
 * Human-readable custom slugs
 * Root landing page support
 * Landing page custom slugs
@@ -49,6 +69,12 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 | Backup & Restore          | ✅      |
 | UTM Campaign Builder      | ✅      |
 | CLI Automation            | ✅      |
+| Raw Visitor Logs          | ✅      |
+| Analytics Export (CSV)    | ✅      |
+| Analytics Export (JSON)   | ✅      |
+| Analytics Drill-Down      | ✅      |
+| Date Range Analytics      | ✅      |
+| Advanced Pagination       | ✅      |
 | Geo Analytics             | 🚧     |
 | Multi-User Administration | 🚧     |
 | SSO                       | 🚧     |
@@ -119,7 +145,7 @@ https://bzo.in/1b926e
 ```
 Custom Slug
 ```
-https://bzo.in/!office
+https://bzo.in/!myoffice
 ```
 Landing Page
 ```
@@ -261,12 +287,12 @@ https://example.com/page?utm_source=email&utm_medium=newsletter&utm_campaign=lau
 No additional database schema changes are required.
 
 ---
-
 ### Analytics
 
 Track:
 
 * Total visits
+* Unique visitors
 * QR scans
 * Countries
 * Referrers
@@ -274,6 +300,35 @@ Track:
 * Daily statistics
 * Monthly statistics
 * Yearly statistics
+
+Analytics drill-down includes:
+
+* Raw visitor activity logs
+* Visitor IP addresses
+* Country information
+* Referrer tracking
+* Browser detection
+* Raw User-Agent display
+* Date range filtering
+* CSV export
+* JSON export
+* Paginated visitor logs
+
+Analytics Export
+
+Export analytics data directly from the administration interface.
+
+Supported formats:
+
+* CSV
+* JSON
+
+Features:
+
+* Memory-safe export handling
+* Date-range filtering
+* Downloadable files
+* Compatible with spreadsheets and BI tools
 
 ---
 

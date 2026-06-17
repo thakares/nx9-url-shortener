@@ -395,7 +395,20 @@ Expected Result:
 * No migration failures
 
 ---
+## Analytics Verification
 
+Verify:
+
+* URL analytics page loads
+* Landing page analytics page loads
+* Visitor activity table renders
+* Empty visitor tables render correctly
+* CSV export downloads successfully
+* JSON export downloads successfully
+* Date filtering works
+* Invalid date filters return HTTP 400
+* Pagination preserves active filters
+* Exports respect active filters
 # Release Acceptance Criteria
 
 A release is considered production-ready only if:

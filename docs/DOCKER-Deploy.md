@@ -207,8 +207,21 @@ COOKIE_SECURE=true
 when HTTPS is enabled.
 
 ---
+# Analytics Export
 
-# Backup
+Analytics pages support:
+
+* Raw visitor logs
+* CSV export
+* JSON export
+* Date filtering
+
+Exports can be generated from:
+
+Admin → Analytics
+
+Backup
+---
 
 ## Web UI
 
@@ -393,7 +406,17 @@ Verify:
 ```bash
 docker logs -f bzod
 ```
+# Upgrading to v0.4.0
 
+1. Backup databases
+2. Pull latest source
+3. Rebuild container
+4. Restart service
+
+```bash
+git pull
+docker compose build --no-cache
+docker compose up -d
 ---
 
 # Troubleshooting
@@ -419,6 +442,8 @@ docker exec -u 0 -it bzod bash
 
 chown -R bzod:bzod /app/data
 ```
+
+docker exec -it bzod bzod doctor
 
 Restart:
 
