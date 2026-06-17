@@ -80,7 +80,12 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 | SSO                       | 🚧     |
 
 ---
+## One-Command Installation (Recommended)
 
+```bash
+curl -fsSL https://bzo.in/deploy.sh | sudo bash
+```
+---
 ## Features
 
 ### URL Shortening
