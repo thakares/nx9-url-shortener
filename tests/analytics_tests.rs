@@ -1,12 +1,12 @@
-use rusqlite::Connection;
-use chrono::Utc;
-use bzod::db::migrations::{run_migrations, CONTENT_MIGRATIONS, ANALYTICS_MIGRATIONS};
-use bzod::db::content::{create_url_extended, get_url_count_by_tag, list_urls, get_url_counts};
 use bzod::db::analytics::{
-    get_target_visit_count, get_target_unique_visitors, get_monthly_clicks_trend,
+    get_monthly_clicks_trend, get_target_unique_visitors, get_target_visit_count,
     insert_visits_batch,
 };
+use bzod::db::content::{create_url_extended, get_url_count_by_tag, get_url_counts, list_urls};
+use bzod::db::migrations::{run_migrations, ANALYTICS_MIGRATIONS, CONTENT_MIGRATIONS};
 use bzod::models::VisitRecord;
+use chrono::Utc;
+use rusqlite::Connection;
 
 fn setup_content_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -98,8 +98,14 @@ fn test_target_analytics_queries() {
     let target_uuid = "target-uuid-123456";
 
     // 1. Visit Count and Unique Visitors check on empty db
-    assert_eq!(get_target_visit_count(&conn, "url", target_uuid).unwrap(), 0);
-    assert_eq!(get_target_unique_visitors(&conn, "url", target_uuid).unwrap(), 0);
+    assert_eq!(
+        get_target_visit_count(&conn, "url", target_uuid).unwrap(),
+        0
+    );
+    assert_eq!(
+        get_target_unique_visitors(&conn, "url", target_uuid).unwrap(),
+        0
+    );
 
     // 2. Insert some visit records
     let now = Utc::now();
@@ -145,8 +151,14 @@ fn test_target_analytics_queries() {
     insert_visits_batch(&mut conn, &records).unwrap();
 
     // 3. Verify counts
-    assert_eq!(get_target_visit_count(&conn, "url", target_uuid).unwrap(), 3);
-    assert_eq!(get_target_unique_visitors(&conn, "url", target_uuid).unwrap(), 2);
+    assert_eq!(
+        get_target_visit_count(&conn, "url", target_uuid).unwrap(),
+        3
+    );
+    assert_eq!(
+        get_target_unique_visitors(&conn, "url", target_uuid).unwrap(),
+        2
+    );
 
     // 4. Verify monthly clicks trend fallback
     let monthly_trend = get_monthly_clicks_trend(&conn, "url", target_uuid, 12).unwrap();

@@ -25,7 +25,6 @@ impl UrlsTemplate {
     }
 }
 
-
 impl IntoResponse for UrlsTemplate {
     fn into_response(self) -> Response {
         match self.render() {

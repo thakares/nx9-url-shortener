@@ -544,7 +544,7 @@ pub fn get_monthly_clicks_trend(
     let mut stmt = conn.prepare(
         "SELECT year_month, SUM(metric_value) FROM monthly_summaries
          WHERE target_type = ?1 AND target_id = ?2 AND metric_type = 'clicks'
-         GROUP BY year_month ORDER BY year_month ASC LIMIT ?3;"
+         GROUP BY year_month ORDER BY year_month ASC LIMIT ?3;",
     )?;
     let rows = stmt.query_map(params![target_type, target_id, limit_months], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -559,7 +559,7 @@ pub fn get_monthly_clicks_trend(
         let mut stmt = conn.prepare(
             "SELECT strftime('%Y-%m', timestamp) as m, COUNT(*) FROM visits
              WHERE target_type = ?1 AND target_id = ?2
-             GROUP BY m ORDER BY m ASC LIMIT ?3;"
+             GROUP BY m ORDER BY m ASC LIMIT ?3;",
         )?;
         let rows = stmt.query_map(params![target_type, target_id, limit_months], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -572,7 +572,9 @@ pub fn get_monthly_clicks_trend(
     Ok(res)
 }
 
-pub fn get_visits_schema_columns(conn: &Connection) -> rusqlite::Result<std::collections::HashSet<String>> {
+pub fn get_visits_schema_columns(
+    conn: &Connection,
+) -> rusqlite::Result<std::collections::HashSet<String>> {
     let mut columns = std::collections::HashSet::new();
     let mut stmt = conn.prepare("PRAGMA table_info(visits);")?;
     let mut rows = stmt.query([])?;
@@ -607,7 +609,10 @@ pub fn get_target_visits_paginated(
         if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
             let next_day = parsed_date + chrono::Duration::days(1);
             sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
-            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+            params.push(Box::new(format!(
+                "{}T00:00:00Z",
+                next_day.format("%Y-%m-%d")
+            )));
         }
     }
 
@@ -665,7 +670,10 @@ pub fn get_target_visits_all_in_memory(
         if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
             let next_day = parsed_date + chrono::Duration::days(1);
             sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
-            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+            params.push(Box::new(format!(
+                "{}T00:00:00Z",
+                next_day.format("%Y-%m-%d")
+            )));
         }
     }
 
@@ -706,7 +714,8 @@ pub fn get_target_visit_total_filtered(
         return get_target_visit_count(conn, target_type, target_id);
     }
 
-    let mut sql = "SELECT COUNT(*) FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut sql =
+        "SELECT COUNT(*) FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(target_type.to_string()),
         Box::new(target_id.to_string()),
@@ -721,12 +730,17 @@ pub fn get_target_visit_total_filtered(
         if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
             let next_day = parsed_date + chrono::Duration::days(1);
             sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
-            params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+            params.push(Box::new(format!(
+                "{}T00:00:00Z",
+                next_day.format("%Y-%m-%d")
+            )));
         }
     }
 
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
-    conn.query_row(&sql, rusqlite::params_from_iter(param_refs), |row| row.get(0))
+    conn.query_row(&sql, rusqlite::params_from_iter(param_refs), |row| {
+        row.get(0)
+    })
 }
 
 #[cfg(test)]

@@ -50,7 +50,6 @@ impl UrlAnalyticsTemplate {
     }
 }
 
-
 impl IntoResponse for UrlAnalyticsTemplate {
     fn into_response(self) -> Response {
         match self.render() {
@@ -92,7 +91,6 @@ impl PageAnalyticsTemplate {
         *page == self.current_page
     }
 }
-
 
 impl IntoResponse for PageAnalyticsTemplate {
     fn into_response(self) -> Response {

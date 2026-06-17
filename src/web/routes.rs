@@ -38,11 +38,23 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/pages/create", post(admin::pages_create))
         .route("/admin/pages/delete/:id", post(admin::pages_delete))
         .route("/admin/analytics/url/:id", get(admin::url_analytics_get))
-        .route("/admin/analytics/url/:id/export/csv", get(admin::url_analytics_csv_export))
-        .route("/admin/analytics/url/:id/export/json", get(admin::url_analytics_json_export))
+        .route(
+            "/admin/analytics/url/:id/export/csv",
+            get(admin::url_analytics_csv_export),
+        )
+        .route(
+            "/admin/analytics/url/:id/export/json",
+            get(admin::url_analytics_json_export),
+        )
         .route("/admin/analytics/page/:id", get(admin::page_analytics_get))
-        .route("/admin/analytics/page/:id/export/csv", get(admin::page_analytics_csv_export))
-        .route("/admin/analytics/page/:id/export/json", get(admin::page_analytics_json_export))
+        .route(
+            "/admin/analytics/page/:id/export/csv",
+            get(admin::page_analytics_csv_export),
+        )
+        .route(
+            "/admin/analytics/page/:id/export/json",
+            get(admin::page_analytics_json_export),
+        )
         .route("/admin/settings", get(admin::settings_get))
         .route(
             "/admin/settings/password",

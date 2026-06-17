@@ -1,11 +1,10 @@
-use rusqlite::Connection;
-use bzod::db::migrations::{run_migrations, ANALYTICS_MIGRATIONS};
 use bzod::db::analytics::{
-    get_visits_schema_columns, get_target_visits_paginated,
-    get_target_visits_all_in_memory, get_target_visit_total_filtered,
-    parse_ua, clean_referrer, insert_visits_batch
+    clean_referrer, get_target_visit_total_filtered, get_target_visits_all_in_memory,
+    get_target_visits_paginated, get_visits_schema_columns, insert_visits_batch, parse_ua,
 };
+use bzod::db::migrations::{run_migrations, ANALYTICS_MIGRATIONS};
 use bzod::models::VisitRecord;
+use rusqlite::Connection;
 
 fn setup_analytics_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -121,25 +120,47 @@ fn test_advanced_analytics_date_filtering() {
     insert_visits_batch(&mut conn, &records).unwrap();
 
     // 1. Filter with date_from = "2026-06-15" (inclusive) -> should get v2 and v3
-    let count1 = get_target_visit_total_filtered(&conn, "url", target_uuid, Some("2026-06-15"), None).unwrap();
+    let count1 =
+        get_target_visit_total_filtered(&conn, "url", target_uuid, Some("2026-06-15"), None)
+            .unwrap();
     assert_eq!(count1, 2);
-    let results1 = get_target_visits_all_in_memory(&conn, "url", target_uuid, Some("2026-06-15"), None).unwrap();
+    let results1 =
+        get_target_visits_all_in_memory(&conn, "url", target_uuid, Some("2026-06-15"), None)
+            .unwrap();
     assert_eq!(results1.len(), 2);
     assert_eq!(results1[0].id, "v3"); // DESC sorting
     assert_eq!(results1[1].id, "v2");
 
     // 2. Filter with date_to = "2026-06-15" (inclusive) -> should get v1 and v2
-    let count2 = get_target_visit_total_filtered(&conn, "url", target_uuid, None, Some("2026-06-15")).unwrap();
+    let count2 =
+        get_target_visit_total_filtered(&conn, "url", target_uuid, None, Some("2026-06-15"))
+            .unwrap();
     assert_eq!(count2, 2);
-    let results2 = get_target_visits_all_in_memory(&conn, "url", target_uuid, None, Some("2026-06-15")).unwrap();
+    let results2 =
+        get_target_visits_all_in_memory(&conn, "url", target_uuid, None, Some("2026-06-15"))
+            .unwrap();
     assert_eq!(results2.len(), 2);
     assert_eq!(results2[0].id, "v2");
     assert_eq!(results2[1].id, "v1");
 
     // 3. Filter with both date_from and date_to = "2026-06-15"
-    let count3 = get_target_visit_total_filtered(&conn, "url", target_uuid, Some("2026-06-15"), Some("2026-06-15")).unwrap();
+    let count3 = get_target_visit_total_filtered(
+        &conn,
+        "url",
+        target_uuid,
+        Some("2026-06-15"),
+        Some("2026-06-15"),
+    )
+    .unwrap();
     assert_eq!(count3, 1);
-    let results3 = get_target_visits_all_in_memory(&conn, "url", target_uuid, Some("2026-06-15"), Some("2026-06-15")).unwrap();
+    let results3 = get_target_visits_all_in_memory(
+        &conn,
+        "url",
+        target_uuid,
+        Some("2026-06-15"),
+        Some("2026-06-15"),
+    )
+    .unwrap();
     assert_eq!(results3.len(), 1);
     assert_eq!(results3[0].id, "v2");
 }

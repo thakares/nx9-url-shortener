@@ -23,7 +23,6 @@ impl PagesTemplate {
     }
 }
 
-
 impl IntoResponse for PagesTemplate {
     fn into_response(self) -> Response {
         match self.render() {

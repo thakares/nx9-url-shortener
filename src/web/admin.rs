@@ -62,14 +62,15 @@ use crate::auth::{
 };
 use crate::charts::{generate_bar_chart, generate_line_chart};
 use crate::db::analytics::{
-    get_clicks_trend, get_clicks_trend_raw, get_metric_rankings, get_metric_rankings_raw,
-    get_total_clicks, get_target_unique_visitors, get_monthly_clicks_trend,
-    get_visits_schema_columns, get_target_visits_paginated, get_target_visits_all_in_memory,
-    get_target_visit_total_filtered, parse_ua, clean_referrer,
+    clean_referrer, get_clicks_trend, get_clicks_trend_raw, get_metric_rankings,
+    get_metric_rankings_raw, get_monthly_clicks_trend, get_target_unique_visitors,
+    get_target_visit_total_filtered, get_target_visits_all_in_memory, get_target_visits_paginated,
+    get_total_clicks, get_visits_schema_columns, parse_ua,
 };
 use crate::db::content::{
-    create_landing_page, delete_landing_page, delete_url, get_landing_page_count, get_url_counts,
-    list_landing_pages, list_urls, get_url_count_by_tag, get_url_by_id, get_landing_page_by_id,
+    create_landing_page, delete_landing_page, delete_url, get_landing_page_by_id,
+    get_landing_page_count, get_url_by_id, get_url_count_by_tag, get_url_counts,
+    list_landing_pages, list_urls,
 };
 use crate::models::User;
 use crate::state::AppState;
@@ -78,7 +79,6 @@ use crate::utils::{get_client_ip, get_db_file_info, get_memory_usage};
 const PAGE_SIZE: usize = 25;
 const ANALYTICS_PAGE_SIZE: usize = 50;
 const MAX_JSON_EXPORT_ROWS: usize = 50_000;
-
 
 // Helper: Verify session and return user or redirect to login
 async fn require_auth(state: &AppState, jar: &CookieJar) -> Result<(User, String), Redirect> {
@@ -383,11 +383,17 @@ pub async fn urls_get(
         let calculated_total_pages = (total_records as usize).div_ceil(PAGE_SIZE);
         let total_pages = std::cmp::max(1, calculated_total_pages);
         let requested_page = query.page.unwrap_or(1);
-        let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+        let current_page = if requested_page == 0 {
+            1
+        } else {
+            requested_page
+        }
+        .clamp(1, total_pages);
         let offset = (current_page - 1) * PAGE_SIZE;
 
-        let urls = list_urls(&conn, PAGE_SIZE as i64, offset as i64, query.tag.as_deref()).unwrap_or_default();
-        
+        let urls = list_urls(&conn, PAGE_SIZE as i64, offset as i64, query.tag.as_deref())
+            .unwrap_or_default();
+
         let start_page = current_page.saturating_sub(3).max(1);
         let end_page = std::cmp::min(total_pages, current_page + 3);
         let visible_pages: Vec<usize> = (start_page..=end_page).collect();
@@ -422,7 +428,6 @@ pub async fn urls_get(
 
     template.into_response()
 }
-
 
 #[derive(Deserialize)]
 pub struct CreateUrlForm {
@@ -661,11 +666,16 @@ pub async fn pages_get(
         let calculated_total_pages = (total_records as usize).div_ceil(PAGE_SIZE);
         let total_pages = std::cmp::max(1, calculated_total_pages);
         let requested_page = query.page.unwrap_or(1);
-        let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+        let current_page = if requested_page == 0 {
+            1
+        } else {
+            requested_page
+        }
+        .clamp(1, total_pages);
         let offset = (current_page - 1) * PAGE_SIZE;
 
         let pages = list_landing_pages(&conn, PAGE_SIZE as i64, offset as i64).unwrap_or_default();
-        
+
         let start_page = current_page.saturating_sub(3).max(1);
         let end_page = std::cmp::min(total_pages, current_page + 3);
         let visible_pages: Vec<usize> = (start_page..=end_page).collect();
@@ -1592,23 +1602,22 @@ pub struct AnalyticsQuery {
     pub date_to: Option<String>,
 }
 
-fn validate_date_filters(date_from: Option<&str>, date_to: Option<&str>) -> Result<(Option<String>, Option<String>), StatusCode> {
+fn validate_date_filters(
+    date_from: Option<&str>,
+    date_to: Option<&str>,
+) -> Result<(Option<String>, Option<String>), StatusCode> {
     let from_parsed = match date_from {
-        Some(df) if !df.is_empty() => {
-            match chrono::NaiveDate::parse_from_str(df, "%Y-%m-%d") {
-                Ok(d) => Some(d),
-                Err(_) => return Err(StatusCode::BAD_REQUEST),
-            }
-        }
+        Some(df) if !df.is_empty() => match chrono::NaiveDate::parse_from_str(df, "%Y-%m-%d") {
+            Ok(d) => Some(d),
+            Err(_) => return Err(StatusCode::BAD_REQUEST),
+        },
         _ => None,
     };
     let to_parsed = match date_to {
-        Some(dt) if !dt.is_empty() => {
-            match chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
-                Ok(d) => Some(d),
-                Err(_) => return Err(StatusCode::BAD_REQUEST),
-            }
-        }
+        Some(dt) if !dt.is_empty() => match chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+            Ok(d) => Some(d),
+            Err(_) => return Err(StatusCode::BAD_REQUEST),
+        },
         _ => None,
     };
     if let (Some(f), Some(t)) = (from_parsed, to_parsed) {
@@ -1623,10 +1632,8 @@ fn validate_date_filters(date_from: Option<&str>, date_to: Option<&str>) -> Resu
 }
 
 fn escape_csv_field(field: &str) -> String {
-    let needs_escaping = field.contains(',')
-        || field.contains('"')
-        || field.contains('\n')
-        || field.contains('\r');
+    let needs_escaping =
+        field.contains(',') || field.contains('"') || field.contains('\n') || field.contains('\r');
     if needs_escaping {
         let escaped = field.replace('"', "\"\"");
         format!("\"{}\"", escaped)
@@ -1657,20 +1664,22 @@ async fn perform_csv_export(
     date_from: Option<String>,
     date_to: Option<String>,
 ) -> Response {
-    let (clean_date_from, clean_date_to) = match validate_date_filters(
-        date_from.as_deref(),
-        date_to.as_deref(),
-    ) {
-        Ok(res) => res,
-        Err(status) => return status.into_response(),
-    };
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(date_from.as_deref(), date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
 
     let target_exists = {
         let conn = state.content_db.lock().unwrap();
         if target_type == "url" {
-            get_url_by_id(&conn, &id).map(|u| u.is_some()).unwrap_or(false)
+            get_url_by_id(&conn, &id)
+                .map(|u| u.is_some())
+                .unwrap_or(false)
         } else {
-            get_landing_page_by_id(&conn, &id).map(|p| p.is_some()).unwrap_or(false)
+            get_landing_page_by_id(&conn, &id)
+                .map(|p| p.is_some())
+                .unwrap_or(false)
         }
     };
     if !target_exists {
@@ -1685,7 +1694,8 @@ async fn perform_csv_export(
             &id,
             clean_date_from.as_deref(),
             clean_date_to.as_deref(),
-        ).unwrap_or(0)
+        )
+        .unwrap_or(0)
     };
 
     let (has_utm_source, has_utm_campaign) = {
@@ -1694,13 +1704,14 @@ async fn perform_csv_export(
         (cols.contains("utm_source"), cols.contains("utm_campaign"))
     };
 
-    let (tx, rx) = tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(32);
+    let (tx, rx) =
+        tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(32);
     let analytics_db = state.analytics_db.clone();
     let target_id = id.clone();
 
     tokio::task::spawn_blocking(move || {
         let conn = analytics_db.lock().unwrap();
-        
+
         let mut header = "Timestamp,IP Address,Country,Referrer,Browser,User-Agent".to_string();
         if has_utm_source {
             header.push_str(",UTM Source");
@@ -1709,8 +1720,11 @@ async fn perform_csv_export(
             header.push_str(",UTM Campaign");
         }
         header.push('\n');
-        
-        if tx.blocking_send(Ok(axum::body::Bytes::from(header))).is_err() {
+
+        if tx
+            .blocking_send(Ok(axum::body::Bytes::from(header)))
+            .is_err()
+        {
             return;
         }
 
@@ -1724,11 +1738,12 @@ async fn perform_csv_export(
             "timestamp, ip_address, country, referer, user_agent"
         };
 
-        let mut sql = format!("SELECT {} FROM visits WHERE target_type = ?1 AND target_id = ?2", select_fields);
-        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
-            Box::new(target_type.to_string()),
-            Box::new(target_id),
-        ];
+        let mut sql = format!(
+            "SELECT {} FROM visits WHERE target_type = ?1 AND target_id = ?2",
+            select_fields
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(target_type.to_string()), Box::new(target_id)];
 
         if let Some(df) = clean_date_from.as_deref() {
             sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
@@ -1739,7 +1754,10 @@ async fn perform_csv_export(
             if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
                 let next_day = parsed_date + chrono::Duration::days(1);
                 sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
-                params.push(Box::new(format!("{}T00:00:00Z", next_day.format("%Y-%m-%d"))));
+                params.push(Box::new(format!(
+                    "{}T00:00:00Z",
+                    next_day.format("%Y-%m-%d")
+                )));
             }
         }
 
@@ -1767,7 +1785,11 @@ async fn perform_csv_export(
 
             let (browser, _, _) = parse_ua(&user_agent);
             let referrer = clean_referrer(&referer);
-            let country_display = if country.is_empty() { "Unknown".to_string() } else { country };
+            let country_display = if country.is_empty() {
+                "Unknown".to_string()
+            } else {
+                country
+            };
 
             let mut line = format!(
                 "{},{},{},{},{},{}",
@@ -1817,11 +1839,15 @@ async fn perform_csv_export(
         StatusCode::OK,
         [
             ("Content-Type", "text/csv"),
-            ("Content-Disposition", &format!("attachment; filename=\"{}\"", filename)),
+            (
+                "Content-Disposition",
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
             ("X-BZOD-Export-Records", &count.to_string()),
         ],
         axum::body::Body::from_stream(stream),
-    ).into_response()
+    )
+        .into_response()
 }
 
 async fn perform_json_export(
@@ -1831,20 +1857,22 @@ async fn perform_json_export(
     date_from: Option<String>,
     date_to: Option<String>,
 ) -> Response {
-    let (clean_date_from, clean_date_to) = match validate_date_filters(
-        date_from.as_deref(),
-        date_to.as_deref(),
-    ) {
-        Ok(res) => res,
-        Err(status) => return status.into_response(),
-    };
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(date_from.as_deref(), date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
 
     let target_exists = {
         let conn = state.content_db.lock().unwrap();
         if target_type == "url" {
-            get_url_by_id(&conn, &id).map(|u| u.is_some()).unwrap_or(false)
+            get_url_by_id(&conn, &id)
+                .map(|u| u.is_some())
+                .unwrap_or(false)
         } else {
-            get_landing_page_by_id(&conn, &id).map(|p| p.is_some()).unwrap_or(false)
+            get_landing_page_by_id(&conn, &id)
+                .map(|p| p.is_some())
+                .unwrap_or(false)
         }
     };
     if !target_exists {
@@ -1859,7 +1887,8 @@ async fn perform_json_export(
             &id,
             clean_date_from.as_deref(),
             clean_date_to.as_deref(),
-        ).unwrap_or(0)
+        )
+        .unwrap_or(0)
     };
 
     if count > MAX_JSON_EXPORT_ROWS as i64 {
@@ -1895,7 +1924,11 @@ async fn perform_json_export(
         .map(|r| {
             let (browser, _, _) = parse_ua(&r.user_agent);
             let referrer = clean_referrer(&r.referer);
-            let country_display = if r.country.is_empty() { "Unknown".to_string() } else { r.country };
+            let country_display = if r.country.is_empty() {
+                "Unknown".to_string()
+            } else {
+                r.country
+            };
             JsonExportRow {
                 timestamp: r.timestamp,
                 ip_address: r.ip_address,
@@ -1909,7 +1942,9 @@ async fn perform_json_export(
 
     let body_str = match serde_json::to_string(&export_rows) {
         Ok(s) => s,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response(),
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response()
+        }
     };
 
     let filename = if target_type == "url" {
@@ -1922,11 +1957,15 @@ async fn perform_json_export(
         StatusCode::OK,
         [
             ("Content-Type", "application/json"),
-            ("Content-Disposition", &format!("attachment; filename=\"{}\"", filename)),
+            (
+                "Content-Disposition",
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
             ("X-BZOD-Export-Records", &count.to_string()),
         ],
         body_str,
-    ).into_response()
+    )
+        .into_response()
 }
 
 // GET /admin/analytics/url/:id
@@ -1956,16 +1995,18 @@ pub async fn url_analytics_get(
     let has_utm_source = schema_cols.contains("utm_source");
     let has_utm_campaign = schema_cols.contains("utm_campaign");
     if has_utm_source || has_utm_campaign {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "UTM mapping verification failed").into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "UTM mapping verification failed",
+        )
+            .into_response();
     }
 
-    let (clean_date_from, clean_date_to) = match validate_date_filters(
-        query.date_from.as_deref(),
-        query.date_to.as_deref(),
-    ) {
-        Ok(res) => res,
-        Err(status) => return status.into_response(),
-    };
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(query.date_from.as_deref(), query.date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
 
     let total_clicks = get_target_visit_total_filtered(
         &conn,
@@ -1973,7 +2014,8 @@ pub async fn url_analytics_get(
         &id,
         clean_date_from.as_deref(),
         clean_date_to.as_deref(),
-    ).unwrap_or(0);
+    )
+    .unwrap_or(0);
 
     let unique_visitors = get_target_unique_visitors(&conn, "url", &id).unwrap_or(0);
     let qr_scans = crate::db::qr::get_qr_scan_count(&conn, &id).unwrap_or(0);
@@ -2016,7 +2058,12 @@ pub async fn url_analytics_get(
     let calculated_total_pages = (total_clicks as usize).div_ceil(ANALYTICS_PAGE_SIZE);
     let total_pages = std::cmp::max(1, calculated_total_pages);
     let requested_page = query.analytics_page.unwrap_or(1);
-    let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+    let current_page = if requested_page == 0 {
+        1
+    } else {
+        requested_page
+    }
+    .clamp(1, total_pages);
     let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
 
     let visits_raw = get_target_visits_paginated(
@@ -2027,7 +2074,8 @@ pub async fn url_analytics_get(
         offset as i64,
         clean_date_from.as_deref(),
         clean_date_to.as_deref(),
-    ).unwrap_or_default();
+    )
+    .unwrap_or_default();
 
     let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
         .into_iter()
@@ -2040,7 +2088,11 @@ pub async fn url_analytics_get(
                 sr,
                 timestamp: r.timestamp,
                 ip_address: r.ip_address,
-                country: if r.country.is_empty() { "Unknown".to_string() } else { r.country },
+                country: if r.country.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    r.country
+                },
                 referrer,
                 browser,
                 user_agent: r.user_agent,
@@ -2055,7 +2107,11 @@ pub async fn url_analytics_get(
     let visible_pages: Vec<usize> = (start_page..=end_page).collect();
 
     let page_start = if total_clicks == 0 { 0 } else { offset + 1 };
-    let page_end = if total_clicks == 0 { 0 } else { std::cmp::min(total_clicks as usize, offset + ANALYTICS_PAGE_SIZE) };
+    let page_end = if total_clicks == 0 {
+        0
+    } else {
+        std::cmp::min(total_clicks as usize, offset + ANALYTICS_PAGE_SIZE)
+    };
 
     let template = crate::templates::UrlAnalyticsTemplate {
         admin_username: user.username,
@@ -2110,16 +2166,18 @@ pub async fn page_analytics_get(
     let has_utm_source = schema_cols.contains("utm_source");
     let has_utm_campaign = schema_cols.contains("utm_campaign");
     if has_utm_source || has_utm_campaign {
-        return (StatusCode::INTERNAL_SERVER_ERROR, "UTM mapping verification failed").into_response();
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "UTM mapping verification failed",
+        )
+            .into_response();
     }
 
-    let (clean_date_from, clean_date_to) = match validate_date_filters(
-        query.date_from.as_deref(),
-        query.date_to.as_deref(),
-    ) {
-        Ok(res) => res,
-        Err(status) => return status.into_response(),
-    };
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(query.date_from.as_deref(), query.date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
 
     let total_views = get_target_visit_total_filtered(
         &conn,
@@ -2127,7 +2185,8 @@ pub async fn page_analytics_get(
         &id,
         clean_date_from.as_deref(),
         clean_date_to.as_deref(),
-    ).unwrap_or(0);
+    )
+    .unwrap_or(0);
 
     let unique_visitors = get_target_unique_visitors(&conn, "page", &id).unwrap_or(0);
 
@@ -2163,7 +2222,12 @@ pub async fn page_analytics_get(
     let calculated_total_pages = (total_views as usize).div_ceil(ANALYTICS_PAGE_SIZE);
     let total_pages = std::cmp::max(1, calculated_total_pages);
     let requested_page = query.analytics_page.unwrap_or(1);
-    let current_page = if requested_page == 0 { 1 } else { requested_page }.clamp(1, total_pages);
+    let current_page = if requested_page == 0 {
+        1
+    } else {
+        requested_page
+    }
+    .clamp(1, total_pages);
     let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
 
     let visits_raw = get_target_visits_paginated(
@@ -2174,7 +2238,8 @@ pub async fn page_analytics_get(
         offset as i64,
         clean_date_from.as_deref(),
         clean_date_to.as_deref(),
-    ).unwrap_or_default();
+    )
+    .unwrap_or_default();
 
     let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
         .into_iter()
@@ -2187,7 +2252,11 @@ pub async fn page_analytics_get(
                 sr,
                 timestamp: r.timestamp,
                 ip_address: r.ip_address,
-                country: if r.country.is_empty() { "Unknown".to_string() } else { r.country },
+                country: if r.country.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    r.country
+                },
                 referrer,
                 browser,
                 user_agent: r.user_agent,
@@ -2202,7 +2271,11 @@ pub async fn page_analytics_get(
     let visible_pages: Vec<usize> = (start_page..=end_page).collect();
 
     let page_start = if total_views == 0 { 0 } else { offset + 1 };
-    let page_end = if total_views == 0 { 0 } else { std::cmp::min(total_views as usize, offset + ANALYTICS_PAGE_SIZE) };
+    let page_end = if total_views == 0 {
+        0
+    } else {
+        std::cmp::min(total_views as usize, offset + ANALYTICS_PAGE_SIZE)
+    };
 
     let template = crate::templates::PageAnalyticsTemplate {
         admin_username: user.username,
@@ -2274,4 +2347,3 @@ pub async fn page_analytics_json_export(
     }
     perform_json_export(state, "page", id, query.date_from, query.date_to).await
 }
-
