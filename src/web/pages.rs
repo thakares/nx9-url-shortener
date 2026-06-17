@@ -120,3 +120,16 @@ pub async fn root_landing() -> Response {
         Err(_) => (StatusCode::NOT_FOUND, "Not Found").into_response(),
     }
 }
+
+pub async fn deploy_script() -> Response {
+    match tokio::fs::read("www/deploy.sh").await {
+        Ok(content) => (
+            StatusCode::OK,
+            [("content-type", "text/plain; charset=utf-8")],
+            content,
+        )
+            .into_response(),
+
+        Err(_) => (StatusCode::NOT_FOUND, "deploy.sh not found").into_response(),
+    }
+}

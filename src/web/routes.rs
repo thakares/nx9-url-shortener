@@ -38,6 +38,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/pages/create", post(admin::pages_create))
         .route("/admin/pages/delete/:id", post(admin::pages_delete))
         .route("/admin/analytics/url/:id", get(admin::url_analytics_get))
+        .route("/deploy.sh", get(pages::deploy_script))
         .route(
             "/admin/analytics/url/:id/export/csv",
             get(admin::url_analytics_csv_export),
