@@ -12,7 +12,7 @@ Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, org
 Licensed under either of
 
 - Apache License, Version 2.0
-  ([LICENSE-APACHE](LICENSE-APACHE))
+  ([LICENSE](LICENSE-APACHE)) - Default
 - MIT License
   ([LICENSE-MIT](LICENSE-MIT))
 
