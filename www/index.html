@@ -1,237 +1,332 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BZOD — Private • Fast • Beautiful URL Shortener</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
-    <style>
-        body { font-family: 'Inter', system-ui, sans-serif; }
-        .hero-bg {
-            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
-        }
-    </style>
-</head>
-<body class="bg-zinc-950 text-zinc-200">
-    <!-- Hero -->
-    <section class="hero-bg py-24">
-        <div class="max-w-5xl mx-auto px-6 text-center">
-            <div class="inline-flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full px-4 py-1.5 mb-6">
-                <span class="text-emerald-400">●</span>
-                <span class="text-sm font-medium">Self-hosted • Rust • Single Binary</span>
-            </div>
-            
-            <h1 class="text-6xl md:text-7xl font-bold tracking-tighter mb-6">
-                Short links.<br>
-                <span class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Your domain.</span>
-            </h1>
-            
-            <p class="text-2xl text-zinc-400 max-w-2xl mx-auto mb-10">
-                Beautiful, private, and powerful URL shortener with rich landing pages, QR codes, analytics, and full CLI control.
-            </p>
-
-            <div class="flex flex-wrap justify-center gap-4">
-                <a href="https://github.com/thakares/nx9-url-shortener" 
-                   target="_blank"
-                   class="bg-white text-black px-8 py-4 rounded-2xl font-semibold flex items-center gap-3 hover:scale-105 transition">
-                    <i class="fab fa-github text-xl"></i>
-                    View on GitHub
-                </a>
-                <a href="/admin" 
-                   class="bg-violet-600 hover:bg-violet-700 px-8 py-4 rounded-2xl font-semibold transition">
-                    Admin Dashboard →
-                </a>
-            </div>
-
-            <div class="mt-16 text-sm text-zinc-500">
-                Powered by <span class="font-mono text-emerald-400">bzo.in</span>
-            </div>
-        </div>
-        <!-- Highlights -->
-        <div class="max-w-6xl mx-auto px-6 -mt-10 relative z-10">
-            <div class="grid grid-cols-2 lg:grid-cols-5
-                bg-zinc-950/70 backdrop-blur-md
-                border border-zinc-800
-                rounded-3xl overflow-hidden">
-
-                <!-- Single Binary -->
-                <div class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800">
-                    <i class="fas fa-bolt text-emerald-400 text-4xl mb-4"></i>
-                    <h3 class="font-semibold text-xl mb-2">Single Binary</h3>
-                    <p class="text-zinc-400 text-sm">
-                        ~18 MB Rust binary.<br>
-                        No runtime required.
-                    </p>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>BZOD — Private • Fast • Beautiful URL Shortener</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"
+        />
+        <style>
+            body {
+                font-family: "Inter", system-ui, sans-serif;
+            }
+            .hero-bg {
+                background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            }
+        </style>
+    </head>
+    <body class="bg-zinc-950 text-zinc-200">
+        <!-- Hero -->
+        <section class="hero-bg py-24">
+            <div class="max-w-5xl mx-auto px-6 text-center">
+                <div
+                    class="inline-flex items-center gap-2 bg-zinc-900 border border-zinc-700 rounded-full px-4 py-1.5 mb-6"
+                >
+                    <span class="text-emerald-400">●</span>
+                    <span class="text-sm font-medium"
+                        >Self-hosted • Rust • Single Binary</span
+                    >
                 </div>
 
-                <!-- SQLite -->
-                <div class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800">
-                    <i class="fas fa-database text-emerald-400 text-4xl mb-4"></i>
-                    <h3 class="font-semibold text-xl mb-2">SQLite</h3>
-                    <p class="text-zinc-400 text-sm">
-                        Zero configuration.<br>
-                        WAL mode enabled.
-                    </p>
+                <h1
+                    class="text-6xl md:text-7xl font-bold tracking-tighter mb-6"
+                >
+                    Short links.<br />
+                    <span
+                        class="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent"
+                        >Your domain.</span
+                    >
+                </h1>
+
+                <p class="text-2xl text-zinc-400 max-w-2xl mx-auto mb-10">
+                    Beautiful, private, and powerful URL shortener with rich
+                    landing pages, QR codes, analytics, and full CLI control.
+                </p>
+
+                <div class="flex flex-wrap justify-center gap-4">
+                    <a
+                        href="https://github.com/thakares/nx9-url-shortener"
+                        target="_blank"
+                        class="bg-white text-black px-8 py-4 rounded-2xl font-semibold flex items-center gap-3 hover:scale-105 transition"
+                    >
+                        <i class="fab fa-github text-xl"></i>
+                        View on GitHub
+                    </a>
+                    <a
+                        href="/admin"
+                        class="bg-violet-600 hover:bg-violet-700 px-8 py-4 rounded-2xl font-semibold transition"
+                    >
+                        Admin Dashboard →
+                    </a>
                 </div>
 
-                <!-- REST API -->
-                <div class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800">
-                    <i class="fas fa-code text-emerald-400 text-4xl mb-4"></i>
-                    <h3 class="font-semibold text-xl mb-2">REST API</h3>
-                    <p class="text-zinc-400 text-sm">
-                        Full automation.<br>
-                        JSON everywhere.
-                    </p>
-                </div>
-
-                <!-- Self Hosted -->
-                <div class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800">
-                    <i class="fas fa-server text-emerald-400 text-4xl mb-4"></i>
-                    <h3 class="font-semibold text-xl mb-2">Self Hosted</h3>
-                    <p class="text-zinc-400 text-sm">
-                        Your links.<br>
-                        Your infrastructure.
-                    </p>
-                </div>
-
-                <!-- MIT -->
-                <div class="p-8 text-center">
-                    <i class="fas fa-shield-alt text-emerald-400 text-4xl mb-4"></i>
-                    <h3 class="font-semibold text-xl mb-2">MIT License</h3>
-                    <p class="text-zinc-400 text-sm">
-                        Open source.<br>
-                        Commercial friendly.
-                    </p>
-                </div>
-
-            </div>
-        </div>
-    </section>
-
-    <!-- Features -->
-    <section class="py-20 bg-zinc-900">
-        <div class="max-w-5xl mx-auto px-6">
-            <h2 class="text-4xl font-bold text-center mb-16">Why people love BZOD</h2>
-            
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">⚡</div>
-                    <h3 class="text-2xl font-semibold mb-3">Lightning Fast</h3>
-                    <p class="text-zinc-400">~18 MB single Rust binary. Starts instantly. Uses SQLite with WAL mode. Minimal resource usage.</p>
-                </div>
-                
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">🔒</div>
-                    <h3 class="text-2xl font-semibold mb-3">Private by Design</h3>
-                    <p class="text-zinc-400">No telemetry. No third-party services. Everything runs on your server. Strong password hashing & audit logs.</p>
-                </div>
-                
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">🎨</div>
-                    <h3 class="text-2xl font-semibold mb-3">Beautiful Links</h3>
-                    <p class="text-zinc-400">Rich custom landing pages with title, description, OG metadata, and branded preview.</p>
+                <div class="mt-16 text-sm text-zinc-500">
+                    Powered by
+                    <span class="font-mono text-emerald-400">bzo.in</span>
                 </div>
             </div>
+            <!-- Highlights -->
+            <div class="max-w-6xl mx-auto px-6 -mt-10 relative z-10">
+                <div
+                    class="grid grid-cols-2 lg:grid-cols-5 bg-zinc-950/70 backdrop-blur-md border border-zinc-800 rounded-3xl overflow-hidden"
+                >
+                    <!-- Single Binary -->
+                    <div
+                        class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800"
+                    >
+                        <i
+                            class="fas fa-bolt text-emerald-400 text-4xl mb-4"
+                        ></i>
+                        <h3 class="font-semibold text-xl mb-2">
+                            Single Binary
+                        </h3>
+                        <p class="text-zinc-400 text-sm">
+                            ~18 MB Rust binary.<br />
+                            No runtime required.
+                        </p>
+                    </div>
 
-            <div class="grid md:grid-cols-3 gap-8 mt-8">
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">📱</div>
-                    <h3 class="text-2xl font-semibold mb-3">QR Codes Built-in</h3>
-                    <p class="text-zinc-400">Generate PNG & SVG QR codes. Track scans separately in analytics.</p>
+                    <!-- SQLite -->
+                    <div
+                        class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800"
+                    >
+                        <i
+                            class="fas fa-database text-emerald-400 text-4xl mb-4"
+                        ></i>
+                        <h3 class="font-semibold text-xl mb-2">SQLite</h3>
+                        <p class="text-zinc-400 text-sm">
+                            Zero configuration.<br />
+                            WAL mode enabled.
+                        </p>
+                    </div>
+
+                    <!-- REST API -->
+                    <div
+                        class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800"
+                    >
+                        <i
+                            class="fas fa-code text-emerald-400 text-4xl mb-4"
+                        ></i>
+                        <h3 class="font-semibold text-xl mb-2">REST API</h3>
+                        <p class="text-zinc-400 text-sm">
+                            Full automation.<br />
+                            JSON everywhere.
+                        </p>
+                    </div>
+
+                    <!-- Self Hosted -->
+                    <div
+                        class="p-8 text-center border-b lg:border-b-0 lg:border-r border-zinc-800"
+                    >
+                        <i
+                            class="fas fa-server text-emerald-400 text-4xl mb-4"
+                        ></i>
+                        <h3 class="font-semibold text-xl mb-2">Self Hosted</h3>
+                        <p class="text-zinc-400 text-sm">
+                            Your links.<br />
+                            Your infrastructure.
+                        </p>
+                    </div>
+
+                    <!-- MIT -->
+                    <div class="p-8 text-center">
+                        <i
+                            class="fas fa-shield-alt text-emerald-400 text-4xl mb-4"
+                        ></i>
+                        <h3 class="font-semibold text-xl mb-2">MIT License</h3>
+                        <p class="text-zinc-400 text-sm">
+                            Open source.<br />
+                            Commercial friendly.
+                        </p>
+                    </div>
                 </div>
-                
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">🛠️</div>
-                    <h3 class="text-2xl font-semibold mb-3">CLI First</h3>
-                    <p class="text-zinc-400">backup, restore, doctor, stats, validate, create-admin — everything from terminal.</p>
-                </div>
-                
-                <div class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8">
-                    <div class="text-4xl mb-6">🔑</div>
-                    <h3 class="text-2xl font-semibold mb-3">Powerful Features</h3>
-                    <p class="text-zinc-400">Password protection • Expiry • Access limits • Tags • REST API • Bulk QR export</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Install -->
-    <section class="py-20 bg-zinc-950 border-t border-zinc-800 border-b border-zinc-800">
-        <div class="max-w-4xl mx-auto px-6 text-center">
-            <h2 class="text-4xl font-bold mb-4">
-                Install BZOD
-            </h2>
-
-            <p class="text-zinc-400 mb-10">
-                Deploy on any Debian/Ubuntu VPS, homelab, mini-PC, or Raspberry Pi.
-            </p>
-
-            <div class="bg-black border border-zinc-800 rounded-3xl overflow-hidden">
-                <div class="flex items-center justify-between px-5 py-3 border-b border-zinc-800">
-                <span class="text-zinc-500 text-sm">
-                    Linux Installation
-                </span>
-
-                    <button
+                <div
+                    class="bg-black border border-zinc-800 rounded-3xl overflow-hidden"
+                >
+                    <div
+                        class="flex items-center justify-between px-5 py-3 border-b border-zinc-800"
+                    >
+                        <span class="text-zinc-500 text-sm">
+                            Linux Installation
+                        </span>
+                        <button
                             onclick="copyInstallCommand()"
-                            class="text-sm bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-lg transition">
-                        Copy
-                    </button>
+                            class="text-sm bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-lg transition"
+                        >
+                            Copy
+                        </button>
+                    </div>
+                    <pre
+                        class="text-left overflow-x-auto p-6 text-emerald-400 font-mono text-sm"
+                    ><code id="install-command">curl -fsSL https://bzo.in/deploy.sh | sudo bash</code></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section class="py-20 bg-zinc-900">
+            <div class="max-w-5xl mx-auto px-6">
+                <h2 class="text-4xl font-bold text-center mb-16">
+                    Why people love BZOD
+                </h2>
+
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">⚡</div>
+                        <h3 class="text-2xl font-semibold mb-3">
+                            Lightning Fast
+                        </h3>
+                        <p class="text-zinc-400">
+                            ~18 MB single Rust binary. Starts instantly. Uses
+                            SQLite with WAL mode. Minimal resource usage.
+                        </p>
+                    </div>
+
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">🔒</div>
+                        <h3 class="text-2xl font-semibold mb-3">
+                            Private by Design
+                        </h3>
+                        <p class="text-zinc-400">
+                            No telemetry. No third-party services. Everything
+                            runs on your server. Strong password hashing & audit
+                            logs.
+                        </p>
+                    </div>
+
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">🎨</div>
+                        <h3 class="text-2xl font-semibold mb-3">
+                            Beautiful Links
+                        </h3>
+                        <p class="text-zinc-400">
+                            Rich custom landing pages with title, description,
+                            OG metadata, and branded preview.
+                        </p>
+                    </div>
                 </div>
 
-                <pre class="text-left overflow-x-auto p-6 text-emerald-400 font-mono text-sm"><code id="install-command">curl -fsSL https://bzo.in/deploy.sh | sudo bash</code></pre>
+                <div class="grid md:grid-cols-3 gap-8 mt-8">
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">📱</div>
+                        <h3 class="text-2xl font-semibold mb-3">
+                            QR Codes Built-in
+                        </h3>
+                        <p class="text-zinc-400">
+                            Generate PNG & SVG QR codes. Track scans separately
+                            in analytics.
+                        </p>
+                    </div>
+
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">🛠️</div>
+                        <h3 class="text-2xl font-semibold mb-3">CLI First</h3>
+                        <p class="text-zinc-400">
+                            backup, restore, doctor, stats, validate,
+                            create-admin — everything from terminal.
+                        </p>
+                    </div>
+
+                    <div
+                        class="bg-zinc-950 border border-zinc-800 rounded-3xl p-8"
+                    >
+                        <div class="text-4xl mb-6">🔑</div>
+                        <h3 class="text-2xl font-semibold mb-3">
+                            Powerful Features
+                        </h3>
+                        <p class="text-zinc-400">
+                            Password protection • Expiry • Access limits • Tags
+                            • REST API • Bulk QR export
+                        </p>
+                    </div>
+                </div>
             </div>
+        </section>
 
-            <p class="text-zinc-500 text-sm mt-4">
-                Downloads the latest release and installs BZOD as a systemd service.
-            </p>
-        </div>
-    </section>
+        <!-- Install -->
+        <section
+            class="py-20 bg-zinc-950 border-t border-zinc-800 border-b border-zinc-800"
+        >
+            <div class="max-w-4xl mx-auto px-6 text-center">
+                <h2 class="text-4xl font-bold mb-4">Install BZOD</h2>
 
-    <script>
-        function copyInstallCommand() {
-            const text =
-                "curl -fsSL https://bzo.in/deploy.sh | sudo bash";
+                <p class="text-zinc-400 mb-10">
+                    Deploy on any Debian/Ubuntu VPS, homelab, mini-PC, or
+                    Raspberry Pi.
+                </p>
 
-            navigator.clipboard.writeText(text);
-
-            const btn = event.target;
-            const old = btn.innerText;
-
-            btn.innerText = "Copied!";
-            setTimeout(() => {
-                btn.innerText = old;
-            }, 2000);
-        }
-    </script>
-
-    <!-- CTA -->
-    <section class="py-20 bg-black border-t border-zinc-800">
-        <div class="max-w-2xl mx-auto text-center px-6">
-            <h2 class="text-4xl font-bold mb-6">Ready to own your short links?</h2>
-            <p class="text-zinc-400 mb-10">Self-host BZOD in under 5 minutes on any VPS, homelab, or even a Raspberry Pi.</p>
-            
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="https://github.com/thakares/nx9-url-shortener" 
-                   target="_blank"
-                   class="bg-white text-black px-10 py-4 rounded-2xl font-semibold text-lg">
-                    Get BZOD Now
-                </a>
-                <a href="/admin" 
-                   class="border border-zinc-700 hover:bg-zinc-900 px-10 py-4 rounded-2xl font-semibold text-lg transition">
-                    Open Dashboard
-                </a>
+                <p class="text-zinc-500 text-sm mt-4">
+                    Downloads the latest release and installs BZOD as a systemd
+                    service.
+                </p>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <footer class="bg-zinc-950 py-12 border-t border-zinc-800">
-        <div class="max-w-5xl mx-auto px-6 text-center text-zinc-500 text-sm">
-            © 2026 BZOD • Made with ❤️ in Rust by Sunil Purushottam Thakare • Running on <span class="font-mono">bzo.in</span>
-        </div>
-    </footer>
-</body>
+        <script>
+            function copyInstallCommand() {
+                const text = "curl -fsSL https://bzo.in/deploy.sh | sudo bash";
+
+                navigator.clipboard.writeText(text);
+
+                const btn = event.target;
+                const old = btn.innerText;
+
+                btn.innerText = "Copied!";
+                setTimeout(() => {
+                    btn.innerText = old;
+                }, 2000);
+            }
+        </script>
+
+        <!-- CTA -->
+        <section class="py-20 bg-black border-t border-zinc-800">
+            <div class="max-w-2xl mx-auto text-center px-6">
+                <h2 class="text-4xl font-bold mb-6">
+                    Ready to own your short links?
+                </h2>
+                <p class="text-zinc-400 mb-10">
+                    Self-host BZOD in under 5 minutes on any VPS, homelab, or
+                    even a Raspberry Pi.
+                </p>
+
+                <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                    <a
+                        href="https://github.com/thakares/nx9-url-shortener"
+                        target="_blank"
+                        class="bg-white text-black px-10 py-4 rounded-2xl font-semibold text-lg"
+                    >
+                        Get BZOD Now
+                    </a>
+                    <a
+                        href="/admin"
+                        class="border border-zinc-700 hover:bg-zinc-900 px-10 py-4 rounded-2xl font-semibold text-lg transition"
+                    >
+                        Open Dashboard
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <footer class="bg-zinc-950 py-12 border-t border-zinc-800">
+            <div
+                class="max-w-5xl mx-auto px-6 text-center text-zinc-500 text-sm"
+            >
+                © 2026 BZOD • Made with ❤️ in Rust by Sunil Purushottam Thakare
+                • Running on <span class="font-mono">bzo.in</span>
+            </div>
+        </footer>
+    </body>
 </html>
-
