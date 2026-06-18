@@ -2,27 +2,62 @@
 
 **BZOD (nx9-url-shortener)** is a modern, privacy-focused, self-hosted URL management platform built in Rust as part of the **NX9 Platform**.
 
-Unlike many traditional URL shorteners that focus only on redirects, BZOD combines:
+Unlike many traditional URL shorteners that focus solely on redirects, BZOD combines:
 
 * URL shortening
 * Landing pages
 * QR code generation
-* Analytics
+* QR analytics
 * Password protection
-* Backup & restore
+* Link expiration
 * REST API
 * CLI automation
+* Backup & restore
 * Audit logging
 
 into a single lightweight deployment.
 
-The project philosophy is:
-
-> One binary. One command. Full ownership.
+**Philosophy:** *One binary. One command. Full ownership.*
 
 ---
 
-# Design Philosophy
+## At a Glance
+
+* Rust-based
+* Single ~18 MB binary
+* Embedded SQLite
+* No external services required
+* Landing pages
+* QR generation & analytics
+* Password-protected links
+* REST API
+* CLI automation
+* Backup & restore
+* Audit trail
+* MIT OR Apache-2.0 licensed
+* One-command deployment
+
+---
+
+## Quick Comparison
+
+| Feature               | BZOD              | Shlink   | YOURLS   | Chhoto URL |
+| --------------------- | ----------------- | -------- | -------- | ---------- |
+| Language              | Rust              | PHP      | PHP      | Rust       |
+| Single Binary         | ✅                 | ❌        | ❌        | ✅          |
+| Landing Pages         | ✅                 | ❌        | Plugin   | ❌          |
+| QR Code + Analytics   | ✅                 | Partial  | Plugin   | Partial    |
+| Password Protection   | ✅                 | Limited  | Plugin   | ❌          |
+| Backup & Restore      | ✅                 | External | External | ❌          |
+| Audit Trail           | ✅                 | Limited  | Plugin   | ❌          |
+| CLI Tools             | ✅                 | Limited  | Limited  | Limited    |
+| Dependencies          | None              | PHP + DB | PHP + DB | None       |
+| Deployment Complexity | Low               | Medium   | High     | Low        |
+| License               | MIT OR Apache-2.0 | MIT      | MIT      | MIT        |
+
+---
+
+## Design Philosophy
 
 | Principle                  | BZOD              |
 | -------------------------- | ----------------- |
@@ -32,10 +67,87 @@ The project philosophy is:
 | Vendor Lock-in             | None              |
 | Telemetry                  | None              |
 | External Services Required | None              |
-| Database Server Required   | No                |
-| Runtime Dependencies       | No                |
-| Single Binary              | Yes               |
+| Database Server Required   | No (SQLite)       |
+| Runtime Dependencies       | None              |
+| Single Binary              | Yes (~18 MB)      |
 | Linux-first                | Yes               |
+
+---
+
+## The NX9 Philosophy
+
+BZOD is part of the **NX9 Platform**.
+
+NX9 projects follow strict engineering principles:
+
+* Linux-native first
+* Rust-first
+* Single binary deployments
+* No NodeJS
+* No React
+* No Python runtime dependencies
+* No vendor lock-in
+* No telemetry
+* Privacy-first by default
+* MIT OR Apache-2.0 licensed
+
+GitHub and Codeberg are source-code repositories, not the projects themselves.
+
+The software is the project.
+
+The goal of NX9 is simple:
+
+> Build technology that serves people, organizations, communities, and governments — not advertising networks, data brokers, or vendor ecosystems.
+
+---
+
+## Why BZOD Exists
+
+Most self-hosted URL shorteners optimize for one of two extremes:
+
+### 1. Minimal Redirect Service
+
+A tiny application that creates short links and redirects traffic.
+
+Advantages:
+
+* Extremely lightweight
+* Easy to understand
+* Easy to maintain
+
+Disadvantages:
+
+* Limited administration
+* Limited analytics
+* Limited security features
+* Often requires additional tools
+
+### 2. Large Multi-Service Platform
+
+Feature-rich systems with extensive integrations and dependencies.
+
+Advantages:
+
+* Powerful analytics
+* Advanced routing
+* Large ecosystems
+
+Disadvantages:
+
+* More infrastructure
+* More maintenance
+* Higher resource requirements
+
+### BZOD's Approach
+
+BZOD intentionally sits in the middle.
+
+It is:
+
+* Small enough for a Raspberry Pi
+* Powerful enough for organizations
+* Simple enough for homelabs
+* Complete enough for production use
 
 ---
 
@@ -49,7 +161,7 @@ Popular Go projects include:
 * Shortr
 * Custom Gin/Echo implementations
 
-## Comparison
+## Detailed Comparison
 
 | Aspect              | BZOD (Rust)          | Typical Go Projects |
 | ------------------- | -------------------- | ------------------- |
@@ -57,7 +169,7 @@ Popular Go projects include:
 | Runtime             | None                 | None                |
 | Database            | Embedded SQLite      | SQLite / PostgreSQL |
 | Landing Pages       | ✅ Built-in           | Rare                |
-| QR Generation       | ✅ PNG + SVG          | Sometimes           |
+| QR Generation       | ✅                    | Sometimes           |
 | QR Analytics        | ✅                    | Rare                |
 | Password Protection | ✅                    | Varies              |
 | Link Expiry         | ✅                    | Often               |
@@ -69,7 +181,7 @@ Popular Go projects include:
 | Audit Logs          | ✅                    | Rare                |
 | Admin Dashboard     | ✅                    | Varies              |
 
-## Summary
+### Summary
 
 Go shorteners are often:
 
@@ -79,10 +191,10 @@ Go shorteners are often:
 
 BZOD focuses on:
 
-* Rich features
+* Rich built-in functionality
 * Complete ownership
 * Minimal operations
-* Batteries included
+* Batteries-included deployment
 
 ---
 
@@ -95,7 +207,7 @@ Popular Python projects include:
 * Schort
 * Flask/FastAPI examples
 
-## Comparison
+## Detailed Comparison
 
 | Aspect           | BZOD (Rust)           | Python Solutions  |
 | ---------------- | --------------------- | ----------------- |
@@ -110,7 +222,7 @@ Popular Python projects include:
 | Security         | Argon2id + Audit Logs | Project dependent |
 | Performance      | Excellent             | Good              |
 
-## Summary
+### Summary
 
 Python solutions are ideal when:
 
@@ -128,9 +240,9 @@ BZOD is ideal when:
 
 # BZOD vs Shlink
 
-Shlink is one of the most mature self-hosted URL shorteners.
+Shlink is one of the most mature self-hosted URL shorteners available.
 
-## Comparison
+## Detailed Comparison
 
 | Aspect                   | BZOD          | Shlink           |
 | ------------------------ | ------------- | ---------------- |
@@ -147,7 +259,7 @@ Shlink is one of the most mature self-hosted URL shorteners.
 | Multi-domain             | Planned       | ✅                |
 | Ecosystem                | Growing       | Mature           |
 
-## Summary
+### Summary
 
 Choose Shlink when:
 
@@ -168,7 +280,7 @@ Choose BZOD when:
 
 YOURLS is the classic self-hosted URL shortener.
 
-## Comparison
+## Detailed Comparison
 
 | Aspect        | BZOD          | YOURLS     |
 | ------------- | ------------- | ---------- |
@@ -182,7 +294,7 @@ YOURLS is the classic self-hosted URL shortener.
 | API           | ✅             | ✅          |
 | Maintenance   | Minimal       | Moderate   |
 
-## Summary
+### Summary
 
 YOURLS wins on:
 
@@ -203,7 +315,7 @@ BZOD wins on:
 
 Chhoto URL is the closest Rust-based competitor.
 
-## Comparison
+## Detailed Comparison
 
 | Aspect           | BZOD   | Chhoto URL |
 | ---------------- | ------ | ---------- |
@@ -218,7 +330,7 @@ Chhoto URL is the closest Rust-based competitor.
 | Analytics        | Rich   | Basic      |
 | Binary Size      | ~18 MB | Smaller    |
 
-## Summary
+### Summary
 
 Choose Chhoto URL for:
 
@@ -233,64 +345,38 @@ Choose BZOD for:
 
 ---
 
-# Why BZOD Exists
+## Future Comparisons
 
-Most self-hosted URL shorteners optimize for one of two extremes:
+Additional comparison sections may be added in the future for:
 
-1. Extremely simple redirect service
-2. Large multi-service platform
-
-BZOD attempts to sit in the middle:
-
-* Small enough for a Raspberry Pi
-* Powerful enough for organizations
-* Simple enough for homelabs
-* Complete enough for production use
+* Bitly
+* Dub
+* Pygmy
+* Krtk
+* Other self-hosted URL management platforms
 
 ---
 
-# The NX9 Philosophy
+## Conclusion
 
-BZOD is part of the **NX9 Platform**.
-
-NX9 projects follow strict engineering principles:
-
-* Linux-native first
-* Rust-first
-* Single binary deployments
-* No NodeJS
-* No React dependency
-* No Python runtime dependency
-* No vendor lock-in
-* No telemetry
-* Privacy-first
-* Self-hostable
-* MIT OR Apache-2.0 licensed
-
-GitHub and Codeberg repositories are only source code hosting locations.
-
-The actual project is the software itself.
-
-The goal of NX9 is simple:
-
-> Build technology that serves people, organizations, communities, and governments — not advertising networks, data brokers, or vendor ecosystems.
-
----
-
-# Conclusion
-
-BZOD is not merely a URL shortener.
+**BZOD is not merely a URL shortener.**
 
 It is a lightweight URL management platform that combines:
 
 * Link shortening
 * Landing pages
-* QR ecosystem
+* QR services
 * Analytics
 * Automation
 * Security
 * Backups
 
 into a single deployable Rust binary.
+
+As part of the NX9 Platform, BZOD follows a simple principle:
+
+> Own your links. Own your data. Own your infrastructure.
+
+No telemetry. No vendor lock-in. No unnecessary complexity.
 
 For users seeking privacy, simplicity, ownership, and long-term sustainability, BZOD offers a compelling alternative to both cloud SaaS platforms and traditional self-hosted URL shorteners.
