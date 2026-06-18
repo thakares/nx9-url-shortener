@@ -7,7 +7,25 @@ BZOD combines URL shortening, landing pages, QR code generation, password-protec
 Built with Rust, SQLite, Axum, and Askama, BZOD is designed for individuals, organizations, homelab operators, government agencies, and businesses that want complete ownership of their links, analytics, and branding.
 
 ---
+## License
 
+Licensed under either of
+
+- Apache License, Version 2.0
+  ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT License
+  ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in this project shall be dual licensed under
+the terms above without any additional terms or conditions.
+
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+---
 ## Highlights
 
 ### v0.4.0
