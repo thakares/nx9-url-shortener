@@ -4,7 +4,24 @@ BZOD is a modern, privacy-focused, self-hosted URL Management Platform written i
 
 Unlike traditional URL shorteners that focus primarily on URL redirection, BZOD provides a complete platform for managing URLs, landing pages, analytics, users, permissions, backups, and operational workflows.
 
+## Quick Comparison
+
+| Feature                  | BZOD | Shlink | YOURLS | Chhoto URL |
+|--------------------------|------|--------|--------|------------|
+| Language                 | Rust | PHP    | PHP    | Rust       |
+| Single Binary            | ✅    | ❌      | ❌      | ✅          |
+| Landing Pages            | ✅    | ❌      | Plugin | ❌          |
+| QR Code + Analytics      | ✅    | Partial| Plugin | Partial    |
+| Password Protection      | ✅    | Limited| Plugin | ❌          |
+| Backup & Restore         | ✅    | External| External| ❌         |
+| Audit Trail              | ✅    | Limited| Plugin | ❌          |
+| CLI Tools                | ✅    | Limited| Limited| Limited    |
+| Dependencies             | None | PHP + DB | PHP + DB | None     |
+| Deployment Complexity    | Low  | Medium | High   | Low        |
+
 ---
+
+*(rest of your content follows with minor wording cleanups)*
 
 # Executive Summary
 
