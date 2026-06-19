@@ -1,207 +1,207 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="BZOD — Self-hosted Multi-User URL Management Platform written in Rust with landing pages, QR codes, analytics, audit logging, and SQLite backend.">
-    <title>BZOD | Self-Hosted URL Management in Rust</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0b0f14; --bg2: #131820; --bg3: #1a202a; --bg4: #212733;
-            --border: #29303d; --border2: #384152;
-            --a1: #6db1ff; --a2: #56d364; --a3: #f85149; --a4: #d2a8ff; --a5: #f0883e;
-            --rust: #e05c2f;
-            --t1: #e6edf3; --t2: #8d96a0; --t3: #656d76;
-            --glow: rgba(109, 177, 255, 0.08);
-            --mono: 'JetBrains Mono', monospace;
-            --sans: 'Inter', system-ui, sans-serif;
-            --r: 8px; --rl: 16px;
-        }
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-        html{scroll-behavior:smooth}
-        body{background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:15px;line-height:1.8;overflow-x:hidden}
-        ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
-        a{color:var(--a1);text-decoration:none;transition: color 0.2s}a:hover{color:var(--t1)}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="BZOD ? Self-hosted Multi-User URL Management Platform written in Rust with landing pages, QR codes, analytics, audit logging, and SQLite backend.">
+<title>BZOD | Self-Hosted URL Management in Rust</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0b0f14; --bg2: #131820; --bg3: #1a202a; --bg4: #212733;
+  --border: #29303d; --border2: #384152;
+  --a1: #6db1ff; --a2: #56d364; --a3: #f85149; --a4: #d2a8ff; --a5: #f0883e;
+  --rust: #e05c2f;
+  --t1: #e6edf3; --t2: #8d96a0; --t3: #656d76;
+  --glow: rgba(109, 177, 255, 0.08);
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+  --r: 8px; --rl: 16px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:15px;line-height:1.8;overflow-x:hidden}
+::-webkit-scrollbar{width:8px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+a{color:var(--a1);text-decoration:none;transition: color 0.2s}a:hover{color:var(--t1)}
 
-        /* NAV */
-        nav{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(11, 15, 20, 0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:64px;display:flex;align-items:center;padding:0 2rem;gap:1.5rem}
-        .nav-logo{display:flex;align-items:center;gap:.75rem;font-family:var(--sans);font-weight:700;font-size:1.05rem;color:var(--t1);white-space:nowrap;letter-spacing:-0.02em}
-        .logo-box{width:32px;height:32px;background:linear-gradient(135deg,var(--rust) 0%,#ff7b47 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;color:#fff;flex-shrink:0;box-shadow:0 2px 10px rgba(224,92,47,0.3)}
-        .nav-links{display:flex;gap:1.5rem;list-style:none;margin-left:1rem}
-        .nav-links a{color:var(--t2);font-size:.85rem;font-weight:500;transition:color .2s;display:flex;align-items:center;gap:0.4rem}
-        .nav-links svg{width:14px;height:14px;opacity:0.75;transition:opacity 0.2s}
-        .nav-links a:hover{color:var(--t1);text-decoration:none}
-        .nav-links a:hover svg{opacity:1}
-        .nav-right{margin-left:auto;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-        .btn-sm{padding:.4rem 1rem;border-radius:var(--r);font-size:.8rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s;text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
-        .btn-sm svg{width:14px;height:14px}
-        .btn-ghost{border:1px solid var(--border);background:var(--bg2);color:var(--t1)}.btn-ghost:hover{border-color:var(--border2);background:var(--bg3)}
-        .btn-solid{background:var(--t1);color:var(--bg);border:none;font-weight:600}.btn-solid:hover{background:#ffffff;transform:translateY(-1px)}
+/* NAV */
+nav{position:fixed;top:0;left:0;right:0;z-index:200;background:rgba(11, 15, 20, 0.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);height:64px;display:flex;align-items:center;padding:0 2rem;gap:1.5rem}
+.nav-logo{display:flex;align-items:center;gap:.75rem;font-family:var(--sans);font-weight:700;font-size:1.05rem;color:var(--t1);white-space:nowrap;letter-spacing:-0.02em}
+.logo-box{width:32px;height:32px;background:linear-gradient(135deg,var(--rust) 0%,#ff7b47 100%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;color:#fff;flex-shrink:0;box-shadow:0 2px 10px rgba(224,92,47,0.3)}
+.nav-links{display:flex;gap:1.5rem;list-style:none;margin-left:1rem}
+.nav-links a{color:var(--t2);font-size:.85rem;font-weight:500;transition:color .2s;display:flex;align-items:center;gap:0.4rem}
+.nav-links svg{width:14px;height:14px;opacity:0.75;transition:opacity 0.2s}
+.nav-links a:hover{color:var(--t1);text-decoration:none}
+.nav-links a:hover svg{opacity:1}
+.nav-right{margin-left:auto;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.btn-sm{padding:.4rem 1rem;border-radius:var(--r);font-size:.8rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s;text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center;gap:.4rem}
+.btn-sm svg{width:14px;height:14px}
+.btn-ghost{border:1px solid var(--border);background:var(--bg2);color:var(--t1)}.btn-ghost:hover{border-color:var(--border2);background:var(--bg3)}
+.btn-solid{background:var(--t1);color:var(--bg);border:none;font-weight:600}.btn-solid:hover{background:#ffffff;transform:translateY(-1px)}
 
-        /* LAYOUT */
-        .container{max-width:1140px;margin:0 auto;width:100%}
-        section{padding:5.5rem 2rem}
-        .eyebrow{font-family:var(--sans);font-weight:600;font-size:.75rem;letter-spacing:.08em;color:var(--t2);text-transform:uppercase;margin-bottom:.75rem}
-        .section-title{font-size:clamp(1.75rem,3vw,2.5rem);font-weight:700;line-height:1.2;margin-bottom:1rem;letter-spacing:-0.03em}
-        .section-sub{color:var(--t2);max-width:640px;font-size:1rem;margin-bottom:3rem;line-height:1.7}
-        .divider{height:1px;background:var(--border);max-width:1140px;margin:0 auto}
+/* LAYOUT */
+.container{max-width:1140px;margin:0 auto;width:100%}
+section{padding:5.5rem 2rem}
+.eyebrow{font-family:var(--sans);font-weight:600;font-size:.75rem;letter-spacing:.08em;color:var(--t2);text-transform:uppercase;margin-bottom:.75rem}
+.section-title{font-size:clamp(1.75rem,3vw,2.5rem);font-weight:700;line-height:1.2;margin-bottom:1rem;letter-spacing:-0.03em}
+.section-sub{color:var(--t2);max-width:640px;font-size:1rem;margin-bottom:3rem;line-height:1.7}
+.divider{height:1px;background:var(--border);max-width:1140px;margin:0 auto}
 
-        /* HERO */
-        .hero{min-height:100vh;display:flex;align-items:center;padding:100px 2rem 4rem;position:relative;overflow:hidden}
-        .hero-bg{position:absolute;inset:0;background:radial-gradient(circle at 70% 30%, var(--glow) 0%, transparent 60%)}
-        .hero-inner{max-width:1140px;margin:0 auto;width:100%;position:relative;z-index:1;display:grid;grid-template-columns:1.15fr .85fr;gap:4rem;align-items:center}
-        .hero-badge{display:inline-flex;align-items:center;gap:.6rem;padding:.35rem 1rem;border-radius:999px;border:1px solid var(--border);background:var(--bg2);color:var(--t1);font-size:.8rem;font-weight:500;margin-bottom:1.5rem}
-        .pulse{width:8px;height:8px;border-radius:50%;background:var(--a2);box-shadow: 0 0 10px var(--a2)}
-        .hero h1{font-size:clamp(2.5rem,4.5vw,3.8rem);font-weight:700;line-height:1.1;letter-spacing:-0.03em;margin-bottom:1.25rem}
-        .hero h1 .hl{color:var(--t1)}.hero h1 .hr{color:var(--rust)}
-        .hero-desc{color:var(--t2);font-size:1.05rem;line-height:1.7;margin-bottom:2rem;max-width:500px}
-        .hero-ctas{display:flex;gap:1rem;flex-wrap:wrap}
-        .btn-lg{padding:.75rem 1.75rem;border-radius:var(--r);font-size:.95rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s;text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center}
-        .btn-lg.p{background:var(--t1);color:var(--bg)}.btn-lg.p:hover{background:#ffffff;transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,255,255,0.1)}
-        .btn-lg.o{border:1px solid var(--border);color:var(--t1);background:var(--bg2)}.btn-lg.o:hover{border-color:var(--border2);background:var(--bg3)}
-        .hero-meta{margin-top:2rem;display:flex;gap:1.5rem;flex-wrap:wrap}
-        .meta-tag{font-family:var(--mono);font-size:.75rem;color:var(--t3);display:flex;align-items:center;gap:.4rem}
+/* HERO */
+.hero{min-height:100vh;display:flex;align-items:center;padding:100px 2rem 4rem;position:relative;overflow:hidden}
+.hero-bg{position:absolute;inset:0;background:radial-gradient(circle at 70% 30%, var(--glow) 0%, transparent 60%)}
+.hero-inner{max-width:1140px;margin:0 auto;width:100%;position:relative;z-index:1;display:grid;grid-template-columns:1.15fr .85fr;gap:4rem;align-items:center}
+.hero-badge{display:inline-flex;align-items:center;gap:.6rem;padding:.35rem 1rem;border-radius:999px;border:1px solid var(--border);background:var(--bg2);color:var(--t1);font-size:.8rem;font-weight:500;margin-bottom:1.5rem}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--a2);box-shadow: 0 0 10px var(--a2)}
+.hero h1{font-size:clamp(2.5rem,4.5vw,3.8rem);font-weight:700;line-height:1.1;letter-spacing:-0.03em;margin-bottom:1.25rem}
+.hero h1 .hl{color:var(--t1)}.hero h1 .hr{color:var(--rust)}
+.hero-desc{color:var(--t2);font-size:1.05rem;line-height:1.7;margin-bottom:2rem;max-width:500px}
+.hero-ctas{display:flex;gap:1rem;flex-wrap:wrap}
+.btn-lg{padding:.75rem 1.75rem;border-radius:var(--r);font-size:.95rem;font-weight:500;cursor:pointer;font-family:var(--sans);transition:all .2s;text-decoration:none!important;display:inline-flex;align-items:center;justify-content:center}
+.btn-lg.p{background:var(--t1);color:var(--bg)}.btn-lg.p:hover{background:#ffffff;transform:translateY(-2px);box-shadow:0 8px 24px rgba(255,255,255,0.1)}
+.btn-lg.o{border:1px solid var(--border);color:var(--t1);background:var(--bg2)}.btn-lg.o:hover{border-color:var(--border2);background:var(--bg3)}
+.hero-meta{margin-top:2rem;display:flex;gap:1.5rem;flex-wrap:wrap}
+.meta-tag{font-family:var(--mono);font-size:.75rem;color:var(--t3);display:flex;align-items:center;gap:.4rem}
 
-        /* TERMINAL */
-        .terminal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}
-        .t-bar{background:var(--bg3);padding:.8rem 1.2rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border)}
-        .dot{width:12px;height:12px;border-radius:50%}
-        .d-r{background:#ff5f57}.d-y{background:#ffbd2e}.d-g{background:#27c93f}
-        .t-title{margin:0 auto;font-family:var(--sans);font-weight:500;font-size:.8rem;color:var(--t3)}
-        .t-body{padding:1.5rem;font-family:var(--mono);font-size:.85rem;line-height:1.7;white-space:pre-wrap}
-        .tp{color:var(--t3)}.tc{color:var(--t1)}.to{color:var(--t2)}.tk{color:var(--a4)}.tv{color:var(--a1)}.tg{color:var(--a2)}
-        .t-spacer{display:block;height:.75rem}
+/* TERMINAL */
+.terminal{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.5)}
+.t-bar{background:var(--bg3);padding:.8rem 1.2rem;display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--border)}
+.dot{width:12px;height:12px;border-radius:50%}
+.d-r{background:#ff5f57}.d-y{background:#ffbd2e}.d-g{background:#27c93f}
+.t-title{margin:0 auto;font-family:var(--sans);font-weight:500;font-size:.8rem;color:var(--t3)}
+.t-body{padding:1.5rem;font-family:var(--mono);font-size:.85rem;line-height:1.7;white-space:pre-wrap}
+.tp{color:var(--t3)}.tc{color:var(--t1)}.to{color:var(--t2)}.tk{color:var(--a4)}.tv{color:var(--a1)}.tg{color:var(--a2)}
+.t-spacer{display:block;height:.75rem}
 
-        /* STATS */
-        .stats-band{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:2.5rem 2rem}
-        .stats-grid{max-width:1140px;margin:0 auto;display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;text-align:center}
-        .stat-n{font-family:var(--sans);font-size:1.75rem;font-weight:600;color:var(--t1);display:block;letter-spacing:-0.02em}
-        .stat-l{font-size:.8rem;color:var(--t2);margin-top:.4rem;font-weight:400}
+/* STATS */
+.stats-band{border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:2.5rem 2rem}
+.stats-grid{max-width:1140px;margin:0 auto;display:grid;grid-template-columns:repeat(7,1fr);gap:1rem;text-align:center}
+.stat-n{font-family:var(--sans);font-size:1.75rem;font-weight:600;color:var(--t1);display:block;letter-spacing:-0.02em}
+.stat-l{font-size:.8rem;color:var(--t2);margin-top:.4rem;font-weight:400}
 
-        /* CARDS */
-        .grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem}
-        .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
-        .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
-        .card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:1.75rem;transition:transform .3s ease, border-color .3s ease;position:relative}
-        .card:hover{border-color:var(--border2);transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.2)}
-        .card-icon{font-size:1.5rem;margin-bottom:1rem;display:inline-block}
-        .card-title{font-weight:600;font-size:1.05rem;margin-bottom:.5rem;color:var(--t1)}
-        .card-desc{color:var(--t2);font-size:.9rem;line-height:1.6}
+/* CARDS */
+.grid-2{display:grid;grid-template-columns:repeat(2,1fr);gap:1.5rem}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:1.5rem}
+.grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:1.5rem}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:1.75rem;transition:transform .3s ease, border-color .3s ease;position:relative}
+.card:hover{border-color:var(--border2);transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,0.2)}
+.card-icon{font-size:1.5rem;margin-bottom:1rem;display:inline-block}
+.card-title{font-weight:600;font-size:1.05rem;margin-bottom:.5rem;color:var(--t1)}
+.card-desc{color:var(--t2);font-size:.9rem;line-height:1.6}
 
-        /* TABLES & TREES */
-        .compare-tbl{width:100%;border-collapse:collapse;font-size:.9rem;text-align:left;background:var(--bg2);border-radius:var(--rl);overflow:hidden;border:1px solid var(--border)}
-        .compare-tbl th{background:var(--bg3);padding:1rem 1.5rem;font-weight:600;color:var(--t1);border-bottom:1px solid var(--border);white-space:nowrap}
-        .compare-tbl td{padding:1rem 1.5rem;border-bottom:1px solid var(--border);color:var(--t2)}
-        .compare-tbl tr:last-child td{border-bottom:none}
-        .compare-tbl tr:hover td{background:rgba(255,255,255,.02)}
-        .compare-tbl td:first-child{font-weight:500;color:var(--t1)}
-        .check-yes{color:var(--a2);font-weight:700}
-        .check-no{color:var(--a3)}
-        .check-partial{color:var(--a5)}
+/* TABLES & TREES */
+.compare-tbl{width:100%;border-collapse:collapse;font-size:.9rem;text-align:left;background:var(--bg2);border-radius:var(--rl);overflow:hidden;border:1px solid var(--border)}
+.compare-tbl th{background:var(--bg3);padding:1rem 1.5rem;font-weight:600;color:var(--t1);border-bottom:1px solid var(--border);white-space:nowrap}
+.compare-tbl td{padding:1rem 1.5rem;border-bottom:1px solid var(--border);color:var(--t2)}
+.compare-tbl tr:last-child td{border-bottom:none}
+.compare-tbl tr:hover td{background:rgba(255,255,255,.02)}
+.compare-tbl td:first-child{font-weight:500;color:var(--t1)}
+.check-yes{color:var(--a2);font-weight:700}
+.check-no{color:var(--a3)}
+.check-partial{color:var(--a5)}
 
-        .file-tree{font-family:var(--mono);font-size:.85rem;line-height:1.8;color:var(--t2);background:var(--bg2);padding:1.5rem;border-radius:var(--rl);border:1px solid var(--border)}
-        .file-tree .dir{color:var(--a1);font-weight:600}
-        .file-tree .file{color:var(--t1)}
-        .file-tree .comment{color:var(--t3);font-style:italic;margin-left:1rem}
+.file-tree{font-family:var(--mono);font-size:.85rem;line-height:1.8;color:var(--t2);background:var(--bg2);padding:1.5rem;border-radius:var(--rl);border:1px solid var(--border)}
+.file-tree .dir{color:var(--a1);font-weight:600}
+.file-tree .file{color:var(--t1)}
+.file-tree .comment{color:var(--t3);font-style:italic;margin-left:1rem}
 
-        /* CODE & TABS */
-        pre.cb{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem;font-family:var(--mono);font-size:.85rem;line-height:1.7;overflow-x:auto;color:var(--t1);white-space:pre}
-        .cb .kw{color:var(--a1)}.cb .cm{color:var(--t3)}.cb .str{color:var(--a2)}
-        .tab-shell{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
-        .tab-strip{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;background:var(--bg3)}
-        .tab-btn{padding:1rem 1.5rem;border:none;background:transparent;color:var(--t2);font-family:var(--sans);font-weight:500;font-size:.9rem;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;transition:all .2s}
-        .tab-btn.on{color:var(--t1);border-bottom-color:var(--a1)}
-        .tab-btn:hover:not(.on){color:var(--t1);background:var(--bg4)}
-        .tab-panel{display:none;padding:2rem}
-        .tab-panel.on{display:block}
+/* CODE & TABS */
+pre.cb{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:1.25rem;font-family:var(--mono);font-size:.85rem;line-height:1.7;overflow-x:auto;color:var(--t1);white-space:pre}
+.cb .kw{color:var(--a1)}.cb .cm{color:var(--t3)}.cb .str{color:var(--a2)}
+.tab-shell{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden}
+.tab-strip{display:flex;border-bottom:1px solid var(--border);overflow-x:auto;background:var(--bg3)}
+.tab-btn{padding:1rem 1.5rem;border:none;background:transparent;color:var(--t2);font-family:var(--sans);font-weight:500;font-size:.9rem;cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;transition:all .2s}
+.tab-btn.on{color:var(--t1);border-bottom-color:var(--a1)}
+.tab-btn:hover:not(.on){color:var(--t1);background:var(--bg4)}
+.tab-panel{display:none;padding:2rem}
+.tab-panel.on{display:block}
 
-        /* ARCHITECTURE */
-        .arch-wrap{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center}
-        .flow-diagram{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:2rem;font-family:var(--mono);font-size:.8rem;line-height:2;text-align:center}
-        .fbox{border:1px solid var(--border);border-radius:6px;padding:.5rem 1rem;display:inline-block;color:var(--t1);background:var(--bg3);margin:.25rem 0}
-        .farrow{color:var(--t3);font-size:1rem;margin:.25rem 0}
+/* ARCHITECTURE */
+.arch-wrap{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:center}
+.flow-diagram{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:2rem;font-family:var(--mono);font-size:.8rem;line-height:2;text-align:center}
+.fbox{border:1px solid var(--border);border-radius:6px;padding:.5rem 1rem;display:inline-block;color:var(--t1);background:var(--bg3);margin:.25rem 0}
+.farrow{color:var(--t3);font-size:1rem;margin:.25rem 0}
 
-        /* STEPS */
-        .steps{display:flex;flex-direction:column;gap:1.5rem}
-        .step{display:grid;grid-template-columns:32px 1fr;gap:1rem;align-items:start}
-        .step-n{width:32px;height:32px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.8rem;color:var(--t1);flex-shrink:0}
-        .step-title{font-weight:600;font-size:.95rem;margin-bottom:.25rem;color:var(--t1)}
+/* STEPS */
+.steps{display:flex;flex-direction:column;gap:1.5rem}
+.step{display:grid;grid-template-columns:32px 1fr;gap:1rem;align-items:start}
+.step-n{width:32px;height:32px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.8rem;color:var(--t1);flex-shrink:0}
+.step-title{font-weight:600;font-size:.95rem;margin-bottom:.25rem;color:var(--t1)}
 
-        /* FAQ */
-        .faq{display:flex;flex-direction:column;gap:1rem}
-        .faq-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
-        .faq-q{padding:1.25rem 1.5rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:500;font-size:.95rem;user-select:none;transition:background .2s}
-        .faq-q:hover{background:var(--bg3)}
-        .faq-chevron{color:var(--t3);font-size:.8rem;transition:transform .3s ease}
-        .faq-item.open .faq-chevron{transform:rotate(180deg);color:var(--t1)}
-        .faq-a{display:none;padding:0 1.5rem 1.25rem;color:var(--t2);font-size:.95rem;line-height:1.7}
-        .faq-item.open .faq-a{display:block}
+/* FAQ */
+.faq{display:flex;flex-direction:column;gap:1rem}
+.faq-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.faq-q{padding:1.25rem 1.5rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-weight:500;font-size:.95rem;user-select:none;transition:background .2s}
+.faq-q:hover{background:var(--bg3)}
+.faq-chevron{color:var(--t3);font-size:.8rem;transition:transform .3s ease}
+.faq-item.open .faq-chevron{transform:rotate(180deg);color:var(--t1)}
+.faq-a{display:none;padding:0 1.5rem 1.25rem;color:var(--t2);font-size:.95rem;line-height:1.7}
+.faq-item.open .faq-a{display:block}
 
-        /* CTA */
-        .cta-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:4rem 2rem;text-align:center}
-        .cta-box h2{font-size:2rem;font-weight:700;margin-bottom:1rem;letter-spacing:-0.02em}
-        .cta-box p{color:var(--t2);margin-bottom:2rem;font-size:1.05rem}
-        .cta-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+/* CTA */
+.cta-box{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:4rem 2rem;text-align:center}
+.cta-box h2{font-size:2rem;font-weight:700;margin-bottom:1rem;letter-spacing:-0.02em}
+.cta-box p{color:var(--t2);margin-bottom:2rem;font-size:1.05rem}
+.cta-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
 
-        /* FOOTER */
-        footer{background:var(--bg);border-top:1px solid var(--border);padding:4rem 2rem 2rem}
-        .footer-grid{max-width:1140px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:3rem;margin-bottom:3rem}
-        .footer-brand{font-family:var(--sans);font-weight:700;font-size:1.05rem;display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;letter-spacing:-0.02em}
-        .footer-about{color:var(--t2);font-size:.9rem;line-height:1.7;max-width:300px}
-        .footer-col-title{font-weight:600;font-size:.9rem;margin-bottom:1.25rem;color:var(--t1)}
-        .footer-links{list-style:none;display:flex;flex-direction:column;gap:.75rem}
-        .footer-links a{color:var(--t2);font-size:.9rem;transition:color .2s}.footer-links a:hover{color:var(--t1)}
-        .footer-bottom{max-width:1140px;margin:0 auto;padding-top:2rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--t3)}
+/* FOOTER */
+footer{background:var(--bg);border-top:1px solid var(--border);padding:4rem 2rem 2rem}
+.footer-grid{max-width:1140px;margin:0 auto;display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:3rem;margin-bottom:3rem}
+.footer-brand{font-family:var(--sans);font-weight:700;font-size:1.05rem;display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;letter-spacing:-0.02em}
+.footer-about{color:var(--t2);font-size:.9rem;line-height:1.7;max-width:300px}
+.footer-col-title{font-weight:600;font-size:.9rem;margin-bottom:1.25rem;color:var(--t1)}
+.footer-links{list-style:none;display:flex;flex-direction:column;gap:.75rem}
+.footer-links a{color:var(--t2);font-size:.9rem;transition:color .2s}.footer-links a:hover{color:var(--t1)}
+.footer-bottom{max-width:1140px;margin:0 auto;padding-top:2rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:.85rem;color:var(--t3)}
 
-        @media(max-width:1024px){
-            .hero-inner,.arch-wrap,.grid-2{grid-template-columns:1fr}
-            .terminal{display:none}
-            .nav-links{display:none}
-            .stats-grid{grid-template-columns:repeat(4,1fr)}
-            .compare-tbl {display: block; overflow-x: auto;}
-        }
-        @media(max-width:768px){
-            .grid-3,.grid-4{grid-template-columns:repeat(2,1fr)}
-            .footer-grid{grid-template-columns:1fr 1fr}
-        }
-        @media(max-width:480px){
-            .stats-grid{grid-template-columns:repeat(2,1fr)}
-            .grid-3,.grid-4{grid-template-columns:1fr}
-            .footer-grid{grid-template-columns:1fr}
-            .footer-bottom{flex-direction:column;gap:1rem;text-align:center}
-        }
-    </style>
+@media(max-width:1024px){
+  .hero-inner,.arch-wrap,.grid-2{grid-template-columns:1fr}
+  .terminal{display:none}
+  .nav-links{display:none}
+  .stats-grid{grid-template-columns:repeat(4,1fr)}
+  .compare-tbl {display: block; overflow-x: auto;}
+}
+@media(max-width:768px){
+  .grid-3,.grid-4{grid-template-columns:repeat(2,1fr)}
+  .footer-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .grid-3,.grid-4{grid-template-columns:1fr}
+  .footer-grid{grid-template-columns:1fr}
+  .footer-bottom{flex-direction:column;gap:1rem;text-align:center}
+}
+</style>
 </head>
 <body>
 
 <nav>
-    <a class="nav-logo" href="#home">
-        <div class="logo-box">BZ</div>
-        BZOD
+  <a class="nav-logo" href="#home">
+    <div class="logo-box">BZ</div>
+    BZOD
+  </a>
+  <ul class="nav-links">
+    <li><a href="#features"><i data-lucide="sparkles"></i> Features</a></li>
+    <li><a href="#architecture"><i data-lucide="layers"></i> Architecture</a></li>
+    <li><a href="#databases"><i data-lucide="database"></i> Databases</a></li>
+    <li><a href="#api"><i data-lucide="terminal"></i> API</a></li>
+    <li><a href="#cli"><i data-lucide="terminal-square"></i> CLI</a></li>
+    <li><a href="#compare"><i data-lucide="git-compare"></i> Compare</a></li>
+  </ul>
+  <div class="nav-right">
+    <a class="btn-sm btn-ghost" href="/login"><i data-lucide="log-in"></i> User Login</a>
+    <a class="btn-sm btn-ghost" href="/admin"><i data-lucide="shield"></i> Admin Panel</a>
+    <a class="btn-sm btn-ghost" href="https://github.com/thakares/nx9-url-shortener" target="_blank">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.02c3.18-.35 6.5-1.5 6.5-7a4.6 4.6 0 0 0-1.39-3.23 4.2 4.2 0 0 0-.1-3.2s-1.1-.35-3.5 1.25a11.39 11.39 0 0 0-7 0C6.2 2.75 5 3.1 5 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 3.5 9.5c0 5.5 3.32 6.65 6.5 7-.33.26-.6.7-.7 1.35-.62.27-2.2.8-3.2-1.35-.1-.2-.3-.3-.5-.3-.2 0-.3.1-.1.3 1.1 2.3 3.1 2.5 3.8 2.5.1 1.2.2 2.6.2 3.1"/><path d="M9 20c-1.5.5-3 0-3-2"/></svg>
+      GitHub
     </a>
-    <ul class="nav-links">
-        <li><a href="#features"><i data-lucide="sparkles"></i> Features</a></li>
-        <li><a href="#architecture"><i data-lucide="layers"></i> Architecture</a></li>
-        <li><a href="#databases"><i data-lucide="database"></i> Databases</a></li>
-        <li><a href="#api"><i data-lucide="terminal"></i> API</a></li>
-        <li><a href="#cli"><i data-lucide="terminal-square"></i> CLI</a></li>
-        <li><a href="#compare"><i data-lucide="git-compare"></i> Compare</a></li>
-    </ul>
-    <div class="nav-right">
-        <a class="btn-sm btn-ghost" href="/login"><i data-lucide="log-in"></i> User Login</a>
-        <a class="btn-sm btn-ghost" href="/admin"><i data-lucide="shield"></i> Admin Panel</a>
-        <a class="btn-sm btn-ghost" href="https://github.com/thakares/nx9-url-shortener" target="_blank">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.02c3.18-.35 6.5-1.5 6.5-7a4.6 4.6 0 0 0-1.39-3.23 4.2 4.2 0 0 0-.1-3.2s-1.1-.35-3.5 1.25a11.39 11.39 0 0 0-7 0C6.2 2.75 5 3.1 5 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 3.5 9.5c0 5.5 3.32 6.65 6.5 7-.33.26-.6.7-.7 1.35-.62.27-2.2.8-3.2-1.35-.1-.2-.3-.3-.5-.3-.2 0-.3.1-.1.3 1.1 2.3 3.1 2.5 3.8 2.5.1 1.2.2 2.6.2 3.1"/><path d="M9 20c-1.5.5-3 0-3-2"/></svg>
-            GitHub
-        </a>
-        <a class="btn-sm btn-ghost" href="https://codeberg.org/thakares/nx9-url-shortener" target="_blank">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
-            CodeBerg
-        </a>
-        <a class="btn-sm btn-solid" href="#install"><i data-lucide="rocket"></i> Install</a>
-    </div>
+    <a class="btn-sm btn-ghost" href="https://codeberg.org/thakares/nx9-url-shortener" target="_blank">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 3 4 8 5-5 5 15H2L8 3z"/></svg>
+      CodeBerg
+    </a>
+    <a class="btn-sm btn-solid" href="#install"><i data-lucide="rocket"></i> Install</a>
+  </div>
 </nav>
 
 <header class="hero" id="home">
@@ -209,12 +209,28 @@
     <div class="hero-inner">
         <div>
             <div class="hero-badge"><span class="pulse"></span> Production Ready</div>
-            <h1>Control Your URLs<br><span class="hl">Self-Hosted with</span> <span class="hr">Rust</span></h1>
+            <h1>Control Your URLs.<br><span class="hl">Self-Hosted with</span> <span class="hr">Rust</span></h1>
             <p class="hero-desc">BZOD is a complete multi-user URL management platform featuring custom landing pages, analytics, audit logging, and automated disaster recovery. Powered entirely by SQLite.</p>
+            
             <div class="hero-ctas">
                 <a href="#install" class="btn-lg p">Deployment Guide</a>
                 <a href="/login" class="btn-lg o">User Panel</a>
             </div>
+
+           <!-- One-Command Installer -->
+           <div style="margin-top:2.5rem;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem">
+               <div style="font-family:var(--mono);font-size:0.85rem;color:var(--t2);margin-bottom:0.75rem">One-command installer</div>
+               <div style="display:flex;align-items:center;gap:1rem;background:var(--bg3);padding:0.85rem 1.25rem;border-radius:8px;font-family:var(--mono);font-size:0.9rem;color:var(--t1);overflow-x:auto">
+                   <span style="color:var(--a2)">$</span>
+                   <span id="install-cmd" style="flex:1">curl -fsSL https://bzo.in/deploy.sh | sudo bash</span>
+                   <button onclick="copyInstallCommand()" 
+                     style="background:transparent;border:none;color:var(--a1);cursor:pointer;font-size:1.2rem;padding:4px 8px;border-radius:6px;transition:all .2s">
+                     📋
+                   </button>
+               </div>
+              <div id="copy-msg" style="display:none;color:var(--a2);font-size:0.8rem;margin-top:0.5rem;text-align:center">✅ Copied to clipboard!</div>
+            </div>
+          
             <div class="hero-meta">
                 <span class="meta-tag">Rust 2021</span>
                 <span class="meta-tag">Axum</span>
@@ -222,159 +238,172 @@
                 <span class="meta-tag">Docker Ready</span>
             </div>
         </div>
-        <div class="terminal">
-            <div class="t-bar"><span class="dot d-r"></span><span class="dot d-y"></span><span class="dot d-g"></span><span class="t-title">bzod — bash</span></div>
-            <div class="t-body">
-                <span class="tp">$</span> <span class="tc">git clone https://github.com/thakares/nx9-url-shortener bzod</span>
-                <span class="to">Cloning into 'bzod'...</span>
-                <span class="t-spacer"></span>
-                <span class="tp">$</span> <span class="tc">cargo build --release</span>
-                <span class="to">   Compiling bzod v0.5.0</span>
-                <span class="tg">    Finished release [optimized] in 12.58s</span>
-                <span class="t-spacer"></span>
-                <span class="tp">$</span> <span class="tc">./target/release/bzod serve</span>
-                <span class="t-spacer"></span>
-                <span class="to">[INFO]</span> <span class="tc">database=SQLite multi_user=enabled</span>
-                <span class="to">[INFO]</span> <span class="tc">Listening on 0.0.0.0:8654</span>
-                <span class="t-spacer"></span>
-                <span class="tp">$</span> <span class="tc">curl -X POST http://localhost:8654/api/v1/urls \</span>
-                <span class="tc">  -H "Authorization: bzo_TOKEN" \</span>
-                <span class="tc">  -d '{"target_url":"https://example.com","code":"my-link"}'</span>
-                <span class="tg">✅ Created: http://localhost:8654/my-link</span>
-            </div>
-        </div>
+
+        <!-- Terminal remains the same -->
+<div class="terminal">
+      <div class="t-bar"><span class="dot d-r"></span><span class="dot d-y"></span><span class="dot d-g"></span><span class="t-title">bzod ? running</span></div>
+      <div class="t-body"><span class="tp">$</span> <span class="tc">git clone https://github.com/thakares/bzod</span>
+<span class="to">Cloning into 'bzod'...</span>
+
+<span class="tp">$</span> <span class="tc">cargo build --release</span>
+<span class="to">   Compiling bzod v0.5.0</span>
+<span class="tg">    Finished release [optimized] in 12.58s</span>
+
+<span class="tp">$</span> <span class="tc">./target/release/bzod serve</span>
+
+<span class="tg">[INFO]</span> <span class="tk">database</span>=<span class="tv">"SQLite"</span> <span class="tk">multi_user</span>=<span class="tv">enabled</span>
+<span class="tg">[INFO]</span> <span class="tk">audit_logging</span>=<span class="tv">enabled</span> <span class="tk">backup</span>=<span class="tv">supported</span>
+<span class="tg">[INFO]</span> Listening on 0.0.0.0:3000
+
+<span class="tp">$</span> <span class="tc">curl -X POST http://localhost:3000/api/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"secure"}'</span>
+
+<span class="tv">{</span>
+<span class="to">  "id": 1,
+  "username": "admin",
+  "created_at": "2026-06-19T13:17:28Z"</span>
+<span class="tv">}</span>
+
+<span class="tp">$</span> <span class="tc">curl -X POST http://localhost:3000/api/short-urls \
+  -H "Authorization: Bearer TOKEN" \
+  -d '{"target":"https://example.com","slug":"my-link"}'</span>
+<span class="tg">✅ Short URL created: http://localhost:3000/my-link</span></div>
+    </div>
+   
+      
     </div>
 </header>
 
 <div class="stats-band">
-    <div class="stats-grid">
-        <div><span class="stat-n">∞</span><div class="stat-l">Short URLs</div></div>
-        <div><span class="stat-n">QR</span><div class="stat-l">Generation</div></div>
-        <div><span class="stat-n">Realtime</span><div class="stat-l">Analytics</div></div>
-        <div><span class="stat-n">Multi</span><div class="stat-l">User Config</div></div>
-        <div><span class="stat-n">Logs</span><div class="stat-l">Audit Trail</div></div>
-        <div><span class="stat-n">Backup</span><div class="stat-l">& Restore</div></div>
-        <div><span class="stat-n">GPLv3</span><div class="stat-l">Open Source</div></div>
-    </div>
+  <div class="stats-grid">
+    <div><span class="stat-n">?</span><div class="stat-l">Short URLs</div></div>
+    <div><span class="stat-n">QR</span><div class="stat-l">Generation</div></div>
+    <div><span class="stat-n">Realtime</span><div class="stat-l">Analytics</div></div>
+    <div><span class="stat-n">Multi</span><div class="stat-l">User Config</div></div>
+    <div><span class="stat-n">Logs</span><div class="stat-l">Audit Trail</div></div>
+    <div><span class="stat-n">Backup</span><div class="stat-l">& Restore</div></div>
+    <div><span class="stat-n">GPLv3</span><div class="stat-l">Open Source</div></div>
+  </div>
 </div>
 
 <section id="features">
-    <div class="container">
-        <div class="eyebrow">Core Features</div>
-        <h2 class="section-title">Professional URL Management</h2>
-        <p class="section-sub">A highly optimized architecture providing your organization with total ownership of internal and external links, operational data, and analytics.</p>
-        <div class="grid-4" style="margin-bottom:1.5rem">
-            <div class="card"><span class="card-icon">🔗</span><div class="card-title">URL Shortening</div><p class="card-desc">Create memorable URLs. Features include password protection, expirations, and elegant preview cards.</p></div>
-            <div class="card"><span class="card-icon">📄</span><div class="card-title">Landing Pages</div><p class="card-desc">Host structured landing pages with built-in analytics, dynamic QR codes, and integrated domains.</p></div>
-            <div class="card"><span class="card-icon">📊</span><div class="card-title">Analytics</div><p class="card-desc">Accurate visitor tracking encompassing browser metrics, referrers, and seamless CSV exports.</p></div>
-            <div class="card"><span class="card-icon">🛡️</span><div class="card-title">Memory Safe</div><p class="card-desc">Engineered in Rust to fundamentally eliminate memory leaks, null pointers, and thread data races.</p></div>
-        </div>
-    </div>
+<div class="container">
+  <div class="eyebrow">Core Features</div>
+  <h2 class="section-title">Professional URL Management</h2>
+  <p class="section-sub">A highly optimized architecture providing your organization with total ownership of internal and external links, operational data, and analytics.</p>
+  <div class="grid-4" style="margin-bottom:1.5rem">
+    <div class="card"><span class="card-icon">?</span><div class="card-title">URL Shortening</div><p class="card-desc">Create memorable URLs. Features include password protection, expirations, and elegant preview cards.</p></div>
+    <div class="card"><span class="card-icon">?</span><div class="card-title">Landing Pages</div><p class="card-desc">Host structured landing pages with built-in analytics, dynamic QR codes, and integrated domains.</p></div>
+    <div class="card"><span class="card-icon">?</span><div class="card-title">Analytics</div><p class="card-desc">Accurate visitor tracking encompassing browser metrics, referrers, and seamless CSV exports.</p></div>
+    <div class="card"><span class="card-icon">??</span><div class="card-title">Memory Safe</div><p class="card-desc">Engineered in Rust to fundamentally eliminate memory leaks, null pointers, and thread data races.</p></div>
+  </div>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="architecture">
-    <div class="container">
-        <div class="eyebrow">System Architecture</div>
-        <h2 class="section-title">High-Level Data Flow</h2>
-        <p class="section-sub">A tenant-isolated structure pairing the Axum async framework with optimized SQLite database files, segregating content from high-volume analytics.</p>
-        <div class="arch-wrap">
-            <div>
-                <div class="flow-diagram">
-                    <div><span class="fbox">Client Browser</span></div>
-                    <div class="farrow">↓ HTTP/REST</div>
-                    <div><span class="fbox" style="border-color:var(--a1)">Axum Routing Engine</span></div>
-                    <div class="farrow">↓ system.db lookup</div>
-                    <div><span class="fbox">Global Slug Registry</span></div>
-                    <div class="farrow">↓ Resolve Tenant</div>
-                    <div style="display:flex;justify-content:center;gap:1.5rem;margin:1rem 0">
-                        <div><div style="font-size:0.75rem;margin-bottom:0.25rem">URL Data</div><span class="fbox">content.db</span></div>
-                        <div><div style="font-size:0.75rem;margin-bottom:0.25rem">Tracking</div><span class="fbox">analytics.db</span></div>
-                    </div>
-                    <div class="farrow">↓ Write Event</div>
-                    <div><span class="fbox" style="border-color:var(--a3)">Audit Log (system.db)</span></div>
-                    <div class="farrow">↓</div>
-                    <div><span class="fbox">Response / Redirect</span></div>
-                </div>
-            </div>
-            <div>
-                <div class="steps">
-                    <div class="step">
-                        <div class="step-n">1</div>
-                        <div><div class="step-title">Web Layer (Axum)</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">High-performance async HTTP server handling routing, middleware validation, CSRF protection, and structured error responses.</p></div>
-                    </div>
-                    <div class="step">
-                        <div class="step-n">2</div>
-                        <div><div class="step-title">Global Namespace</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">All public URLs are tracked in the <code>system.db -> global_slugs</code> table to prevent collisions across different isolated users.</p></div>
-                    </div>
-                    <div class="step">
-                        <div class="step-n">3</div>
-                        <div><div class="step-title">Analytics Pipeline</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Lightweight, thread-safe tracking workers capture device profiles and traffic origins into tenant databases without degrading redirect speeds.</p></div>
-                    </div>
-                </div>
-            </div>
+<div class="container">
+  <div class="eyebrow">System Architecture</div>
+  <h2 class="section-title">High-Level Data Flow</h2>
+  <p class="section-sub">A tenant-isolated structure pairing the Axum async framework with optimized SQLite database files, segregating content from high-volume analytics.</p>
+  <div class="arch-wrap">
+    <div>
+      <div class="flow-diagram">
+        <div><span class="fbox">Client Browser</span></div>
+        <div class="farrow">? HTTP/REST</div>
+        <div><span class="fbox" style="border-color:var(--a1)">Axum Routing Engine</span></div>
+        <div class="farrow">? system.db lookup</div>
+        <div><span class="fbox">Global Slug Registry</span></div>
+        <div class="farrow">? Resolve Tenant</div>
+        <div style="display:flex;justify-content:center;gap:1.5rem;margin:1rem 0">
+          <div><div style="font-size:0.75rem;margin-bottom:0.25rem">URL Data</div><span class="fbox">content.db</span></div>
+          <div><div style="font-size:0.75rem;margin-bottom:0.25rem">Tracking</div><span class="fbox">analytics.db</span></div>
         </div>
+        <div class="farrow">? Write Event</div>
+        <div><span class="fbox" style="border-color:var(--a3)">Audit Log (system.db)</span></div>
+        <div class="farrow">?</div>
+        <div><span class="fbox">Response / Redirect</span></div>
+      </div>
     </div>
+    <div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div><div class="step-title">Web Layer (Axum)</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">High-performance async HTTP server handling routing, middleware validation, CSRF protection, and structured error responses.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div><div class="step-title">Global Namespace</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">All public URLs are tracked in the <code>system.db -> global_slugs</code> table to prevent collisions across different isolated users.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-n">3</div>
+          <div><div class="step-title">Analytics Pipeline</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Lightweight, thread-safe tracking workers capture device profiles and traffic origins into tenant databases without degrading redirect speeds.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="databases">
-    <div class="container">
-        <div class="eyebrow">Storage Architecture</div>
-        <h2 class="section-title">Strict Tenant Isolation</h2>
-        <p class="section-sub">Instead of a monolithic database, BZOD securely segments administrative data from tenant analytics and content via dedicated SQLite files operating in WAL mode.</p>
-        <div class="arch-wrap">
-            <div>
-                <div class="file-tree">
-                    data/<br>
-                    ├── <span class="dir">admin/</span> <span class="comment"># Global Metadata</span><br>
-                    │   ├── <span class="file">admin.db</span> <span class="comment"># Internal management</span><br>
-                    │   ├── <span class="file">system.db</span> <span class="comment"># Global slugs & audit logs</span><br>
-                    │   └── <span class="file">users.db</span> <span class="comment"># Auth, sessions, quotas</span><br>
-                    │<br>
-                    └── <span class="dir">users/</span> <span class="comment"># Tenant Isolation</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="dir">1/</span> <span class="comment"># User 1</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;│   ├── <span class="file">analytics.db</span> <span class="comment"># Isolated metrics</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;│   └── <span class="file">content.db</span> <span class="comment"># Isolated URLs/Pages</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;│<br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="dir">2/</span> <span class="comment"># User 2</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">analytics.db</span><br>
-                    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">content.db</span>
-                </div>
-            </div>
-            <div>
-                <div class="steps">
-                    <div class="step">
-                        <div class="step-n">1</div>
-                        <div><div class="step-title">No Cross-Tenant Bleed</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">By assigning physical <code>content.db</code> and <code>analytics.db</code> files to each user, cross-user data leakage is eliminated at the file-system level.</p></div>
-                    </div>
-                    <div class="step">
-                        <div class="step-n">2</div>
-                        <div><div class="step-title">Identity & Quotas</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">The centralized <code>users.db</code> acts as the primary identity database, securely tracking authentication, API tokens, and enforcing resource quotas.</p></div>
-                    </div>
-                    <div class="step">
-                        <div class="step-n">3</div>
-                        <div><div class="step-title">WAL Concurrency</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Write-Ahead Logging provides robust concurrency and zero-contention crash recovery without the operational overhead of PostgreSQL.</p></div>
-                    </div>
-                </div>
-            </div>
-        </div>
+<div class="container">
+  <div class="eyebrow">Storage Architecture</div>
+  <h2 class="section-title">Strict Tenant Isolation</h2>
+  <p class="section-sub">Instead of a monolithic database, BZOD securely segments administrative data from tenant analytics and content via dedicated SQLite files operating in WAL mode.</p>
+  <div class="arch-wrap">
+    <div>
+      <div class="file-tree">
+        data/<br>
+        ??? <span class="dir">admin/</span> <span class="comment"># Global Metadata</span><br>
+        ?   ??? <span class="file">admin.db</span> <span class="comment"># Internal management</span><br>
+        ?   ??? <span class="file">system.db</span> <span class="comment"># Global slugs & audit logs</span><br>
+        ?   ??? <span class="file">users.db</span> <span class="comment"># Auth, sessions, quotas</span><br>
+        ?<br>
+        ??? <span class="dir">users/</span> <span class="comment"># Tenant Isolation</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;??? <span class="dir">1/</span> <span class="comment"># User 1</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;?   ??? <span class="file">analytics.db</span> <span class="comment"># Isolated metrics</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;?   ??? <span class="file">content.db</span> <span class="comment"># Isolated URLs/Pages</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;?<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;??? <span class="dir">2/</span> <span class="comment"># User 2</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;??? <span class="file">analytics.db</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;??? <span class="file">content.db</span>
+      </div>
     </div>
+    <div>
+      <div class="steps">
+        <div class="step">
+          <div class="step-n">1</div>
+          <div><div class="step-title">No Cross-Tenant Bleed</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">By assigning physical <code>content.db</code> and <code>analytics.db</code> files to each user, cross-user data leakage is eliminated at the file-system level.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-n">2</div>
+          <div><div class="step-title">Identity & Quotas</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">The centralized <code>users.db</code> acts as the primary identity database, securely tracking authentication, API tokens, and enforcing resource quotas.</p></div>
+        </div>
+        <div class="step">
+          <div class="step-n">3</div>
+          <div><div class="step-title">WAL Concurrency</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Write-Ahead Logging provides robust concurrency and zero-contention crash recovery without the operational overhead of PostgreSQL.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="api">
-    <div class="container">
-        <div class="eyebrow">REST API</div>
-        <h2 class="section-title">Programmatic Access</h2>
-        <p class="section-sub">Integrate BZOD with CI/CD pipelines, home automation, or custom applications using secure, token-based authentication.</p>
-        <div class="grid-2">
-            <div>
-                <h3 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--t1)">Create a Short URL</h3>
-                <pre class="cb"><span class="kw">POST</span> /api/v1/urls
+<div class="container">
+  <div class="eyebrow">REST API</div>
+  <h2 class="section-title">Programmatic Access</h2>
+  <p class="section-sub">Integrate BZOD with CI/CD pipelines, home automation, or custom applications using secure, token-based authentication.</p>
+  <div class="grid-2">
+    <div>
+      <h3 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--t1)">Create a Short URL</h3>
+      <pre class="cb"><span class="kw">POST</span> /api/v1/urls
 Authorization: Bearer bzo_xxxxxxxxxxxx
 
 {
@@ -382,10 +411,10 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
   <span class="str">"target_url"</span>: <span class="str">"https://www.rust-lang.org"</span>,
   <span class="str">"description"</span>: <span class="str">"Rust Language"</span>
 }</pre>
-            </div>
-            <div>
-                <h3 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--t1)">Fetch Global Statistics</h3>
-                <pre class="cb"><span class="kw">GET</span> /api/v1/stats
+    </div>
+    <div>
+      <h3 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:var(--t1)">Fetch Global Statistics</h3>
+      <pre class="cb"><span class="kw">GET</span> /api/v1/stats
 Authorization: Bearer bzo_xxxxxxxxxxxx
 
 {
@@ -396,25 +425,25 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
     <span class="str">"total_pages"</span>: 12
   }
 }</pre>
-            </div>
-        </div>
     </div>
+  </div>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="cli">
-    <div class="container">
-        <div class="eyebrow">Operations & CLI</div>
-        <h2 class="section-title">Built for Systems Administrators</h2>
-        <p class="section-sub">Full control via a comprehensive command-line interface. Handle migrations, disaster recovery, and user management directly from the terminal.</p>
-        <div class="tab-shell">
-            <div class="tab-strip">
-                <button class="tab-btn on" onclick="switchTab(event, 'cli-backup')">Backup & Restore</button>
-                <button class="tab-btn" onclick="switchTab(event, 'cli-users')">User Management</button>
-                <button class="tab-btn" onclick="switchTab(event, 'cli-diag')">Diagnostics</button>
-            </div>
-            <div id="cli-backup" class="tab-panel on">
+<div class="container">
+  <div class="eyebrow">Operations & CLI</div>
+  <h2 class="section-title">Built for Systems Administrators</h2>
+  <p class="section-sub">Full control via a comprehensive command-line interface. Handle migrations, disaster recovery, and user management directly from the terminal.</p>
+  <div class="tab-shell">
+    <div class="tab-strip">
+      <button class="tab-btn on" onclick="switchTab(event, 'cli-backup')">Backup & Restore</button>
+      <button class="tab-btn" onclick="switchTab(event, 'cli-users')">User Management</button>
+      <button class="tab-btn" onclick="switchTab(event, 'cli-diag')">Diagnostics</button>
+    </div>
+    <div id="cli-backup" class="tab-panel on">
       <pre class="cb"><span class="cm"># Create a full compressed snapshot of the entire platform</span>
 <span class="kw">bzod</span> backup
 
@@ -423,8 +452,8 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 
 <span class="cm"># Backup and export only a single tenant's data</span>
 <span class="kw">bzod</span> backup-user 42</pre>
-            </div>
-            <div id="cli-users" class="tab-panel">
+    </div>
+    <div id="cli-users" class="tab-panel">
       <pre class="cb"><span class="cm"># Bootstrap a new administrator</span>
 <span class="kw">bzod</span> create-admin admin
 
@@ -433,8 +462,8 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 
 <span class="cm"># Immediately invalidate user sessions and prevent login</span>
 <span class="kw">bzod</span> disable-user alice</pre>
-            </div>
-            <div id="cli-diag" class="tab-panel">
+    </div>
+    <div id="cli-diag" class="tab-panel">
       <pre class="cb"><span class="cm"># Run SQLite integrity checks, WAL validation, and storage checks</span>
 <span class="kw">bzod</span> doctor
 
@@ -443,97 +472,97 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 
 <span class="cm"># Apply schema upgrades safely</span>
 <span class="kw">bzod</span> migrate</pre>
-            </div>
-        </div>
     </div>
+  </div>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="compare">
-    <div class="container">
-        <div class="eyebrow">Market Comparison</div>
-        <h2 class="section-title">How BZOD Compares</h2>
-        <p class="section-sub">Unlike standard shorteners, BZOD provides a comprehensive suite of features—from landing pages to multi-tenant user isolation—in a single, compiled binary.</p>
-
-        <table class="compare-tbl">
-            <thead>
-            <tr>
-                <th>Feature</th>
-                <th>BZOD v0.5.0</th>
-                <th>Shlink</th>
-                <th>YOURLS</th>
-                <th>Chhoto URL</th>
-            </tr>
-            </thead>
-            <tbody>
-            <tr>
-                <td>Language</td>
-                <td>Rust 🦀</td>
-                <td>PHP</td>
-                <td>PHP</td>
-                <td>Rust</td>
-            </tr>
-            <tr>
-                <td>Deployment</td>
-                <td><span class="check-yes">✅ Single Binary</span></td>
-                <td><span class="check-no">❌ Requires PHP/Web Server</span></td>
-                <td><span class="check-no">❌ Requires PHP/Web Server</span></td>
-                <td><span class="check-yes">✅ Single Binary</span></td>
-            </tr>
-            <tr>
-                <td>External DB Required</td>
-                <td><span class="check-yes">✅ None (SQLite)</span></td>
-                <td><span class="check-partial">⚠️ Usually (PostgreSQL/Maria)</span></td>
-                <td><span class="check-partial">⚠️ Usually (MySQL)</span></td>
-                <td><span class="check-yes">✅ None</span></td>
-            </tr>
-            <tr>
-                <td>Landing Pages</td>
-                <td><span class="check-yes">✅ Native</span></td>
-                <td><span class="check-no">❌ No</span></td>
-                <td><span class="check-partial">⚠️ Via Plugin</span></td>
-                <td><span class="check-no">❌ No</span></td>
-            </tr>
-            <tr>
-                <td>QR + Analytics</td>
-                <td><span class="check-yes">✅ Native</span></td>
-                <td><span class="check-partial">⚠️ Partial</span></td>
-                <td><span class="check-partial">⚠️ Via Plugin</span></td>
-                <td><span class="check-partial">⚠️ Partial</span></td>
-            </tr>
-            <tr>
-                <td>Multi-User / Quotas</td>
-                <td><span class="check-yes">✅ Native (Isolated)</span></td>
-                <td><span class="check-partial">⚠️ Partial</span></td>
-                <td><span class="check-partial">⚠️ Via Plugin</span></td>
-                <td><span class="check-no">❌ No</span></td>
-            </tr>
-            <tr>
-                <td>Backup & Recovery</td>
-                <td><span class="check-yes">✅ Built-in CLI & Web UI</span></td>
-                <td><span class="check-no">❌ External Tools Needed</span></td>
-                <td><span class="check-no">❌ External Tools Needed</span></td>
-                <td><span class="check-no">❌ No</span></td>
-            </tr>
-            </tbody>
-        </table>
-    </div>
+<div class="container">
+  <div class="eyebrow">Market Comparison</div>
+  <h2 class="section-title">How BZOD Compares</h2>
+  <p class="section-sub">Unlike standard shorteners, BZOD provides a comprehensive suite of features?from landing pages to multi-tenant user isolation?in a single, compiled binary.</p>
+  
+  <table class="compare-tbl">
+    <thead>
+      <tr>
+        <th>Feature</th>
+        <th>BZOD v0.5.0</th>
+        <th>Shlink</th>
+        <th>YOURLS</th>
+        <th>Chhoto URL</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Language</td>
+        <td>Rust ?</td>
+        <td>PHP</td>
+        <td>PHP</td>
+        <td>Rust</td>
+      </tr>
+      <tr>
+        <td>Deployment</td>
+        <td><span class="check-yes">? Single Binary</span></td>
+        <td><span class="check-no">? Requires PHP/Web Server</span></td>
+        <td><span class="check-no">? Requires PHP/Web Server</span></td>
+        <td><span class="check-yes">? Single Binary</span></td>
+      </tr>
+      <tr>
+        <td>External DB Required</td>
+        <td><span class="check-yes">? None (SQLite)</span></td>
+        <td><span class="check-partial">?? Usually (PostgreSQL/Maria)</span></td>
+        <td><span class="check-partial">?? Usually (MySQL)</span></td>
+        <td><span class="check-yes">? None</span></td>
+      </tr>
+      <tr>
+        <td>Landing Pages</td>
+        <td><span class="check-yes">? Native</span></td>
+        <td><span class="check-no">? No</span></td>
+        <td><span class="check-partial">?? Via Plugin</span></td>
+        <td><span class="check-no">? No</span></td>
+      </tr>
+      <tr>
+        <td>QR + Analytics</td>
+        <td><span class="check-yes">? Native</span></td>
+        <td><span class="check-partial">?? Partial</span></td>
+        <td><span class="check-partial">?? Via Plugin</span></td>
+        <td><span class="check-partial">?? Partial</span></td>
+      </tr>
+      <tr>
+        <td>Multi-User / Quotas</td>
+        <td><span class="check-yes">? Native (Isolated)</span></td>
+        <td><span class="check-partial">?? Partial</span></td>
+        <td><span class="check-partial">?? Via Plugin</span></td>
+        <td><span class="check-no">? No</span></td>
+      </tr>
+      <tr>
+        <td>Backup & Recovery</td>
+        <td><span class="check-yes">? Built-in CLI & Web UI</span></td>
+        <td><span class="check-no">? External Tools Needed</span></td>
+        <td><span class="check-no">? External Tools Needed</span></td>
+        <td><span class="check-no">? No</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 </section>
 
 <div class="divider"></div>
 
 <section id="install">
-    <div class="container">
-        <div class="eyebrow">Deployment</div>
-        <h2 class="section-title">Get Started in Minutes</h2>
-        <p class="section-sub">Deploy via Docker for containerized environments, or compile directly from source for bare-metal performance.</p>
-        <div class="tab-shell">
-            <div class="tab-strip">
-                <button class="tab-btn on" onclick="switchTab(event, 'install-docker')">Docker Compose</button>
-                <button class="tab-btn" onclick="switchTab(event, 'install-native')">Native Binary</button>
-            </div>
-            <div id="install-docker" class="tab-panel on">
+<div class="container">
+  <div class="eyebrow">Deployment</div>
+  <h2 class="section-title">Get Started in Minutes</h2>
+  <p class="section-sub">Deploy via Docker for containerized environments, or compile directly from source for bare-metal performance.</p>
+  <div class="tab-shell">
+    <div class="tab-strip">
+      <button class="tab-btn on" onclick="switchTab(event, 'install-docker')">Docker Compose</button>
+      <button class="tab-btn" onclick="switchTab(event, 'install-native')">Native Binary</button>
+    </div>
+    <div id="install-docker" class="tab-panel on">
       <pre class="cb"><span class="cm"># Clone the official repository</span>
 <span class="kw">git</span> clone https://github.com/thakares/nx9-url-shortener bzod
 <span class="kw">cd</span> bzod
@@ -543,8 +572,8 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 
 <span class="cm"># Initialize base admin</span>
 <span class="kw">docker exec</span> -it bzod bzod create-admin</pre>
-            </div>
-            <div id="install-native" class="tab-panel">
+    </div>
+    <div id="install-native" class="tab-panel">
       <pre class="cb"><span class="cm"># Clone the official repository</span>
 <span class="kw">git</span> clone https://github.com/thakares/nx9-url-shortener bzod
 <span class="kw">cd</span> bzod
@@ -557,64 +586,75 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 
 <span class="cm"># Serve application</span>
 ./target/release/bzod serve</pre>
-            </div>
-        </div>
     </div>
+  </div>
+</div>
 </section>
 
 <footer>
-    <div class="footer-grid">
-        <div>
-            <div class="footer-brand">
-                <div class="logo-box" style="width:28px;height:28px;font-size:.75rem">BZ</div>
-                BZOD
-            </div>
-            <p class="footer-about">A streamlined, self-hosted multi-user URL management platform written in Rust. Retain absolute sovereignty over your digital links.</p>
-        </div>
-        <div>
-            <div class="footer-col-title">Platform</div>
-            <ul class="footer-links">
-                <li><a href="#features">Features Overview</a></li>
-                <li><a href="#architecture">Architecture</a></li>
-                <li><a href="#install">Installation</a></li>
-            </ul>
-        </div>
-        <div>
-            <div class="footer-col-title">Access</div>
-            <ul class="footer-links">
-                <li><a href="/login">User Login</a></li>
-                <li><a href="/admin">Admin Panel</a></li>
-                <li><a href="#api">API Documentation</a></li>
-            </ul>
-        </div>
-        <div>
-            <div class="footer-col-title">Repositories</div>
-            <ul class="footer-links">
-                <li><a href="https://github.com/thakares/nx9-url-shortener" target="_blank">GitHub</a></li>
-                <li><a href="https://codeberg.org/thakares/nx9-url-shortener" target="_blank">CodeBerg</a></li>
-            </ul>
-        </div>
+  <div class="footer-grid">
+    <div>
+      <div class="footer-brand">
+        <div class="logo-box" style="width:28px;height:28px;font-size:.75rem">BZ</div>
+        BZOD
+      </div>
+      <p class="footer-about">A streamlined, self-hosted multi-user URL management platform written in Rust. Retain absolute sovereignty over your digital links.</p>
     </div>
-    <div class="footer-bottom">
-        <span>© 2026 BZOD. Dual licensed under GPLv3 and Commercial License.</span>
+    <div>
+      <div class="footer-col-title">Platform</div>
+      <ul class="footer-links">
+        <li><a href="#features">Features Overview</a></li>
+        <li><a href="#architecture">Architecture</a></li>
+        <li><a href="#install">Installation</a></li>
+      </ul>
     </div>
+    <div>
+      <div class="footer-col-title">Access</div>
+      <ul class="footer-links">
+        <li><a href="/login">User Login</a></li>
+        <li><a href="/admin">Admin Panel</a></li>
+        <li><a href="#api">API Documentation</a></li>
+      </ul>
+    </div>
+    <div>
+      <div class="footer-col-title">Repositories</div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/thakares/nx9-url-shortener" target="_blank">GitHub</a></li>
+        <li><a href="https://codeberg.org/thakares/nx9-url-shortener" target="_blank">CodeBerg</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>� 2026 BZOD. Dual licensed under GPLv3 and Commercial License.</span>
+  </div>
 </footer>
 
 <script src="https://unpkg.com/lucide@latest"></script>
 <script>
-    lucide.createIcons();
+  lucide.createIcons();
 
-    function switchTab(e, tabName) {
-        const shell = e.currentTarget.closest('.tab-shell');
-        const tabs = shell.querySelectorAll('.tab-panel');
-        const btns = shell.querySelectorAll('.tab-btn');
+  function switchTab(e, tabName) {
+    const shell = e.currentTarget.closest('.tab-shell');
+    const tabs = shell.querySelectorAll('.tab-panel');
+    const btns = shell.querySelectorAll('.tab-btn');
+    
+    tabs.forEach(tab => tab.classList.remove('on'));
+    btns.forEach(btn => btn.classList.remove('on'));
+    
+    document.getElementById(tabName).classList.add('on');
+    e.currentTarget.classList.add('on');
+  }
 
-        tabs.forEach(tab => tab.classList.remove('on'));
-        btns.forEach(btn => btn.classList.remove('on'));
+  /* copy & paste installation link */
+  function copyInstallCommand() {
+    const cmd = "curl -fsSL https://bzo.in/deploy.sh | sudo bash";
+    navigator.clipboard.writeText(cmd).then(() => {
+      const msg = document.getElementById('copy-msg');
+      msg.style.display = 'block';
+      setTimeout(() => msg.style.display = 'none', 2000);
+    });
+  }
 
-        document.getElementById(tabName).classList.add('on');
-        e.currentTarget.classList.add('on');
-    }
 </script>
 </body>
 </html>
