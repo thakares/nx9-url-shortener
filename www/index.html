@@ -122,6 +122,20 @@ pre.cb{background:var(--bg2);border:1px solid var(--border);border-radius:var(--
 .flow-diagram{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:2rem;font-family:var(--mono);font-size:.8rem;line-height:2;text-align:center}
 .fbox{border:1px solid var(--border);border-radius:6px;padding:.5rem 1rem;display:inline-block;color:var(--t1);background:var(--bg3);margin:.25rem 0}
 .farrow{color:var(--t3);font-size:1rem;margin:.25rem 0}
+/* ARCH */
+.arch-wrap{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start}
+.flow-diagram{background:var(--bg2);border:1px solid var(--border);border-radius:var(--rl);padding:1.4rem;font-family:var(--mono);font-size:.76rem;line-height:2;text-align:center}
+.fbox{border:1px solid var(--border);border-radius:5px;padding:.3rem .7rem;display:inline-block;color:var(--t1);background:var(--bg);margin:.1rem 0;font-size:.72rem}
+.fbox.a1{border-color:var(--a1);color:var(--a1)}.fbox.a2{border-color:var(--a2);color:var(--a2)}.fbox.ar{border-color:var(--rust);color:var(--rust)}.fbox.a4{border-color:var(--a4);color:var(--a4)}
+.farrow{color:var(--border2);font-size:.85rem}
+  
+/* COMPONENT LIST */
+.comp-list{display:flex;flex-direction:column;gap:.8rem}
+.comp{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:.9rem 1.1rem;display:flex;gap:.85rem;align-items:flex-start;transition:border-color .2s}
+.comp:hover{border-color:var(--border2)}
+.comp-num{font-family:var(--mono);font-size:.7rem;color:var(--a1);background:rgba(88,166,255,.09);border:1px solid rgba(88,166,255,.28);border-radius:4px;padding:.12rem .45rem;flex-shrink:0;margin-top:2px}
+.comp-title{font-weight:600;font-size:.875rem;margin-bottom:.2rem}
+.comp-desc{color:var(--t2);font-size:.8rem;line-height:1.55}
 
 /* STEPS */
 .steps{display:flex;flex-direction:column;gap:1.5rem}
@@ -209,7 +223,7 @@ footer{background:var(--bg);border-top:1px solid var(--border);padding:4rem 2rem
     <div class="hero-inner">
         <div>
             <div class="hero-badge"><span class="pulse"></span> Production Ready</div>
-            <h1>Control Your URLs.<br><span class="hl">Self-Hosted with</span> <span class="hr">Rust</span></h1>
+            <h1>🕹️ Control Your URLs.<span class="hl">&nbsp;Self-Hosted with</span> <span class="hr">🦀 Rust</span></h1>
             <p class="hero-desc">BZOD is a complete multi-user URL management platform featuring custom landing pages, analytics, audit logging, and automated disaster recovery. Powered entirely by SQLite.</p>
             
             <div class="hero-ctas">
@@ -241,7 +255,7 @@ footer{background:var(--bg);border-top:1px solid var(--border);padding:4rem 2rem
 
         <!-- Terminal remains the same -->
 <div class="terminal">
-      <div class="t-bar"><span class="dot d-r"></span><span class="dot d-y"></span><span class="dot d-g"></span><span class="t-title">bzod ? running</span></div>
+      <div class="t-bar"><span class="dot d-r"></span><span class="dot d-y"></span><span class="dot d-g"></span><span class="t-title">bzod >_ running</span></div>
       <div class="t-body"><span class="tp">$</span> <span class="tc">git clone https://github.com/thakares/bzod</span>
 <span class="to">Cloning into 'bzod'...</span>
 
@@ -268,137 +282,134 @@ footer{background:var(--bg);border-top:1px solid var(--border);padding:4rem 2rem
 <span class="tp">$</span> <span class="tc">curl -X POST http://localhost:3000/api/short-urls \
   -H "Authorization: Bearer TOKEN" \
   -d '{"target":"https://example.com","slug":"my-link"}'</span>
-<span class="tg">✅ Short URL created: http://localhost:3000/my-link</span></div>
-    </div>
-   
-      
+<span class="tg">? Short URL created: http://localhost:3000/my-link</span></div>
+    </div>      
     </div>
 </header>
 
 <div class="stats-band">
   <div class="stats-grid">
-    <div><span class="stat-n">?</span><div class="stat-l">Short URLs</div></div>
+    <div><span class="stat-n">∞</span><div class="stat-l">Short URLs</div></div>
     <div><span class="stat-n">QR</span><div class="stat-l">Generation</div></div>
     <div><span class="stat-n">Realtime</span><div class="stat-l">Analytics</div></div>
     <div><span class="stat-n">Multi</span><div class="stat-l">User Config</div></div>
     <div><span class="stat-n">Logs</span><div class="stat-l">Audit Trail</div></div>
     <div><span class="stat-n">Backup</span><div class="stat-l">& Restore</div></div>
-    <div><span class="stat-n">GPLv3</span><div class="stat-l">Open Source</div></div>
+    <div><span class="stat-n">FOSS</span><div class="stat-l">MIT/Apache 2.0 License</div></div>
   </div>
 </div>
 
 <section id="features">
 <div class="container">
   <div class="eyebrow">Core Features</div>
-  <h2 class="section-title">Professional URL Management</h2>
-  <p class="section-sub">A highly optimized architecture providing your organization with total ownership of internal and external links, operational data, and analytics.</p>
-  <div class="grid-4" style="margin-bottom:1.5rem">
-    <div class="card"><span class="card-icon">?</span><div class="card-title">URL Shortening</div><p class="card-desc">Create memorable URLs. Features include password protection, expirations, and elegant preview cards.</p></div>
-    <div class="card"><span class="card-icon">?</span><div class="card-title">Landing Pages</div><p class="card-desc">Host structured landing pages with built-in analytics, dynamic QR codes, and integrated domains.</p></div>
-    <div class="card"><span class="card-icon">?</span><div class="card-title">Analytics</div><p class="card-desc">Accurate visitor tracking encompassing browser metrics, referrers, and seamless CSV exports.</p></div>
-    <div class="card"><span class="card-icon">??</span><div class="card-title">Memory Safe</div><p class="card-desc">Engineered in Rust to fundamentally eliminate memory leaks, null pointers, and thread data races.</p></div>
+  <h2 class="section-title">🛠️ Everything for professional URL management</h2>
+  <p class="section-sub">Production-grade platform for organizations requiring complete ownership of their links, analytics, and operational data.</p>
+  <div class="grid-4" style="margin-bottom:1.25rem">
+    <div class="card"><span class="card-icon">🔗</span><div class="card-title">URL Shortening</div><p class="card-desc">Create short, memorable URLs with custom slugs. Password protection, expiration dates, and smart preview pages included.</p><div class="tags"><span class="tag b">Custom Slugs</span><span class="tag g">Protected</span></div></div>
+    <div class="card"><span class="card-icon">📄</span><div class="card-title">Landing Pages</div><p class="card-desc">Host custom landing pages with full analytics tracking. QR code support, custom domains, and rich content editing.</p><div class="tags"><span class="tag b">Hosted</span><span class="tag g">Analytics</span></div></div>
+    <div class="card"><span class="card-icon">📊</span><div class="card-title">Analytics</div><p class="card-desc">Comprehensive visitor tracking with browser detection, referrer analysis, daily/monthly statistics, and CSV/JSON export.</p><div class="tags"><span class="tag r">Real-time</span><span class="tag b">Export</span></div></div>
+    <div class="card"><span class="card-icon">🦀</span><div class="card-title">Memory Safe</div><p class="card-desc">Built with Rust for zero buffer overflows, use-after-free bugs, or null pointer issues. Complete memory safety at compile time.</p><div class="tags"><span class="tag r">Rust 2021</span><span class="tag g">Safe</span></div></div>
+  </div>
+  <div class="grid-4">
+    <div class="card"><span class="card-icon">👥</span><div class="card-title">Multi-User</div><p class="card-desc">Full user management with quotas, API tokens, session management, and tenant isolation. Role-based access control.</p><div class="tags"><span class="tag b">RBAC</span><span class="tag g">Isolated</span></div></div>
+    <div class="card"><span class="card-icon">🔐</span><div class="card-title">Audit Logging</div><p class="card-desc">Complete audit trail of all operations. Moderation tools, security events, and compliance-ready logging for enterprises.</p><div class="tags"><span class="tag b">Compliance</span><span class="tag r">Secure</span></div></div>
+    <div class="card"><span class="card-icon">💾</span><div class="card-title">Backup & Restore</div><p class="card-desc">Disaster recovery workflows with automated backups. One-command restore. No external dependencies required.</p><div class="tags"><span class="tag g">Automated</span><span class="tag b">Recovery</span></div></div>
+    <div class="card"><span class="card-icon">🗄️</span><div class="card-title">SQLite Backend</div><p class="card-desc">Reliable file-based storage with ACID transactions. No PostgreSQL, Redis, or Kubernetes needed. Single binary deployment.</p><div class="tags"><span class="tag b">ACID</span><span class="tag r">SQLite</span></div></div>
   </div>
 </div>
 </section>
 
 <div class="divider"></div>
-
 <section id="architecture">
 <div class="container">
-  <div class="eyebrow">System Architecture</div>
-  <h2 class="section-title">High-Level Data Flow</h2>
-  <p class="section-sub">A tenant-isolated structure pairing the Axum async framework with optimized SQLite database files, segregating content from high-volume analytics.</p>
+  <div class="eyebrow">Architecture</div>
+  <h2 class="section-title">🏗️📦 Modular, scalable design</h2>
+  <p class="section-sub">Tenant-isolated multi-user architecture with separate databases for content and analytics. Built on Axum web framework and SQLite.</p>
   <div class="arch-wrap">
     <div>
       <div class="flow-diagram">
-        <div><span class="fbox">Client Browser</span></div>
-        <div class="farrow">? HTTP/REST</div>
-        <div><span class="fbox" style="border-color:var(--a1)">Axum Routing Engine</span></div>
-        <div class="farrow">? system.db lookup</div>
-        <div><span class="fbox">Global Slug Registry</span></div>
-        <div class="farrow">? Resolve Tenant</div>
-        <div style="display:flex;justify-content:center;gap:1.5rem;margin:1rem 0">
-          <div><div style="font-size:0.75rem;margin-bottom:0.25rem">URL Data</div><span class="fbox">content.db</span></div>
-          <div><div style="font-size:0.75rem;margin-bottom:0.25rem">Tracking</div><span class="fbox">analytics.db</span></div>
+        <div><span class="fbox">Web Browser</span></div>
+        <div class="farrow">↓ HTTP/REST</div>
+        <div><span class="fbox a1">Axum Server</span></div>
+        <div class="farrow">↓ Auth · Routing</div>
+        <div><span class="fbox">Request Type?</span></div>
+        <div style="display:flex;justify-content:center;gap:1.5rem;align-items:flex-start;margin:.2rem 0">
+          <div><div class="farrow">URL Mgmt</div><div><span class="fbox a1">Content DB</span></div></div>
+          <div><div class="farrow">Analytics</div><div><span class="fbox">Analytics DB</span></div></div>
         </div>
-        <div class="farrow">? Write Event</div>
-        <div><span class="fbox" style="border-color:var(--a3)">Audit Log (system.db)</span></div>
-        <div class="farrow">?</div>
-        <div><span class="fbox">Response / Redirect</span></div>
+        <div class="farrow">↓ Query</div>
+        <div><span class="fbox a2">Tenant Data</span></div>
+        <div class="farrow">↑ Results</div>
+        <div><span class="fbox">Audit Log?</span></div>
+        <div style="display:flex;justify-content:center;gap:1.5rem;margin:.2rem 0">
+          <div><div class="farrow">Yes ↓</div></div>
+        </div>
+        <div><span class="fbox ar">System DB (Audit)</span></div>
+        <div class="farrow">↓ Response</div>
+        <div><span class="fbox a1">Browser</span></div>
       </div>
     </div>
-    <div>
-      <div class="steps">
-        <div class="step">
-          <div class="step-n">1</div>
-          <div><div class="step-title">Web Layer (Axum)</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">High-performance async HTTP server handling routing, middleware validation, CSRF protection, and structured error responses.</p></div>
-        </div>
-        <div class="step">
-          <div class="step-n">2</div>
-          <div><div class="step-title">Global Namespace</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">All public URLs are tracked in the <code>system.db -> global_slugs</code> table to prevent collisions across different isolated users.</p></div>
-        </div>
-        <div class="step">
-          <div class="step-n">3</div>
-          <div><div class="step-title">Analytics Pipeline</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Lightweight, thread-safe tracking workers capture device profiles and traffic origins into tenant databases without degrading redirect speeds.</p></div>
-        </div>
-      </div>
+    <div class="comp-list">
+      <div class="comp"><span class="comp-num">01</span><div><div class="comp-title">Axum Web Server</div><p class="comp-desc">High-performance async HTTP server. Handles routing, middleware, authentication, and request validation. Graceful shutdown and error handling.</p></div></div>
+      <div class="comp"><span class="comp-num">02</span><div><div class="comp-title">Multi-Tenant Storage</div><p class="comp-desc">Isolated databases per user. System DB for global state, users DB for accounts/sessions, tenant DBs for content and analytics.</p></div></div>
+      <div class="comp"><span class="comp-num">03</span><div><div class="comp-title">Analytics Engine</div><p class="comp-desc">Real-time visitor tracking with browser detection, referrer analysis, and aggregated statistics. CSV/JSON export support.</p></div></div>
+      <div class="comp"><span class="comp-num">04</span><div><div class="comp-title">Audit & Moderation</div><p class="comp-desc">Complete event logging, user activity tracking, and moderation tools. Compliance-ready for regulated industries.</p></div></div>
     </div>
   </div>
 </div>
 </section>
-
 <div class="divider"></div>
-
 <section id="databases">
 <div class="container">
   <div class="eyebrow">Storage Architecture</div>
-  <h2 class="section-title">Strict Tenant Isolation</h2>
+  <h2 class="section-title">👥 Strict Tenant Isolation</h2>
   <p class="section-sub">Instead of a monolithic database, BZOD securely segments administrative data from tenant analytics and content via dedicated SQLite files operating in WAL mode.</p>
   <div class="arch-wrap">
     <div>
       <div class="file-tree">
         data/<br>
-        ??? <span class="dir">admin/</span> <span class="comment"># Global Metadata</span><br>
-        ?   ??? <span class="file">admin.db</span> <span class="comment"># Internal management</span><br>
-        ?   ??? <span class="file">system.db</span> <span class="comment"># Global slugs & audit logs</span><br>
-        ?   ??? <span class="file">users.db</span> <span class="comment"># Auth, sessions, quotas</span><br>
-        ?<br>
-        ??? <span class="dir">users/</span> <span class="comment"># Tenant Isolation</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;??? <span class="dir">1/</span> <span class="comment"># User 1</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;?   ??? <span class="file">analytics.db</span> <span class="comment"># Isolated metrics</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;?   ??? <span class="file">content.db</span> <span class="comment"># Isolated URLs/Pages</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;?<br>
-        &nbsp;&nbsp;&nbsp;&nbsp;??? <span class="dir">2/</span> <span class="comment"># User 2</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;??? <span class="file">analytics.db</span><br>
-        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;??? <span class="file">content.db</span>
+        ├── <span class="dir">admin/</span> <span class="comment"># Global Metadata</span><br>
+        │   ├── <span class="file">admin.db</span> <span class="comment"># Internal management</span><br>
+        │   ├── <span class="file">system.db</span> <span class="comment"># Global slugs & audit logs</span><br>
+        │   └── <span class="file">users.db</span> <span class="comment"># Auth, sessions, quotas</span><br>
+        │<br>
+        └── <span class="dir">users/</span> <span class="comment"># Tenant Isolation</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;├── <span class="dir">1/</span> <span class="comment"># User 1</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;│   ├── <span class="file">analytics.db</span> <span class="comment"># Isolated metrics</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;│   └── <span class="file">content.db</span> <span class="comment"># Isolated URLs/Pages</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;│<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;└── <span class="dir">2/</span> <span class="comment"># User 2</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── <span class="file">analytics.db</span><br>
+        &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└── <span class="file">content.db</span>
       </div>
     </div>
     <div>
       <div class="steps">
         <div class="step">
           <div class="step-n">1</div>
-          <div><div class="step-title">No Cross-Tenant Bleed</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">By assigning physical <code>content.db</code> and <code>analytics.db</code> files to each user, cross-user data leakage is eliminated at the file-system level.</p></div>
+          <div><div class="step-title">No Cross-Tenant Bleed</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">By assigning physical `content.db` and `analytics.db` files to each user, cross-user data leakage is eliminated at the file-system level.</p></div>
         </div>
         <div class="step">
           <div class="step-n">2</div>
-          <div><div class="step-title">Identity & Quotas</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">The centralized <code>users.db</code> acts as the primary identity database, securely tracking authentication, API tokens, and enforcing resource quotas.</p></div>
+          <div><div class="step-title">Global Slug Registry</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">The centralized `system.db` resolves global paths and routes the visitor to the correct tenant's isolated database instantly.</p></div>
         </div>
         <div class="step">
           <div class="step-n">3</div>
-          <div><div class="step-title">WAL Concurrency</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Write-Ahead Logging provides robust concurrency and zero-contention crash recovery without the operational overhead of PostgreSQL.</p></div>
+          <div><div class="step-title">WAL Concurrency</div><p style="color:var(--t2);font-size:.9rem;line-height:1.6">Write-Ahead Logging provides robust concurrency and zero-contention crash recovery without the overhead of PostgreSQL.</p></div>
         </div>
       </div>
     </div>
   </div>
 </div>
-</section>
+</section>  
+
 
 <div class="divider"></div>
 
 <section id="api">
 <div class="container">
   <div class="eyebrow">REST API</div>
-  <h2 class="section-title">Programmatic Access</h2>
+  <h2 class="section-title">🔑💻 Programmatic Access</h2>
   <p class="section-sub">Integrate BZOD with CI/CD pipelines, home automation, or custom applications using secure, token-based authentication.</p>
   <div class="grid-2">
     <div>
@@ -435,7 +446,7 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 <section id="cli">
 <div class="container">
   <div class="eyebrow">Operations & CLI</div>
-  <h2 class="section-title">Built for Systems Administrators</h2>
+  <h2 class="section-title">🧑‍💻⚙️🔧 Built for Systems Administrators</h2>
   <p class="section-sub">Full control via a comprehensive command-line interface. Handle migrations, disaster recovery, and user management directly from the terminal.</p>
   <div class="tab-shell">
     <div class="tab-strip">
@@ -482,8 +493,8 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 <section id="compare">
 <div class="container">
   <div class="eyebrow">Market Comparison</div>
-  <h2 class="section-title">How BZOD Compares</h2>
-  <p class="section-sub">Unlike standard shorteners, BZOD provides a comprehensive suite of features?from landing pages to multi-tenant user isolation?in a single, compiled binary.</p>
+  <h2 class="section-title">⚖️ How BZOD Compares</h2>
+  <p class="section-sub">Unlike standard shorteners, BZOD provides a comprehensive suite of features—from landing pages to multi-tenant user isolation—in a single, compiled binary.</p>
   
   <table class="compare-tbl">
     <thead>
@@ -498,52 +509,52 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
     <tbody>
       <tr>
         <td>Language</td>
-        <td>Rust ?</td>
-        <td>PHP</td>
-        <td>PHP</td>
-        <td>Rust</td>
+        <td>Rust 🦀</td>
+        <td>PHP 🐘</td>
+        <td>PHP 🐘</td>
+        <td>Rust 🦀</td>
       </tr>
       <tr>
         <td>Deployment</td>
-        <td><span class="check-yes">? Single Binary</span></td>
-        <td><span class="check-no">? Requires PHP/Web Server</span></td>
-        <td><span class="check-no">? Requires PHP/Web Server</span></td>
-        <td><span class="check-yes">? Single Binary</span></td>
+        <td><span class="check-yes">✅ Single Binary</span></td>
+        <td><span class="check-no">❌ Requires PHP/Web Server</span></td>
+        <td><span class="check-no">❌ Requires PHP/Web Server</span></td>
+        <td><span class="check-yes">✅ Single Binary</span></td>
       </tr>
       <tr>
         <td>External DB Required</td>
-        <td><span class="check-yes">? None (SQLite)</span></td>
-        <td><span class="check-partial">?? Usually (PostgreSQL/Maria)</span></td>
-        <td><span class="check-partial">?? Usually (MySQL)</span></td>
-        <td><span class="check-yes">? None</span></td>
+        <td><span class="check-yes">✅ None (SQLite)</span></td>
+        <td><span class="check-partial">⚠️ Usually (PostgreSQL/Maria)</span></td>
+        <td><span class="check-partial">⚠️ Usually (MySQL)</span></td>
+        <td><span class="check-yes">✅ None</span></td>
       </tr>
       <tr>
         <td>Landing Pages</td>
-        <td><span class="check-yes">? Native</span></td>
-        <td><span class="check-no">? No</span></td>
-        <td><span class="check-partial">?? Via Plugin</span></td>
-        <td><span class="check-no">? No</span></td>
+        <td><span class="check-yes">✅ Native</span></td>
+        <td><span class="check-no">❌ No</span></td>
+        <td><span class="check-partial">⚠️ Via Plugin</span></td>
+        <td><span class="check-no">❌ No</span></td>
       </tr>
       <tr>
         <td>QR + Analytics</td>
-        <td><span class="check-yes">? Native</span></td>
-        <td><span class="check-partial">?? Partial</span></td>
-        <td><span class="check-partial">?? Via Plugin</span></td>
-        <td><span class="check-partial">?? Partial</span></td>
+        <td><span class="check-yes">✅ Native</span></td>
+        <td><span class="check-partial">⚠️ Partial</span></td>
+        <td><span class="check-partial">⚠️ Via Plugin</span></td>
+        <td><span class="check-partial">⚠️ Partial</span></td>
       </tr>
       <tr>
         <td>Multi-User / Quotas</td>
-        <td><span class="check-yes">? Native (Isolated)</span></td>
-        <td><span class="check-partial">?? Partial</span></td>
-        <td><span class="check-partial">?? Via Plugin</span></td>
-        <td><span class="check-no">? No</span></td>
+        <td><span class="check-yes">✅ Native (Isolated)</span></td>
+        <td><span class="check-partial">⚠️ Partial</span></td>
+        <td><span class="check-partial">⚠️ Via Plugin</span></td>
+        <td><span class="check-no">❌ No</span></td>
       </tr>
       <tr>
         <td>Backup & Recovery</td>
-        <td><span class="check-yes">? Built-in CLI & Web UI</span></td>
-        <td><span class="check-no">? External Tools Needed</span></td>
-        <td><span class="check-no">? External Tools Needed</span></td>
-        <td><span class="check-no">? No</span></td>
+        <td><span class="check-yes">✅ Built-in CLI & Web UI</span></td>
+        <td><span class="check-no">❌ External Tools Needed</span></td>
+        <td><span class="check-no">❌ External Tools Needed</span></td>
+        <td><span class="check-no">❌ No</span></td>
       </tr>
     </tbody>
   </table>
@@ -555,7 +566,7 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
 <section id="install">
 <div class="container">
   <div class="eyebrow">Deployment</div>
-  <h2 class="section-title">Get Started in Minutes</h2>
+  <h2 class="section-title">🚀 Get Started in Minutes</h2>
   <p class="section-sub">Deploy via Docker for containerized environments, or compile directly from source for bare-metal performance.</p>
   <div class="tab-shell">
     <div class="tab-strip">
@@ -625,7 +636,7 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
     </div>
   </div>
   <div class="footer-bottom">
-    <span>� 2026 BZOD. Dual licensed under GPLv3 and Commercial License.</span>
+    <span>©️ 2026 BZOD. Dual licensed under MIT/Apache 2.0</span>
   </div>
 </footer>
 
@@ -654,7 +665,8 @@ Authorization: Bearer bzo_xxxxxxxxxxxx
       setTimeout(() => msg.style.display = 'none', 2000);
     });
   }
-
 </script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>lucide.createIcons();</script>
 </body>
 </html>
