@@ -21,8 +21,6 @@ Unlike traditional URL shorteners that focus primarily on URL redirection, BZOD 
 
 ---
 
-*(rest of your content follows with minor wording cleanups)*
-
 # Executive Summary
 
 BZOD combines:
