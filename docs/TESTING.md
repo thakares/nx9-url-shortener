@@ -427,6 +427,227 @@ Failure of backup, restore, or disaster recovery tests is considered a release b
 
 ---
 
+# BZOD v0.5.0
+
+## Overview
+
+BZOD v0.5.0 includes a comprehensive automated validation suite covering functionality, security, migrations, disaster recovery, concurrency, multi-user isolation, and operational workflows.
+
+The goal is to ensure production upgrades and deployments can be performed safely with minimal risk.
+
+---
+
+# Test Categories
+
+## Core Unit Tests
+
+Validates:
+
+* SQLite configuration
+* WAL configuration
+* Integrity checks
+* Analytics helpers
+* QR code generation
+* Database initialization
+
+---
+
+## Authentication Tests
+
+Validates:
+
+* Session creation
+* Session expiration
+* API token creation
+* API token revocation
+
+Files:
+
+* auth_tests.rs
+* auth_migration_tests.rs
+
+---
+
+## User Management Tests
+
+Validates:
+
+* User creation
+* Password reset
+* Disable / Enable
+* Status transitions
+* Reserved usernames
+
+Files:
+
+* user_management_tests.rs
+
+---
+
+## Multi-User Isolation Tests
+
+Validates:
+
+* Database isolation
+* Cross-user access denial
+* Tenant separation
+
+Files:
+
+* user_isolation_tests.rs
+
+---
+
+## Slug Namespace Tests
+
+Validates:
+
+* Global uniqueness
+* Reserved slugs
+* Slug release behavior
+* Slug ownership transfers
+
+Files:
+
+* slug_namespace_tests.rs
+* slug_transfer_tests.rs
+
+---
+
+## Security Tests
+
+Validates:
+
+* CSRF protections
+* Session expiration
+* Bootstrap credential invalidation
+* SQL injection resistance
+* Path traversal rejection
+
+Files:
+
+* security_tests.rs
+
+---
+
+## Backup & Disaster Recovery Tests
+
+Validates:
+
+* Backup generation
+* Restore operations
+* Backup metadata integrity
+* Corrupted backup rejection
+* Rollback on restore failures
+
+Files:
+
+* backup_restore_tests.rs
+* disaster_recovery_tests.rs
+
+---
+
+## Upgrade Validation Tests
+
+Validates migration from legacy v0.4.0 deployments.
+
+Checks:
+
+* Database relocation
+* Analytics preservation
+* Link preservation
+* Credential compatibility
+* Redirection integrity
+
+Files:
+
+* upgrade_validation_tests.rs
+
+---
+
+## HTTP End-to-End Tests
+
+Validates:
+
+* Login
+* Logout
+* Session cookies
+* CSRF protection
+* Administrative authorization
+
+Files:
+
+* http_e2e_tests.rs
+
+---
+
+## Business Workflow Tests
+
+Scenario A
+
+Administrator creates user → User logs in → User creates link → Visitor accesses link → Analytics recorded.
+
+Scenario B
+
+Administrator disables user → Sessions invalidated → Login rejected.
+
+Scenario C
+
+Slug transfer between users → Redirect preserved → Analytics preserved.
+
+Files:
+
+* business_workflow_tests.rs
+
+---
+
+## Concurrency Tests
+
+Validates:
+
+* Concurrent slug creation
+* Namespace consistency
+
+Files:
+
+* concurrency_tests.rs
+
+---
+
+## WAL Recovery Tests
+
+Validates:
+
+* SQLite WAL durability
+* Recovery after backup operations
+
+Files:
+
+* wal_recovery_tests.rs
+
+---
+
+# Running All Tests
+
+```bash
+cargo test --all-targets -- --nocapture
+```
+
+# Release Validation
+
+Before every release:
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets -- --nocapture
+cargo build --release
+cargo audit
+```
+
+A release is considered valid only if all steps complete successfully.
+
+
 # Guiding Principle
 
 A successful release is not merely one that starts.

@@ -64,12 +64,33 @@ the terms above without any additional terms or conditions.
 * Audit logging
 * Health monitoring
 
+## Added in v0.5.0
+
+- Single binary deployment
+- Multi-user platform
+- Per-user database isolation
+- Global slug namespace
+- URL Shortener
+- Landing Pages
+- QR Codes (PNG + SVG)
+- Analytics
+- User Management
+- Moderation
+- Session Management
+- Backup & Restore
+- Audit Logging
+- Quotas
+- WAL Enabled SQLite
+- CSRF Protection
+- RBAC Authorization
+- Migration Framework
+
 ---
 
-## Feature Matrix
+## Feature Matrix v0.5.0
 
 | Feature                   | Status |
-|---------------------------| ------ |
+|---------------------------|--------|
 | URL Shortening            | ✅      |
 | Custom Slugs              | ✅      |
 | Landing Pages             | ✅      |
@@ -93,8 +114,8 @@ the terms above without any additional terms or conditions.
 | Analytics Drill-Down      | ✅      |
 | Date Range Analytics      | ✅      |
 | Advanced Pagination       | ✅      |
+ Multi-User Administration  | ✅      |
 | Geo Analytics             | 🚧     |
-| Multi-User Administration | 🚧     |
 | SSO                       | 🚧     |
 
 ---
@@ -354,6 +375,23 @@ Features:
 * Compatible with spreadsheets and BI tools
 
 ---
+## Stability
+
+BZOD v0.5.0 has passed:
+
+- Unit Tests
+- Integration Tests
+- HTTP E2E Tests
+- Authentication Migration Tests
+- Upgrade Validation Tests
+- Backup/Restore Tests
+- Disaster Recovery Tests
+- Security Tests
+- Concurrency Tests
+- Business Workflow Tests
+- WAL Recovery Tests
+
+Total automated coverage exceeds 90 tests.
 
 ### Audit Trail
 
