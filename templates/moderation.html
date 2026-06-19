@@ -1,0 +1,158 @@
+{% extends "layout.html" %}
+
+{% block title %}Content Moderation - BZOD{% endblock %}
+
+{% block active_moderation %}active{% endblock %}
+
+{% block header_title %}Content Moderation Panel{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+    <!-- Moderation Form -->
+    <div class="card">
+        <h3 style="font-size: 1.15rem; margin-bottom: 1rem;">Moderate a Resource</h3>
+        <form action="/admin/moderation" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <div class="form-group">
+                <label for="slug">Resource Slug</label>
+                <input type="text" id="slug" name="slug" class="form-input" placeholder="e.g. !hello or abcdef" required>
+            </div>
+
+            <div class="form-group">
+                <label for="action">Moderation Action</label>
+                <select id="action" name="action" class="form-input">
+                    <option value="active">Activate (Publicly accessible)</option>
+                    <option value="flagged">Flag (Flagged, visible to admins)</option>
+                    <option value="disabled">Disable (Returns 410 Gone)</option>
+                    <option value="deleted">Delete (Release slug completely)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="severity">Severity Level</label>
+                <select id="severity" name="severity" class="form-input">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high" selected>High</option>
+                    <option value="critical">Critical</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="reason">Reason / Notes</label>
+                <textarea id="reason" name="reason" class="form-input" rows="3" placeholder="Violation detail, abuse report summary..." required></textarea>
+            </div>
+
+            <button type="submit" class="btn">Apply Action</button>
+        </form>
+    </div>
+
+    <!-- Active Flags & Disabled Resources -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem;">Currently Flagged or Disabled Content</h3>
+        </div>
+        
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Slug</th>
+                        <th>Owner ID</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Updated At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if flagged_items.is_empty() %}
+                        <tr>
+                            <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                                No resources are currently flagged or disabled.
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for item in flagged_items %}
+                            <tr>
+                                <td>
+                                    <strong style="color: var(--accent-color);">/{{ item.slug }}</strong>
+                                </td>
+                                <td>{{ item.owner_user_id }}</td>
+                                <td>{{ item.target_type }}</td>
+                                <td>
+                                    <span class="badge" style="background-color: {% if item.status == "disabled" %}rgba(239, 68, 68, 0.15){% else %}rgba(245, 158, 11, 0.15){% endif %}; color: {% if item.status == "disabled" %}var(--danger-color){% else %}var(--warning-color){% endif %};">
+                                        {{ item.status }}
+                                    </span>
+                                </td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ item.updated_at[0..10] }}</td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Moderation Events Log -->
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="font-size: 1.15rem;">Moderation Action Log</h3>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Operator</th>
+                    <th>Target User</th>
+                    <th>Resource</th>
+                    <th>Action</th>
+                    <th>Severity</th>
+                    <th>Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if logs.is_empty() %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No moderation actions recorded.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for log in logs %}
+                        <tr>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">{{ log.timestamp[0..19].replace("T", " ") }}</td>
+                            <td><strong>{{ log.admin_username }}</strong></td>
+                            <td>ID: {{ log.target_user_id }}</td>
+                            <td><span style="font-family: monospace;">{{ log.resource_type }}:{{ log.resource_identifier }}</span></td>
+                            <td>
+                                <span class="badge" style="background-color: rgba(99, 102, 241, 0.15); color: #818cf8;">{{ log.action }}</span>
+                            </td>
+                            <td>
+                                <span class="badge" style="background-color: {% if log.severity == "critical" %}rgba(239,68,68,0.2){% else %}rgba(255,255,255,0.05){% endif %}; color: {% if log.severity == "critical" %}var(--danger-color){% else %}var(--text-secondary){% endif %}; font-weight: 700;">
+                                    {{ log.severity }}
+                                </span>
+                            </td>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ log.reason }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

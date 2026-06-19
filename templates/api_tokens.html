@@ -1,0 +1,82 @@
+{% extends "user_layout.html" %}
+
+{% block title %}My API Tokens - BZOD{% endblock %}
+
+{% block active_tokens %}active{% endblock %}
+
+{% block header_title %}API Tokens & Automation{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; align-items: start;">
+    <!-- Create Token Card -->
+    <div class="card">
+        <h3 style="font-size: 1.15rem; margin-bottom: 1rem;">Generate API Token</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
+            API tokens allow you to automate link shortening and landing page creations. Generated tokens are hashed immediately; you will only be shown the raw token once.
+        </p>
+
+        {% if let Some(raw_token) = new_token %}
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1.25rem; word-break: break-all;">
+                <span style="display: block; font-size: 0.75rem; color: var(--success-color); font-weight: 700; margin-bottom: 0.25rem; text-transform: uppercase;">Raw Token (Copy now!)</span>
+                <code style="font-size: 1.1rem; color: var(--text-primary); font-family: monospace; font-weight: 600;">{{ raw_token }}</code>
+            </div>
+        {% endif %}
+
+        <form action="/api-tokens/create" method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn" style="width: 100%;">Generate New Token</button>
+        </form>
+    </div>
+
+    <!-- Active Tokens List -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem;">Active API Tokens</h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Token ID</th>
+                        <th>Created At</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if tokens.is_empty() %}
+                        <tr>
+                            <td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                                No active API tokens generated yet.
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for t in tokens %}
+                            <tr>
+                                <td>{{ t.id }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ t.created_at }}</td>
+                                <td>
+                                    <form action="/api-tokens/revoke/{{ t.id }}" method="POST" onsubmit="return confirm('Revoke this API token? Any applications using it will be blocked.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; color: var(--danger-color);">Revoke</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

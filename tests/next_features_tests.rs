@@ -139,10 +139,11 @@ async fn test_perform_restore_and_validation() {
     assert!(validation_res.is_ok());
 
     // Verify database files were extracted
-    assert!(restore_dir.join("admin.db").exists());
-    assert!(restore_dir.join("content.db").exists());
-    assert!(restore_dir.join("analytics.db").exists());
-    assert!(restore_dir.join("system.db").exists());
+    assert!(restore_dir.join("admin/admin.db").exists());
+    assert!(restore_dir.join("admin/users.db").exists());
+    assert!(restore_dir.join("admin/system.db").exists());
+    assert!(restore_dir.join("users/1/content.db").exists());
+    assert!(restore_dir.join("users/1/analytics.db").exists());
 
     // Verify custom slug was preserved in the restored DB
     let restore_config = create_temp_config(restore_dir.clone());

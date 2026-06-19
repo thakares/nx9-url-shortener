@@ -64,6 +64,22 @@ pub async fn perform_backup(
     if let Ok(conn) = db.system.lock() {
         let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
     }
+    if let Ok(conn) = db.users.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+        if let Ok(mut stmt) = conn.prepare("SELECT id FROM users;") {
+            if let Ok(rows) = stmt.query_map([], |row| row.get::<_, i64>(0)) {
+                let user_ids: Vec<i64> = rows.filter_map(|r| r.ok()).collect();
+                for user_id in user_ids {
+                    if let Ok(u_conn) = crate::jobs::open_user_content_conn(db, user_id) {
+                        let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+                    }
+                    if let Ok(u_conn) = crate::jobs::open_user_analytics_conn(db, user_id) {
+                        let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+                    }
+                }
+            }
+        }
+    }
 
     let date_str = Utc::now().format("%Y-%m-%d-%H%M%S").to_string();
     let tar_name = format!("{}-bzod-backup.tar.gz", date_str);
@@ -73,12 +89,14 @@ pub async fn perform_backup(
     let enc = GzEncoder::new(file, Compression::default());
     let mut tar = Builder::new(enc);
 
-    let files = vec!["admin.db", "content.db", "analytics.db", "system.db"];
-    for f in files {
-        let db_file = config.data_dir.join(f);
-        if db_file.exists() {
-            tar.append_path_with_name(&db_file, f)?;
-        }
+    let admin_dir = config.data_dir.join("admin");
+    if admin_dir.exists() {
+        tar.append_dir_all("admin", &admin_dir)?;
+    }
+
+    let users_dir = config.data_dir.join("users");
+    if users_dir.exists() {
+        tar.append_dir_all("users", &users_dir)?;
     }
 
     tar.into_inner()?.finish()?;

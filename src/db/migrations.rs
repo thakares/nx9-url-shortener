@@ -111,10 +111,11 @@ pub fn print_migration_plan(
 // Migration definitions
 // ---------------------------------------------------------------------------
 
-pub const ADMIN_MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial_schema",
-    sql: r#"
+pub const ADMIN_MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: r#"
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
@@ -156,7 +157,26 @@ pub const ADMIN_MIGRATIONS: &[Migration] = &[Migration {
         value TEXT NOT NULL
     );
     "#,
-}];
+    },
+    Migration {
+        version: 2,
+        name: "remove_api_keys_fk",
+        sql: r#"
+    CREATE TABLE api_keys_new (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        key_hash TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT
+    );
+    INSERT INTO api_keys_new (id, user_id, key_hash, name, created_at, last_used_at)
+    SELECT id, user_id, key_hash, name, created_at, last_used_at FROM api_keys;
+    DROP TABLE api_keys;
+    ALTER TABLE api_keys_new RENAME TO api_keys;
+    "#,
+    },
+];
 
 pub const CONTENT_MIGRATIONS: &[Migration] = &[
     Migration {
@@ -315,6 +335,11 @@ pub const ANALYTICS_MIGRATIONS: &[Migration] = &[
     CREATE INDEX IF NOT EXISTS idx_qr_access_ts ON qr_access_log(timestamp);
     "#,
     },
+    Migration {
+        version: 3,
+        name: "add_owner_user_id",
+        sql: "ALTER TABLE visits ADD COLUMN owner_user_id INTEGER;",
+    },
 ];
 
 pub const SYSTEM_MIGRATIONS: &[Migration] = &[
@@ -382,6 +407,165 @@ pub const SYSTEM_MIGRATIONS: &[Migration] = &[
     CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_events(actor);
     CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_events(action);
+    "#,
+    },
+    Migration {
+        version: 3,
+        name: "global_slugs_and_moderation",
+        sql: r#"
+    CREATE TABLE IF NOT EXISTS global_slugs (
+        slug TEXT PRIMARY KEY,
+        owner_user_id INTEGER NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        deleted_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_global_slugs_owner ON global_slugs(owner_user_id);
+    CREATE INDEX IF NOT EXISTS idx_global_slugs_status ON global_slugs(status);
+    CREATE INDEX IF NOT EXISTS idx_global_slugs_target ON global_slugs(target_type, target_id);
+
+    CREATE TABLE IF NOT EXISTS moderation_events (
+        id TEXT PRIMARY KEY,
+        timestamp TEXT NOT NULL,
+        admin_username TEXT NOT NULL,
+        target_user_id INTEGER NOT NULL,
+        target_username TEXT,
+        resource_type TEXT NOT NULL,
+        resource_identifier TEXT NOT NULL,
+        action TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        reason TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS slug_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT NOT NULL,
+        old_owner_user_id INTEGER,
+        new_owner_user_id INTEGER,
+        action TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        admin_username TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS reserved_slugs (
+        slug TEXT PRIMARY KEY,
+        reason TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+
+    -- Seed defaults
+    INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, datetime('now'));
+    
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('soft_delete_retention_days', '30');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('quota_reconcile_interval_hours', '24');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('allow_registration', 'false');
+    INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance_mode', 'false');
+
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('admin', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('login', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('logout', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('dashboard', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('api', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('docs', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('assets', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('static', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('favicon.ico', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('robots.txt', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('health', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('metrics', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('install', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('setup', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('support', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('help', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('security', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('abuse', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('billing', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('status', 'System route');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('legacy_admin', 'System reserved');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('administrator', 'System reserved');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('system', 'System reserved');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('root', 'System reserved');
+    INSERT OR IGNORE INTO reserved_slugs (slug, reason) VALUES ('www', 'System reserved');
+    "#,
+    },
+];
+
+pub const USERS_MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial_schema",
+        sql: r#"
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL,
+        last_login TEXT,
+        account_type TEXT DEFAULT 'standard',
+        organization_id INTEGER NULL,
+        metadata TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS quotas (
+        user_id INTEGER PRIMARY KEY,
+        max_urls INTEGER DEFAULT 100,
+        max_landings INTEGER DEFAULT 10,
+        max_api_tokens INTEGER DEFAULT 5,
+        max_storage_mb INTEGER DEFAULT 100,
+        current_urls INTEGER DEFAULT 0,
+        current_landings INTEGER DEFAULT 0,
+        current_api_tokens INTEGER DEFAULT 0,
+        current_storage_mb INTEGER DEFAULT 0,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        token_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS username_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        old_username TEXT NOT NULL,
+        new_username TEXT NOT NULL,
+        changed_at TEXT NOT NULL,
+        FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    "#,
+    },
+    Migration {
+        version: 2,
+        name: "repair_admin_account_type",
+        sql: r#"
+    UPDATE users
+    SET account_type = 'admin'
+    WHERE username = 'admin' AND account_type = 'standard';
     "#,
     },
 ];

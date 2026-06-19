@@ -32,8 +32,9 @@ pub async fn run(
     }
 
     let hash = hash_password(&password).map_err(|e| e.to_string())?;
-    let conn = db.admin.lock().unwrap();
-    let u = crate::db::admin::create_user(&conn, &final_username, &hash)?;
+    let conn = db.users.lock().unwrap();
+    let u = crate::db::users::create_admin_user(&conn, &final_username, &hash)?;
+    db.init_user_databases(u.id)?;
     info!(
         "Successfully created admin user: {} (ID: {})",
         u.username, u.id

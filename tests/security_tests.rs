@@ -4,16 +4,22 @@ use chrono::Utc;
 use rusqlite::Connection;
 
 use bzod::auth::{
-    authenticate_api_key, authenticate_session, generate_csrf_token, hash_password, verify_csrf,
-    verify_password, verify_sha256,
+    authenticate_admin_session, authenticate_api_key, generate_csrf_token, hash_password,
+    verify_csrf, verify_password, verify_sha256,
 };
 use bzod::db::admin::{create_api_key, create_session, create_user, get_user_count};
-use bzod::db::migrations::{run_migrations, ADMIN_MIGRATIONS};
+use bzod::db::migrations::{run_migrations, ADMIN_MIGRATIONS, USERS_MIGRATIONS};
 
 // Helper to set up an in-memory admin.db connection with migrations applied
 fn setup_test_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
     run_migrations(&mut conn, "admin", ADMIN_MIGRATIONS, None).unwrap();
+    conn
+}
+
+fn setup_users_db() -> Connection {
+    let mut conn = Connection::open_in_memory().unwrap();
+    run_migrations(&mut conn, "users", USERS_MIGRATIONS, None).unwrap();
     conn
 }
 
@@ -35,6 +41,7 @@ fn test_csrf_tampering_prevention() {
 #[test]
 fn test_api_key_sql_injection_resistance() {
     let conn = setup_test_db();
+    let users_conn = setup_users_db();
 
     // Create an API key
     let user_hash = hash_password("admin_pass").unwrap();
@@ -50,26 +57,26 @@ fn test_api_key_sql_injection_resistance() {
 
     // 1. Test valid key passes
     let valid_auth = format!("Bearer {}", key_secret);
-    let auth_res = authenticate_api_key(&conn, &valid_auth).unwrap();
+    let auth_res = authenticate_api_key(&conn, &users_conn, &valid_auth).unwrap();
     assert!(auth_res.is_some());
-    assert_eq!(auth_res.unwrap().username, "admin");
+    assert_eq!(auth_res.unwrap().username(), "admin");
 
     // 2. Test SQL Injection attempt in the header does not succeed or crash
     let sql_inj_auth1 = "Bearer ' OR 1=1 --";
-    let res = authenticate_api_key(&conn, sql_inj_auth1).unwrap();
+    let res = authenticate_api_key(&conn, &users_conn, sql_inj_auth1).unwrap();
     assert!(res.is_none());
 
     let sql_inj_auth2 = "Bearer ' UNION SELECT id, username FROM users --";
-    let res = authenticate_api_key(&conn, sql_inj_auth2).unwrap();
+    let res = authenticate_api_key(&conn, &users_conn, sql_inj_auth2).unwrap();
     assert!(res.is_none());
 
     // 3. Test malformed header
     let malformed_auth = "Bearer";
-    let res = authenticate_api_key(&conn, malformed_auth).unwrap();
+    let res = authenticate_api_key(&conn, &users_conn, malformed_auth).unwrap();
     assert!(res.is_none());
 
     let wrong_scheme = "Basic admin:pass";
-    let res = authenticate_api_key(&conn, wrong_scheme).unwrap();
+    let res = authenticate_api_key(&conn, &users_conn, wrong_scheme).unwrap();
     assert!(res.is_none());
 }
 
@@ -86,7 +93,7 @@ fn test_expired_session_invalidation() {
     create_session(&conn, session_id_future, &user.id, &future_expiry).unwrap();
 
     let jar_future = CookieJar::new().add(Cookie::new("bzod_session", session_id_future));
-    let auth_future = authenticate_session(&conn, &jar_future).unwrap();
+    let auth_future = authenticate_admin_session(&conn, &jar_future).unwrap();
     assert!(auth_future.is_some());
     assert_eq!(auth_future.unwrap().0.id, user.id);
 
@@ -96,7 +103,7 @@ fn test_expired_session_invalidation() {
     create_session(&conn, session_id_past, &user.id, &past_expiry).unwrap();
 
     let jar_past = CookieJar::new().add(Cookie::new("bzod_session", session_id_past));
-    let auth_past = authenticate_session(&conn, &jar_past).unwrap();
+    let auth_past = authenticate_admin_session(&conn, &jar_past).unwrap();
     assert!(auth_past.is_none());
 }
 

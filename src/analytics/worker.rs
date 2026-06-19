@@ -46,11 +46,47 @@ fn flush_batch(db: &Db, batch: &mut Vec<VisitRecord>) {
         return;
     }
 
-    info!("Flushing {} visits to analytics database", batch.len());
-    let mut conn_lock = db.analytics.lock().unwrap();
-    if let Err(e) = insert_visits_batch(&mut conn_lock, batch) {
-        error!("Failed to write analytics batch to database: {:?}", e);
-    } else {
-        batch.clear();
+    info!(
+        "Flushing {} visits to user analytics databases",
+        batch.len()
+    );
+
+    // Group visits by owner_user_id
+    let mut groups: std::collections::HashMap<i64, Vec<VisitRecord>> =
+        std::collections::HashMap::new();
+    for record in batch.drain(..) {
+        let user_id = record.owner_user_id.unwrap_or(1); // fallback to legacy_admin (user 1)
+        groups.entry(user_id).or_default().push(record);
+    }
+
+    for (user_id, user_visits) in groups {
+        let db_path = db
+            .data_dir
+            .join("users")
+            .join(user_id.to_string())
+            .join("analytics.db");
+        if let Some(parent) = db_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        match rusqlite::Connection::open(&db_path) {
+            Ok(mut conn) => {
+                let _ = crate::db::sqlite::enable_wal(&conn, "analytics");
+                let _ = crate::db::sqlite::enable_foreign_keys(&conn, "analytics");
+
+                if let Err(e) = insert_visits_batch(&mut conn, &user_visits) {
+                    error!(
+                        "Failed to write analytics batch to user {} database: {:?}",
+                        user_id, e
+                    );
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Failed to open analytics database for user {}: {:?}",
+                    user_id, e
+                );
+            }
+        }
     }
 }

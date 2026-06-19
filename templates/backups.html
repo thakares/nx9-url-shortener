@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+
+{% block title %}Backup Management - BZOD{% endblock %}
+
+{% block active_settings %}active{% endblock %}
+
+{% block header_title %}Database Backups Console{% endblock %}
+
+{% block header_actions %}
+<form action="/admin/backups/create" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn">Create Backup Archive</button>
+</form>
+{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; align-items: start;">
+    <!-- List of Backup Files -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem;">Available Backup Archives</h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Archive File</th>
+                        <th>File Size</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if files.is_empty() %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                                No backup archive files found in backups folder.
+                            </td>
+                        </tr>
+                    {% else %}
+                        {% for f in files %}
+                            <tr>
+                                <td>
+                                    <strong style="font-family: monospace;">{{ f.filename }}</strong>
+                                </td>
+                                <td>{{ f.size_str }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ f.created_str }}</td>
+                                <td>
+                                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                        <a href="/admin/backups/download/{{ f.filename }}" class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Download</a>
+                                        
+                                        <form action="/admin/backups/delete/{{ f.filename }}" method="POST" style="margin: 0;" onsubmit="return confirm('Delete backup file {{ f.filename }}? This cannot be undone.');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Delete</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Restore Database Panel -->
+    <div class="card">
+        <h3 style="font-size: 1.15rem; margin-bottom: 1rem; color: var(--danger-color);">Restore Platform Databases</h3>
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
+            To restore the system databases, select a `.tar.gz` backup archive file. Warning: This will overwrite all active user accounts, quotas, links, and analytics data!
+        </p>
+
+        <form action="/admin/backups/restore" method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            
+            <div class="form-group">
+                <label for="backup_file">Upload Backup File (.tar.gz)</label>
+                <input type="file" id="backup_file" name="backup_file" class="form-input" accept=".tar.gz" required>
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_text">Type RESTORE to continue</label>
+                <input type="text" id="confirm_text" name="confirm_text" class="form-input" placeholder="RESTORE" required autocomplete="off">
+            </div>
+
+            <button type="submit" class="btn btn-danger" style="width: 100%;">Upload & Restore Now</button>
+        </form>
+    </div>
+</div>
+
+<!-- Backup History Log -->
+<div class="card" style="padding: 0; overflow: hidden; margin-top: 1.5rem;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="font-size: 1.15rem;">Backup Audit History</h3>
+    </div>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Backup File Path</th>
+                    <th>Status</th>
+                    <th>Size</th>
+                    <th>Error Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if history.is_empty() %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No backup execution logs found.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for h in history %}
+                        <tr>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ h.created_at[0..19].replace("T", " ") }}</td>
+                            <td style="font-family: monospace; font-size: 0.85rem;">{{ h.backup_path }}</td>
+                            <td>
+                                <span class="badge {% if h.status == "success" %}badge-healthy{% else %}badge-dead{% endif %}">
+                                    {{ h.status }}
+                                </span>
+                            </td>
+                            <td>{{ h.size_bytes }} B</td>
+                            <td style="font-size: 0.8rem; color: var(--text-secondary);">{{ h.error_message.as_deref().unwrap_or("-") }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

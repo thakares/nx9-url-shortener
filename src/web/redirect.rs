@@ -5,12 +5,12 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
+use rusqlite::OptionalExtension;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::analytics::get_client_country;
 use crate::models::VisitRecord;
-use crate::services::shortener::get_url_by_code;
 use crate::state::AppState;
 use crate::templates::PreviewTemplate;
 use crate::utils::get_client_ip;
@@ -29,9 +29,56 @@ pub async fn resolve_redirect(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    let url_opt = match get_url_by_code(&state.db, &code) {
-        Ok(url) => url,
+    // 1. Query global slug namespace in system.db
+    let slug_info = {
+        let system_conn = state.system_db.lock().unwrap();
+        let mut stmt = match system_conn.prepare(
+            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;"
+        ) {
+            Ok(s) => s,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        };
+        stmt.query_row(rusqlite::params![code], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .optional()
+    };
+
+    let (owner_user_id, _target_type, _target_id, slug_status) = match slug_info {
+        Ok(Some(info)) => info,
+        Ok(None) => {
+            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
+            (1, "url".to_string(), "".to_string(), "active".to_string())
+        }
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
+    if slug_status != "active" {
+        return (
+            StatusCode::GONE,
+            "This content has been disabled or moderated",
+        )
+            .into_response();
+    }
+
+    // 2. Get user specific database connections
+    let user_dbs = match state.get_user_dbs(owner_user_id) {
+        Ok(dbs) => dbs,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    let url_opt = {
+        let conn = user_dbs.content.lock().unwrap();
+        match crate::db::content::get_url_by_code(&conn, &code) {
+            Ok(url) => url,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
     };
 
     let url = match url_opt {
@@ -39,7 +86,7 @@ pub async fn resolve_redirect(
         None => return (StatusCode::NOT_FOUND, "Short code not found").into_response(),
     };
 
-    // 1. Expiration check
+    // 3. Expiration check
     if url.expired {
         return (StatusCode::GONE, "This link has expired").into_response();
     }
@@ -49,7 +96,7 @@ pub async fn resolve_redirect(
             if expires_at.with_timezone(&Utc) < Utc::now() {
                 // Mark as expired in DB asynchronously/immediately
                 {
-                    let conn = state.db.content.lock().unwrap();
+                    let conn = user_dbs.content.lock().unwrap();
                     let _ = conn.execute(
                         "UPDATE urls SET expired = 1 WHERE id = ?1;",
                         [url.id.clone()],
@@ -60,7 +107,7 @@ pub async fn resolve_redirect(
         }
     }
 
-    // 2. Access limit check
+    // 4. Access limit check
     if url.is_access_exhausted() {
         return (
             StatusCode::GONE,
@@ -69,7 +116,7 @@ pub async fn resolve_redirect(
             .into_response();
     }
 
-    // 3. Password protection check
+    // 5. Password protection check
     if url.is_password_protected() {
         let cookie_name = format!("bzod_gate_{}", code);
         let authorized = jar
@@ -82,14 +129,14 @@ pub async fn resolve_redirect(
         }
     }
 
-    // 4. Increment access count & retrieve preview config
+    // 6. Increment access count & retrieve preview config
     let _new_access_count = {
-        let conn = state.db.content.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         crate::db::content::increment_access_count(&conn, &url.id).unwrap_or(url.access_count + 1)
     };
 
     let preview_opt = {
-        let conn = state.db.content.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         crate::db::preview::get_preview(&conn, &url.id).unwrap_or(None)
     };
 
@@ -123,12 +170,13 @@ pub async fn resolve_redirect(
         accept_language,
         country,
         status_code: if preview_opt.is_some() { 200 } else { 302 },
+        owner_user_id: Some(owner_user_id),
     };
 
     // Push to memory queue (non-blocking)
     state.analytics_queue.push(record);
 
-    // 5. Render Preview or Redirect
+    // 7. Render Preview or Redirect
     if let Some(preview) = preview_opt {
         PreviewTemplate {
             code,

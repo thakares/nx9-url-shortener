@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - BZOD Platform</title>
+    <title>{{ title }} - BZOD Platform</title>
     <style>
         :root {
             --bg-base: #070a13;
@@ -143,9 +143,9 @@
 
     <div class="login-card">
         <div class="logo">
-            BZOD <span class="logo-dot"></span>
+            {{ title }} <span class="logo-dot"></span>
         </div>
-        <p class="subtitle">Personal Redirects & Landing Pages</p>
+        <p class="subtitle">{{ subtitle }}</p>
         
         {% if let Some(err) = error %}
             <div class="alert-error">
@@ -153,7 +153,7 @@
             </div>
         {% endif %}
         
-        <form action="/admin/login" method="POST">
+        <form action="{{ action }}" method="POST">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             
             <div class="form-group">
@@ -166,7 +166,7 @@
                 <input type="password" id="password" name="password" class="form-input" required autocomplete="current-password">
             </div>
             
-            <button type="submit" class="btn">Sign In</button>
+            <button type="submit" class="btn">{{ button_text }}</button>
         </form>
     </div>
 

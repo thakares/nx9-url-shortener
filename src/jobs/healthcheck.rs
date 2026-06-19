@@ -37,40 +37,50 @@ pub async fn perform_link_check(
     db: &Db,
     client: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let urls = {
-        let conn = db.content.lock().unwrap();
-        crate::db::content::list_urls_for_health_check(&conn)?
+    let user_ids: Vec<i64> = {
+        let conn = db.users.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT id FROM users;")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        rows.filter_map(|r| r.ok()).collect()
     };
 
-    for (id, dest) in urls {
-        let (status, detail_status, status_code, latency_ms, err_msg) =
-            check_url_health(client, &dest).await;
-        {
-            let conn = db.content.lock().unwrap();
-            crate::db::content::update_url_health_extended(
-                &conn,
-                &id,
-                &status,
-                &detail_status,
-                Some(latency_ms),
-            )?;
-        }
+    for user_id in user_ids {
+        let conn = match super::open_user_content_conn(db, user_id) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
 
-        // Log to system.db.health_checks
-        {
-            let conn = db.system.lock().unwrap();
-            let hc_id = Uuid::new_v4().to_string();
-            let now = Utc::now().to_rfc3339();
-            let is_healthy = if status == "healthy" { 1 } else { 0 };
-            let _ = conn.execute(
-                "INSERT INTO health_checks (id, object_type, object_id, checked_at, status_code, error_message, is_healthy) 
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
-                params![hc_id, "url", id, now, status_code, err_msg, is_healthy],
-            );
-        }
+        let urls = crate::db::content::list_urls_for_health_check(&conn)?;
 
-        // Rate limiting sleep between external requests
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        for (id, dest) in urls {
+            let (status, detail_status, status_code, latency_ms, err_msg) =
+                check_url_health(client, &dest).await;
+            {
+                crate::db::content::update_url_health_extended(
+                    &conn,
+                    &id,
+                    &status,
+                    &detail_status,
+                    Some(latency_ms),
+                )?;
+            }
+
+            // Log to system.db.health_checks
+            {
+                let sys_conn = db.system.lock().unwrap();
+                let hc_id = Uuid::new_v4().to_string();
+                let now = Utc::now().to_rfc3339();
+                let is_healthy = if status == "healthy" { 1 } else { 0 };
+                let _ = sys_conn.execute(
+                    "INSERT INTO health_checks (id, object_type, object_id, checked_at, status_code, error_message, is_healthy) 
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
+                    params![hc_id, "url", id, now, status_code, err_msg, is_healthy],
+                );
+            }
+
+            // Rate limiting sleep between external requests
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
     }
     Ok(())
 }

@@ -4,12 +4,12 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use chrono::Utc;
+use rusqlite::OptionalExtension;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::analytics::get_client_country;
 use crate::models::VisitRecord;
-use crate::services::landing_pages::get_landing_page_by_code;
 use crate::state::AppState;
 use crate::utils::get_client_ip;
 
@@ -25,9 +25,56 @@ pub async fn resolve_page(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    let page_opt = match get_landing_page_by_code(&state.db, &code) {
-        Ok(page) => page,
+    // 1. Query global slug namespace in system.db
+    let slug_info = {
+        let system_conn = state.system_db.lock().unwrap();
+        let mut stmt = match system_conn.prepare(
+            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;"
+        ) {
+            Ok(s) => s,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        };
+        stmt.query_row(rusqlite::params![code], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .optional()
+    };
+
+    let (owner_user_id, _target_type, _target_id, slug_status) = match slug_info {
+        Ok(Some(info)) => info,
+        Ok(None) => {
+            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
+            (1, "page".to_string(), "".to_string(), "active".to_string())
+        }
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
+    if slug_status != "active" {
+        return (
+            StatusCode::GONE,
+            "This content has been disabled or moderated",
+        )
+            .into_response();
+    }
+
+    // 2. Get user specific database connections
+    let user_dbs = match state.get_user_dbs(owner_user_id) {
+        Ok(dbs) => dbs,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    let page_opt = {
+        let conn = user_dbs.content.lock().unwrap();
+        match crate::db::content::get_landing_page_by_code(&conn, &code) {
+            Ok(page) => page,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
     };
 
     match page_opt {
@@ -67,6 +114,7 @@ pub async fn resolve_page(
                 accept_language,
                 country,
                 status_code: 200,
+                owner_user_id: Some(owner_user_id),
             };
 
             state.analytics_queue.push(record);

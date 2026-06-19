@@ -82,8 +82,8 @@ pub fn insert_visits_batch(conn: &mut Connection, records: &[VisitRecord]) -> ru
     let tx = conn.transaction()?;
     {
         let mut stmt = tx.prepare(
-            "INSERT INTO visits (id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);"
+            "INSERT INTO visits (id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code, owner_user_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11);"
         )?;
 
         for r in records {
@@ -97,7 +97,8 @@ pub fn insert_visits_batch(conn: &mut Connection, records: &[VisitRecord]) -> ru
                 r.referer,
                 r.accept_language,
                 r.country,
-                r.status_code
+                r.status_code,
+                r.owner_user_id
             ])?;
         }
     }
@@ -594,7 +595,7 @@ pub fn get_target_visits_paginated(
     date_from: Option<&str>,
     date_to: Option<&str>,
 ) -> rusqlite::Result<Vec<VisitRecord>> {
-    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code, owner_user_id FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(target_type.to_string()),
         Box::new(target_id.to_string()),
@@ -638,6 +639,7 @@ pub fn get_target_visits_paginated(
             accept_language: row.get("accept_language")?,
             country: row.get("country")?,
             status_code: row.get("status_code")?,
+            owner_user_id: row.get("owner_user_id")?,
         })
     })?;
 
@@ -655,7 +657,7 @@ pub fn get_target_visits_all_in_memory(
     date_from: Option<&str>,
     date_to: Option<&str>,
 ) -> rusqlite::Result<Vec<VisitRecord>> {
-    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
+    let mut sql = "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code, owner_user_id FROM visits WHERE target_type = ?1 AND target_id = ?2".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![
         Box::new(target_type.to_string()),
         Box::new(target_id.to_string()),
@@ -693,6 +695,7 @@ pub fn get_target_visits_all_in_memory(
             accept_language: row.get("accept_language")?,
             country: row.get("country")?,
             status_code: row.get("status_code")?,
+            owner_user_id: row.get("owner_user_id")?,
         })
     })?;
 

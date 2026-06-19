@@ -6,7 +6,7 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use serde::Serialize;
 
-use crate::auth::{authenticate_api_key, authenticate_session};
+use crate::auth::{authenticate_admin_session, authenticate_api_key};
 use crate::db::admin::get_user_count;
 use crate::state::AppState;
 use crate::utils::{get_db_file_info, get_memory_usage};
@@ -15,15 +15,16 @@ use crate::utils::{get_db_file_info, get_memory_usage};
 fn authenticate_request(state: &AppState, jar: &CookieJar, headers: &HeaderMap) -> bool {
     // 1. Try Authorization header
     if let Some(auth_header) = headers.get("Authorization").and_then(|h| h.to_str().ok()) {
-        let conn = state.admin_db.lock().unwrap();
-        if let Ok(Some(_)) = authenticate_api_key(&conn, auth_header) {
+        let admin_conn = state.admin_db.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        if let Ok(Some(_)) = authenticate_api_key(&admin_conn, &users_conn, auth_header) {
             return true;
         }
     }
 
     // 2. Try cookie session
-    let conn = state.admin_db.lock().unwrap();
-    if let Ok(Some(_)) = authenticate_session(&conn, jar) {
+    let conn = state.users_db.lock().unwrap();
+    if let Ok(Some(_)) = authenticate_admin_session(&conn, jar) {
         return true;
     }
 

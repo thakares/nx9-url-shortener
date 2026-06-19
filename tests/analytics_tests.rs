@@ -121,6 +121,7 @@ fn test_target_analytics_queries() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
         VisitRecord {
             id: "visit-2".to_string(),
@@ -133,6 +134,7 @@ fn test_target_analytics_queries() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
         VisitRecord {
             id: "visit-3".to_string(),
@@ -145,6 +147,7 @@ fn test_target_analytics_queries() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
     ];
 

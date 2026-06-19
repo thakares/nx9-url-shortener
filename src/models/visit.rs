@@ -12,6 +12,7 @@ pub struct VisitRecord {
     pub accept_language: String,
     pub country: String,
     pub status_code: u16,
+    pub owner_user_id: Option<i64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

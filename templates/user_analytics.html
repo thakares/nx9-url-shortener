@@ -1,0 +1,99 @@
+{% extends "user_layout.html" %}
+
+{% block title %}My Analytics Dashboard - BZOD{% endblock %}
+
+{% block active_analytics %}active{% endblock %}
+
+{% block header_title %}Analytics Overview{% endblock %}
+
+{% block content %}
+<!-- Overview Stats Cards -->
+<div class="grid-stats" style="margin-bottom: 2rem;">
+    <div class="card stat-card">
+        <span class="stat-label">Total Link Clicks</span>
+        <span class="stat-val" style="color: #60a5fa;">{{ total_clicks }}</span>
+    </div>
+    <div class="card stat-card">
+        <span class="stat-label">Unique Visitors</span>
+        <span class="stat-val" style="color: #c084fc;">{{ unique_visitors }}</span>
+    </div>
+    <div class="card stat-card">
+        <span class="stat-label">Direct Traffic</span>
+        <span class="stat-val" style="color: #34d399;">{{ direct_clicks }}</span>
+    </div>
+    <div class="card stat-card">
+        <span class="stat-label">Referral Traffic</span>
+        <span class="stat-val" style="color: #f472b6;">{{ referred_clicks }}</span>
+    </div>
+</div>
+
+<!-- Geographic, Referrers, and Browsers Analysis -->
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(450px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+    <!-- Referrers -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            Referrer Channels (Top Referrers)
+        </h3>
+        <div style="background-color: rgba(15, 23, 42, 0.4); border-radius: 12px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.03);">
+            {{ referrers_chart|safe }}
+        </div>
+    </div>
+
+    <!-- Browsers -->
+    <div class="card">
+        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            Visitor Browsers
+        </h3>
+        <div style="background-color: rgba(15, 23, 42, 0.4); border-radius: 12px; padding: 1rem; border: 1px solid rgba(255, 255, 255, 0.03);">
+            {{ browsers_chart|safe }}
+        </div>
+    </div>
+</div>
+
+<!-- Visitor Log Table -->
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Recent Visitor Access Logs
+        </h3>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Slug</th>
+                    <th>IP Address</th>
+                    <th>Browser / Platform</th>
+                    <th>Country</th>
+                    <th>Referrer</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if visits.is_empty() %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No visitor records recorded yet.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for visit in visits %}
+                        <tr>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap;">{{ visit.timestamp[0..19].replace("T", " ") }}</td>
+                            <td><strong style="color: var(--accent-color);">/{{ visit.target_id }}</strong></td>
+                            <td style="font-family: monospace; font-size: 0.85rem;">{{ visit.ip_address }}</td>
+                            <td style="font-size: 0.85rem; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ visit.user_agent }}</td>
+                            <td>{{ visit.country }}</td>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ visit.referer }}</td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

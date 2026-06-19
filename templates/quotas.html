@@ -1,0 +1,107 @@
+{% extends "layout.html" %}
+
+{% block title %}Quota Management - BZOD{% endblock %}
+
+{% block active_users %}active{% endblock %}
+
+{% block header_title %}User Quota Management{% endblock %}
+
+{% block header_actions %}
+<form action="/admin/quotas" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="reconcile_all">
+    <button type="submit" class="btn">Sync & Reconcile All Quotas</button>
+</form>
+{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>URLs (Used/Max)</th>
+                    <th>Pages (Used/Max)</th>
+                    <th>API Tokens (Used/Max)</th>
+                    <th>Storage (Used/Max MB)</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if quotas.is_empty() %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No quotas defined.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for q in quotas %}
+                        <tr>
+                            <td>
+                                <a href="/admin/users/{{ q.user_id }}" style="color: var(--text-primary); text-decoration: underline; font-weight: 600;">
+                                    User ID: {{ q.user_id }}
+                                </a>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <span>{{ q.current_urls }} / {{ q.max_urls }}</span>
+                                    <div style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; width: 120px;">
+                                        <div style="background: var(--primary-grad); height: 100%; width: {{ q.urls_pct() }}%;"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <span>{{ q.current_landings }} / {{ q.max_landings }}</span>
+                                    <div style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; width: 120px;">
+                                        <div style="background: var(--primary-grad); height: 100%; width: {{ q.landings_pct() }}%;"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <span>{{ q.current_api_tokens }} / {{ q.max_api_tokens }}</span>
+                                    <div style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; width: 120px;">
+                                        <div style="background: var(--primary-grad); height: 100%; width: {{ q.api_tokens_pct() }}%;"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                                    <span>{{ q.current_storage_mb }} / {{ q.max_storage_mb }} MB</span>
+                                    <div style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; width: 120px;">
+                                        <div style="background: var(--primary-grad); height: 100%; width: {{ q.storage_pct() }}%;"></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <a href="/admin/users/{{ q.user_id }}/edit" class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Edit</a>
+                                    <form action="/admin/quotas" method="POST" style="margin: 0;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="hidden" name="action" value="reconcile">
+                                        <input type="hidden" name="user_id" value="{{ q.user_id }}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Reconcile</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "layout.html" %}
+
+{% block title %}Active Sessions - BZOD{% endblock %}
+
+{% block active_sessions %}active{% endblock %}
+
+{% block header_title %}Session Administration{% endblock %}
+
+{% block header_actions %}
+<form action="/admin/sessions/revoke-all" method="POST" onsubmit="return confirm('Revoke ALL active user sessions? This will log out everyone including you.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="btn btn-danger">Revoke All Sessions</button>
+</form>
+{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Session ID (Masked)</th>
+                    <th>Created At</th>
+                    <th>Expires At</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if sessions.is_empty() %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No active sessions found in the system.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for s in sessions %}
+                        <tr>
+                            <td>
+                                <a href="/admin/users/{{ s.user_id }}" style="color: var(--text-primary); text-decoration: underline; font-weight: 600;">
+                                    User ID: {{ s.user_id }}
+                                </a>
+                            </td>
+                            <td style="font-family: monospace; font-size: 0.85rem; color: var(--text-secondary);">
+                                {{ s.id[0..6] }}...
+                            </td>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ s.created_at[0..19].replace("T", " ") }}</td>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ s.expires_at[0..19].replace("T", " ") }}</td>
+                            <td>
+                                <form action="/admin/sessions/revoke/{{ s.id }}" method="POST">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="btn btn-secondary" style="padding: 0.4rem 0.75rem; color: var(--danger-color);">Revoke</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+
+{% block title %}Edit User: {{ target_user.username }} - BZOD{% endblock %}
+
+{% block active_users %}active{% endblock %}
+
+{% block header_title %}Edit User: {{ target_user.username }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+    <a href="/admin/users/{{ target_user.id }}" class="btn btn-secondary" style="padding: 0.5rem 1rem;">
+        &larr; Back to User Detail
+    </a>
+</div>
+
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <form action="/admin/users/{{ target_user.id }}/edit" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        
+        <h2 style="font-size: 1.25rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">Account Settings</h2>
+        
+        <div class="form-group">
+            <label for="account_type">Account Type</label>
+            <select id="account_type" name="account_type" class="form-input">
+                <option value="standard" {% if target_user.account_type == "standard" %}selected{% endif %}>Standard</option>
+                <option value="admin" {% if target_user.account_type == "admin" %}selected{% endif %}>Admin</option>
+                <option value="organization" {% if target_user.account_type == "organization" %}selected{% endif %}>Organization</option>
+                <option value="service" {% if target_user.account_type == "service" %}selected{% endif %}>Service</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="metadata">Metadata / Notes</label>
+            <input type="text" id="metadata" name="metadata" class="form-input" value="{% if let Some(m) = target_user.metadata %}{{ m }}{% endif %}" placeholder="Department, team, or notes">
+        </div>
+
+        <h2 style="font-size: 1.25rem; margin-top: 2rem; margin-bottom: 1.5rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">User Resource Quotas</h2>
+        
+        <div class="form-group">
+            <label for="max_urls">Max Short URLs</label>
+            <input type="number" id="max_urls" name="max_urls" class="form-input" value="{{ quotas.max_urls }}" required min="1">
+        </div>
+
+        <div class="form-group">
+            <label for="max_landings">Max Landing Pages</label>
+            <input type="number" id="max_landings" name="max_landings" class="form-input" value="{{ quotas.max_landings }}" required min="0">
+        </div>
+
+        <div class="form-group">
+            <label for="max_api_tokens">Max API Tokens</label>
+            <input type="number" id="max_api_tokens" name="max_api_tokens" class="form-input" value="{{ quotas.max_api_tokens }}" required min="0">
+        </div>
+
+        <div class="form-group">
+            <label for="max_storage_mb">Max Storage Limit (MB)</label>
+            <input type="number" id="max_storage_mb" name="max_storage_mb" class="form-input" value="{{ quotas.max_storage_mb }}" required min="1">
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 0.75rem;">
+            <button type="submit" class="btn" style="flex-grow: 1;">Save Configuration</button>
+            <a href="/admin/users/{{ target_user.id }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,257 @@
+{% extends "layout.html" %}
+
+{% block title %}User Detail: {{ target_user.username }} - BZOD{% endblock %}
+
+{% block active_users %}active{% endblock %}
+
+{% block header_title %}User Detail: {{ target_user.username }}{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<div style="margin-bottom: 1.5rem;">
+    <a href="/admin/users" class="btn btn-secondary" style="padding: 0.5rem 1rem;">
+        &larr; Back to Users List
+    </a>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+    <!-- Profile & Actions -->
+    <div class="card">
+        <h2 style="font-size: 1.25rem; margin-bottom: 1.25rem;">User Profile & Settings</h2>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;">
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary); width: 35%;">User ID</td>
+                <td>{{ target_user.id }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Username</td>
+                <td><strong>{{ target_user.username }}</strong></td>
+            </tr>
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Account Type</td>
+                <td><span class="badge" style="background-color: rgba(99, 102, 241, 0.15); color: #818cf8;">{{ target_user.account_type }}</span></td>
+            </tr>
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Account Status</td>
+                <td>
+                    <span class="badge" style="background-color: {% if target_user.status == "active" %}rgba(16, 185, 129, 0.15){% else %}rgba(239, 68, 68, 0.15){% endif %}; color: {% if target_user.status == "active" %}var(--success-color){% else %}var(--danger-color){% endif %};">
+                        {{ target_user.status }}
+                    </span>
+                </td>
+            </tr>
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Created At</td>
+                <td>{{ target_user.created_at }}</td>
+            </tr>
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Last Login</td>
+                <td>
+                    {% if let Some(login) = target_user.last_login %}
+                        {{ login }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </td>
+            </tr>
+            {% if let Some(meta) = target_user.metadata %}
+            <tr>
+                <td style="font-weight: 600; color: var(--text-secondary);">Metadata</td>
+                <td>{{ meta }}</td>
+            </tr>
+            {% endif %}
+        </table>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Administrative Actions</h3>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                <a href="/admin/users/{{ target_user.id }}/edit" class="btn btn-secondary">Edit Settings</a>
+                
+                {% if target_user.status == "active" %}
+                    <form action="/admin/users/status/{{ target_user.id }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="status" value="disabled">
+                        <button type="submit" class="btn btn-danger" style="background: rgba(239, 68, 68, 0.1); color: var(--danger-color); border: 1px solid rgba(239, 68, 68, 0.2);">
+                            Disable User
+                        </button>
+                    </form>
+                {% else %}
+                    <form action="/admin/users/status/{{ target_user.id }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="status" value="active">
+                        <button type="submit" class="btn" style="background: rgba(16, 185, 129, 0.1); color: var(--success-color); border: 1px solid rgba(16, 185, 129, 0.2);">
+                            Enable User
+                        </button>
+                    </form>
+                {% endif %}
+
+                <form action="/admin/users/delete/{{ target_user.id }}" method="POST" onsubmit="return confirm('Permanently delete user {{ target_user.username }}? This cannot be undone.');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-danger">Delete Account</button>
+                </form>
+            </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 1.5rem; margin-top: 1.5rem;">
+            <h3 style="font-size: 1.1rem; margin-bottom: 1rem;">Reset Password</h3>
+            <form action="/admin/users/password/{{ target_user.id }}" method="POST" style="display: flex; gap: 0.75rem; align-items: end;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="form-group" style="margin-bottom: 0; flex-grow: 1;">
+                    <label for="new_password">New Password</label>
+                    <input type="password" id="new_password" name="new_password" class="form-input" required minlength="8">
+                </div>
+                <button type="submit" class="btn">Update</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Quota & Resource Usage -->
+    <div class="card">
+        <h2 style="font-size: 1.25rem; margin-bottom: 1.25rem;">Quota & Storage Usage</h2>
+        
+        <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span>Short URLs Created</span>
+                    <span>{{ stats.current_urls }} / {{ stats.max_urls }}</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: var(--primary-grad); height: 100%; width: {{ stats.url_pct }}%;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span>Landing Pages</span>
+                    <span>{{ stats.current_landings }} / {{ stats.max_landings }}</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: var(--primary-grad); height: 100%; width: {{ stats.landing_pct }}%;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span>API Tokens</span>
+                    <span>{{ stats.current_api_tokens }} / {{ stats.max_api_tokens }}</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: var(--primary-grad); height: 100%; width: {{ stats.token_pct }}%;"></div>
+                </div>
+            </div>
+
+            <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.9rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span>Storage (MB)</span>
+                    <span>{{ stats.current_storage_mb }} / {{ stats.max_storage_mb }}</span>
+                </div>
+                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden;">
+                    <div style="background: var(--primary-grad); height: 100%; width: {{ stats.storage_pct }}%;"></div>
+                </div>
+            </div>
+
+            <div style="background-color: rgba(255, 255, 255, 0.02); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="display: block;">Total Clicks/Visits</strong>
+                    <span style="color: var(--text-secondary); font-size: 0.85rem;">Combined visitor traffic</span>
+                </div>
+                <span style="font-size: 1.5rem; font-weight: 700; color: var(--accent-color);">{{ stats.total_visits }}</span>
+            </div>
+
+            <form action="/admin/quotas" method="POST" style="margin-top: 0.5rem;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="action" value="reconcile">
+                <input type="hidden" name="user_id" value="{{ target_user.id }}">
+                <button type="submit" class="btn btn-secondary" style="width: 100%;">Run Quota Reconcile Job</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Active Sessions & API Tokens -->
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.1rem;">Active Sessions</h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Created</th>
+                        <th>Expires</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if sessions.is_empty() %}
+                        <tr>
+                            <td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No active sessions.</td>
+                        </tr>
+                    {% else %}
+                        {% for s in sessions %}
+                            <tr>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ s.created_at[0..10] }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ s.expires_at[0..10] }}</td>
+                                <td>
+                                    <form action="/admin/sessions/revoke/{{ s.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; color: var(--danger-color);">Revoke</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.1rem;">API Tokens</h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Created At</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if tokens.is_empty() %}
+                        <tr>
+                            <td colspan="3" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No API tokens.</td>
+                        </tr>
+                    {% else %}
+                        {% for t in tokens %}
+                            <tr>
+                                <td>{{ t.id }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ t.created_at }}</td>
+                                <td>
+                                    <form action="/admin/settings/api-keys/revoke/{{ t.id }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; color: var(--danger-color);">Revoke</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

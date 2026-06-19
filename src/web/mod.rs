@@ -2,6 +2,7 @@ pub mod admin;
 pub mod api;
 pub mod bulk;
 pub mod middleware;
+pub mod multi_user;
 pub mod pages;
 pub mod password_gate;
 pub mod qr;

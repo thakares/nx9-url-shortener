@@ -120,7 +120,7 @@ pub async fn api_bulk_qr(
                 let system_conn = state.db.system.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "BULK_QR_EXPORT",
                     "bulk",
                     "qr",
@@ -271,7 +271,7 @@ pub async fn api_bulk_url(
         let system_conn = state.db.system.lock().unwrap();
         let _ = crate::db::audit_events::write_audit_event(
             &system_conn,
-            &user.0.username,
+            user.0.username(),
             "BULK_URL_CREATION",
             "bulk",
             "url",

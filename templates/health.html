@@ -1,0 +1,171 @@
+{% extends "layout.html" %}
+
+{% block title %}System Health & Diagnostics - BZOD{% endblock %}
+
+{% block active_status %}active{% endblock %}
+
+{% block header_title %}System Health Dashboard{% endblock %}
+
+{% block content %}
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; margin-bottom: 1.5rem;">
+    <!-- DB Health Report -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Database Structural Health
+            </h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Database File</th>
+                        <th>Schema Ver.</th>
+                        <th>Journal Mode</th>
+                        <th>FK State</th>
+                        <th>Integrity Check</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for db in db_reports %}
+                        <tr>
+                            <td><strong>{{ db.database }}.db</strong></td>
+                            <td>v{{ db.schema_version }}</td>
+                            <td><span class="badge" style="background-color: rgba(255,255,255,0.05); color: var(--text-secondary);">{{ db.journal_mode }}</span></td>
+                            <td>{% if db.foreign_keys_enabled %}ON{% else %}OFF{% endif %}</td>
+                            <td>
+                                {% if db.integrity_ok %}
+                                    <span class="badge badge-healthy">Passed</span>
+                                {% else %}
+                                    <span class="badge badge-dead">Corrupt/Failed</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Storage Utilization -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+                Storage Utilization
+            </h3>
+        </div>
+        <div style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                <span>Total Data Directory Size:</span>
+                <strong>{{ total_data_size }}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                <span>System Database size (`system.db`):</span>
+                <span>{{ system_db_size }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                <span>Users/Quotas Database size (`users.db`):</span>
+                <span>{{ users_db_size }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+                <span>Administration database (`admin.db`):</span>
+                <span>{{ admin_db_size }}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span>Standard Tenants Databases (`/users/*`):</span>
+                <span>{{ tenants_db_size }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start;">
+    <!-- Job Execution Status -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Maintenance & Reconcile Jobs
+            </h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Job Name</th>
+                        <th>Last Run Status</th>
+                        <th>Started At</th>
+                        <th>Error Msg</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if job_history.is_empty() %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No job history logs.</td>
+                        </tr>
+                    {% else %}
+                        {% for job in job_history %}
+                            <tr>
+                                <td><strong>{{ job.job_name }}</strong></td>
+                                <td>
+                                    <span class="badge {% if job.status == "success" %}badge-healthy{% else %}badge-dead{% endif %}">
+                                        {{ job.status }}
+                                    </span>
+                                </td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ job.started_at[0..19].replace("T", " ") }}</td>
+                                <td style="font-size: 0.8rem; color: var(--text-secondary); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                    {{ job.error_message.as_deref().unwrap_or("-") }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Health Check Diagnostics -->
+    <div class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+            <h3 style="font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><polyline points="10 6 14 12 10 18"/><line x1="18" y1="12" x2="14" y2="12"/><line x1="6" y1="12" x2="10" y2="12"/></svg>
+                Diagnostics Checks (URLs/Pages)
+            </h3>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Resource</th>
+                        <th>Status</th>
+                        <th>Code</th>
+                        <th>Checked At</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if health_checks.is_empty() %}
+                        <tr>
+                            <td colspan="4" style="text-align: center; color: var(--text-secondary); padding: 2rem;">No resource diagnostics logs.</td>
+                        </tr>
+                    {% else %}
+                        {% for check in health_checks %}
+                            <tr>
+                                <td><span style="font-family: monospace;">{{ check.object_type }}:{{ check.object_id }}</span></td>
+                                <td>
+                                    <span class="badge {% if check.is_healthy == 1 %}badge-healthy{% else %}badge-dead{% endif %}">
+                                        {% if check.is_healthy == 1 %}healthy{% else %}unhealthy{% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ check.status_code.unwrap_or(0) }}</td>
+                                <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ check.checked_at[0..16].replace("T", " ") }}</td>
+                            </tr>
+                        {% endfor %}
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

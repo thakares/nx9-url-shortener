@@ -167,7 +167,7 @@ pub async fn api_create_url(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "URL_CREATION",
                 Some("url"),
                 Some(&url.id),
@@ -180,7 +180,7 @@ pub async fn api_create_url(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "URL_CREATION",
                     "url",
                     &url.id,
@@ -314,7 +314,7 @@ pub async fn api_update_url(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "URL_UPDATE",
                 Some("url"),
                 Some(&uuid),
@@ -327,7 +327,7 @@ pub async fn api_update_url(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "URL_UPDATE",
                     "url",
                     &uuid,
@@ -369,7 +369,7 @@ pub async fn api_delete_url(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "URL_DELETION",
                 Some("url"),
                 Some(&uuid),
@@ -382,7 +382,7 @@ pub async fn api_delete_url(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "URL_DELETION",
                     "url",
                     &uuid,
@@ -448,7 +448,7 @@ pub async fn api_create_page(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "PAGE_CREATION",
                 Some("page"),
                 Some(&page.id),
@@ -549,7 +549,7 @@ pub async fn api_update_page(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "PAGE_UPDATE",
                 Some("page"),
                 Some(&uuid),
@@ -590,7 +590,7 @@ pub async fn api_delete_page(
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
-                &user.0.username,
+                user.0.username(),
                 "PAGE_DELETION",
                 Some("page"),
                 Some(&uuid),
@@ -889,7 +889,7 @@ pub async fn api_set_preview(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "SET_PREVIEW",
                     "url",
                     &uuid,
@@ -976,7 +976,7 @@ pub async fn api_delete_preview(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "DELETE_PREVIEW",
                     "url",
                     &uuid,
@@ -1051,7 +1051,7 @@ pub async fn api_set_password(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "SET_PASSWORD",
                     "url",
                     &uuid,
@@ -1109,7 +1109,7 @@ pub async fn api_remove_password(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "REMOVE_PASSWORD",
                     "url",
                     &uuid,
@@ -1177,7 +1177,7 @@ pub async fn api_create_qr(
                 let system_conn = state.system_db.lock().unwrap();
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
-                    &user.0.username,
+                    user.0.username(),
                     "CREATE_QR",
                     "qr_code",
                     &payload.url_id,

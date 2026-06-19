@@ -1,5 +1,4 @@
 use crate::services::qr::{generate_qr_png, generate_qr_svg};
-use crate::services::shortener::get_url_by_code;
 use crate::state::AppState;
 use crate::utils::get_client_ip;
 use axum::{
@@ -11,6 +10,7 @@ use std::net::SocketAddr;
 
 use serde_json::json;
 
+// GET /api/qr/:file (e.g. /api/qr/abcdef.png or /api/qr/abcdef.svg or JSON stats /api/qr/abcdef)
 // GET /api/qr/:file (e.g. /api/qr/abcdef.png or /api/qr/abcdef.svg or JSON stats /api/qr/abcdef)
 pub async fn qr_handler(
     State(state): State<AppState>,
@@ -24,9 +24,10 @@ pub async fn qr_handler(
         let auth_header = headers.get("Authorization").and_then(|h| h.to_str().ok());
 
         let authenticated = if let Some(auth) = auth_header {
-            let conn = state.admin_db.lock().unwrap();
+            let admin_conn = state.admin_db.lock().unwrap();
+            let users_conn = state.users_db.lock().unwrap();
             matches!(
-                crate::auth::session::authenticate_api_key(&conn, auth),
+                crate::auth::session::authenticate_api_key(&admin_conn, &users_conn, auth),
                 Ok(Some(_user))
             )
         } else {
@@ -37,9 +38,49 @@ pub async fn qr_handler(
             return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
         }
 
-        let url_opt = match get_url_by_code(&state.db, &file) {
-            Ok(u) => u,
+        // We need to look up owner_user_id and status from global_slugs
+        let (owner_user_id, slug_status) = {
+            let system_conn = state.system_db.lock().unwrap();
+            let mut stmt = match system_conn
+                .prepare("SELECT owner_user_id, status FROM global_slugs WHERE slug = ?1;")
+            {
+                Ok(s) => s,
+                Err(_) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
+                }
+            };
+            use rusqlite::OptionalExtension;
+            match stmt
+                .query_row(rusqlite::params![&file], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .optional()
+            {
+                Ok(Some((uid, status))) => (uid, status),
+                Ok(None) => (1, "active".to_string()), // fallback to admin
+                Err(_) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
+                }
+            }
+        };
+
+        if slug_status != "active" {
+            return (StatusCode::NOT_FOUND, "URL not found").into_response();
+        }
+
+        let user_dbs = match state.get_user_dbs(owner_user_id) {
+            Ok(dbs) => dbs,
             Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        };
+
+        let url_opt = {
+            let conn = user_dbs.content.lock().unwrap();
+            match crate::db::content::get_url_by_code(&conn, &file) {
+                Ok(u) => u,
+                Err(_) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
+                }
+            }
         };
 
         let url = match url_opt {
@@ -48,12 +89,12 @@ pub async fn qr_handler(
         };
 
         let qr_scans = {
-            let conn = state.analytics_db.lock().unwrap();
+            let conn = user_dbs.analytics.lock().unwrap();
             crate::db::qr::get_qr_scan_count(&conn, &url.id).unwrap_or(0)
         };
 
         let direct_clicks = {
-            let conn = state.analytics_db.lock().unwrap();
+            let conn = user_dbs.analytics.lock().unwrap();
             conn.query_row(
                 "SELECT COUNT(*) FROM visits WHERE target_type = 'url' AND target_id = ?1;",
                 rusqlite::params![url.id],
@@ -76,9 +117,43 @@ pub async fn qr_handler(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    let url_opt = match get_url_by_code(&state.db, code) {
-        Ok(u) => u,
+    // We need to look up owner_user_id and status from global_slugs
+    let (owner_user_id, slug_status) = {
+        let system_conn = state.system_db.lock().unwrap();
+        let mut stmt = match system_conn
+            .prepare("SELECT owner_user_id, status FROM global_slugs WHERE slug = ?1;")
+        {
+            Ok(s) => s,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        };
+        use rusqlite::OptionalExtension;
+        match stmt
+            .query_row(rusqlite::params![code], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+            })
+            .optional()
+        {
+            Ok(Some((uid, status))) => (uid, status),
+            Ok(None) => (1, "active".to_string()), // fallback to admin
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
+    };
+
+    if slug_status != "active" {
+        return (StatusCode::NOT_FOUND, "Url not found").into_response();
+    }
+
+    let user_dbs = match state.get_user_dbs(owner_user_id) {
+        Ok(dbs) => dbs,
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
+
+    let url_opt = {
+        let conn = user_dbs.content.lock().unwrap();
+        match crate::db::content::get_url_by_code(&conn, code) {
+            Ok(u) => u,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
     };
 
     let url = match url_opt {
@@ -144,7 +219,7 @@ pub async fn qr_handler(
         .map(|s| s.to_string());
 
     {
-        let analytics_conn = state.db.analytics.lock().unwrap();
+        let analytics_conn = user_dbs.analytics.lock().unwrap();
         let _ = crate::db::qr::log_qr_access(
             &analytics_conn,
             &url.id,

@@ -71,10 +71,20 @@ pub fn create_session(
 ) -> rusqlite::Result<Session> {
     let created_at = Utc::now().to_rfc3339();
 
-    conn.execute(
-        "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?1, ?2, ?3, ?4);",
-        params![session_id, user_id, expires_at_rfc3339, created_at],
-    )?;
+    // Bind `user_id` as integer when it appears to be numeric so that numeric
+    // user IDs inserted into `users.db` keep the integer affinity and avoid
+    // InvalidColumnType errors when read as i64 elsewhere.
+    if let Ok(id_i64) = user_id.parse::<i64>() {
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?1, ?2, ?3, ?4);",
+            params![session_id, id_i64, expires_at_rfc3339, created_at],
+        )?;
+    } else {
+        conn.execute(
+            "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?1, ?2, ?3, ?4);",
+            params![session_id, user_id, expires_at_rfc3339, created_at],
+        )?;
+    }
 
     Ok(Session {
         id: session_id.to_string(),

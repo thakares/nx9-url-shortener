@@ -51,3 +51,50 @@ impl IntoResponse for AuditTemplate {
         }
     }
 }
+
+#[derive(Template)]
+#[template(path = "user_status.html")]
+pub struct UserStatusTemplate {
+    pub admin_username: String,
+    pub app_status: &'static str,
+    pub db_status: String,
+    pub queue_size: usize,
+    pub memory_usage: String,
+    pub uptime: String,
+    pub version: &'static str,
+    pub git_commit: &'static str,
+    pub urls: Vec<crate::models::Url>,
+}
+
+#[derive(Template)]
+#[template(path = "user_audit.html")]
+pub struct UserAuditTemplate {
+    pub admin_username: String,
+    pub logs: Vec<AuditLog>,
+}
+
+impl IntoResponse for UserStatusTemplate {
+    fn into_response(self) -> Response {
+        match self.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
+        }
+    }
+}
+
+impl IntoResponse for UserAuditTemplate {
+    fn into_response(self) -> Response {
+        match self.render() {
+            Ok(html) => Html(html).into_response(),
+            Err(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Render error: {}", e),
+            )
+                .into_response(),
+        }
+    }
+}

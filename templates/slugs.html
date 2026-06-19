@@ -1,0 +1,181 @@
+{% extends "layout.html" %}
+
+{% block title %}Global Slug Namespace - BZOD{% endblock %}
+
+{% block active_slugs %}active{% endblock %}
+
+{% block header_title %}Global Slug Directory{% endblock %}
+
+{% block content %}
+{% if let Some(msg) = success %}
+    <div class="alert alert-success">
+        {{ msg }}
+    </div>
+{% endif %}
+{% if let Some(err) = error %}
+    <div class="alert alert-error">
+        {{ err }}
+    </div>
+{% endif %}
+
+<!-- Search & Filtering -->
+<div class="card">
+    <form action="/admin/slugs" method="GET" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: end;">
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="search">Search Slug</label>
+            <input type="text" id="search" name="search" class="form-input" placeholder="e.g. !hello" value="{% if let Some(s) = search_filter %}{{ s }}{% endif %}">
+        </div>
+        
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="owner">Owner User ID</label>
+            <input type="number" id="owner" name="owner" class="form-input" placeholder="e.g. 1" value="{% if let Some(o) = owner_filter %}{{ o }}{% endif %}">
+        </div>
+
+        <div class="form-group" style="margin-bottom: 0;">
+            <label for="status">Status</label>
+            <select id="status" name="status" class="form-input">
+                <option value="" selected>All Statuses</option>
+                <option value="active" {% if let Some(s) = status_filter %}{% if s == "active" %}selected{% endif %}{% endif %}>active</option>
+                <option value="flagged" {% if let Some(s) = status_filter %}{% if s == "flagged" %}selected{% endif %}{% endif %}>flagged</option>
+                <option value="disabled" {% if let Some(s) = status_filter %}{% if s == "disabled" %}selected{% endif %}{% endif %}>disabled</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn">Apply Filters</button>
+    </form>
+</div>
+
+<!-- Slugs Directory Table -->
+<div class="card" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Slug</th>
+                    <th>Owner (ID)</th>
+                    <th>Resource Type</th>
+                    <th>Resource ID</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if slugs.is_empty() %}
+                    <tr>
+                        <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No registered slugs found matching filters.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for item in slugs %}
+                        <tr>
+                            <td>
+                                <strong style="color: var(--accent-color); font-family: monospace; font-size: 1.05rem;">/{{ item.slug }}</strong>
+                            </td>
+                            <td>
+                                <a href="/admin/users/{{ item.owner_user_id }}" style="color: var(--text-primary); text-decoration: underline;">
+                                    User ID: {{ item.owner_user_id }}
+                                </a>
+                            </td>
+                            <td>{{ item.target_type }}</td>
+                            <td style="font-family: monospace; font-size: 0.85rem;">{{ item.target_id }}</td>
+                            <td>
+                                <span class="badge" style="background-color: {% if item.status == "active" %}rgba(16, 185, 129, 0.15){% else if item.status == "disabled" %}rgba(239, 68, 68, 0.15){% else %}rgba(245, 158, 11, 0.15){% endif %}; color: {% if item.status == "active" %}var(--success-color){% else if item.status == "disabled" %}var(--danger-color){% else %}var(--warning-color){% endif %};">
+                                    {{ item.status }}
+                                </span>
+                            </td>
+                            <td>{{ item.created_at[0..10] }}</td>
+                            <td>
+                                <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                    <!-- Transfer Form -->
+                                    <form action="/admin/slugs/transfer" method="POST" style="display: flex; gap: 0.25rem;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="hidden" name="slug" value="{{ item.slug }}">
+                                        <input type="number" name="new_owner_user_id" placeholder="New ID" required style="width: 80px; padding: 0.35rem 0.5rem; font-size: 0.85rem;">
+                                        <button type="submit" class="btn btn-secondary" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Transfer</button>
+                                    </form>
+
+                                    <!-- Disable / Enable Form -->
+                                    {% if item.status == "active" %}
+                                        <form action="/admin/slugs/status" method="POST">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <input type="hidden" name="slug" value="{{ item.slug }}">
+                                            <input type="hidden" name="status" value="disabled">
+                                            <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Disable</button>
+                                        </form>
+                                    {% else %}
+                                        <form action="/admin/slugs/status" method="POST">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <input type="hidden" name="slug" value="{{ item.slug }}">
+                                            <input type="hidden" name="status" value="active">
+                                            <button type="submit" class="btn" style="padding: 0.35rem 0.6rem; font-size: 0.85rem; background: rgba(16,185,129,0.1); color: var(--success-color); border: 1px solid rgba(16,185,129,0.2);">Enable</button>
+                                        </form>
+                                    {% endif %}
+
+                                    <!-- Delete Form -->
+                                    <form action="/admin/slugs/delete" method="POST" onsubmit="return confirm('Release slug /{{ item.slug }}? this cannot be undone.');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="hidden" name="slug" value="{{ item.slug }}">
+                                        <button type="submit" class="btn btn-danger" style="padding: 0.35rem 0.6rem; font-size: 0.85rem;">Delete</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Slug History Log -->
+<div class="card" style="padding: 0; overflow: hidden;">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color);">
+        <h3 style="font-size: 1.15rem;">Slug Ownership History</h3>
+    </div>
+    
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Slug</th>
+                    <th>Old Owner</th>
+                    <th>New Owner</th>
+                    <th>Action</th>
+                    <th>Admin</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if history.is_empty() %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No history records logged.
+                        </td>
+                    </tr>
+                {% else %}
+                    {% for log in history %}
+                        <tr>
+                            <td style="font-size: 0.85rem; color: var(--text-secondary);">{{ log.timestamp[0..19].replace("T", " ") }}</td>
+                            <td><strong style="font-family: monospace;">/{{ log.slug }}</strong></td>
+                            <td>{% if let Some(old_id) = log.old_owner_user_id %}User ID: {{ old_id }}{% else %}-{% endif %}</td>
+                            <td>{% if let Some(new_id) = log.new_owner_user_id %}User ID: {{ new_id }}{% else %}-{% endif %}</td>
+                            <td>
+                                <span class="badge" style="background-color: rgba(255,255,255,0.05); color: var(--text-secondary);">{{ log.action }}</span>
+                            </td>
+                            <td>
+                                {% if let Some(admin) = log.admin_username %}
+                                    {{ admin }}
+                                {% else %}
+                                    System
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

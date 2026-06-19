@@ -51,6 +51,7 @@ fn test_advanced_analytics_pagination_and_sorting() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         });
     }
     insert_visits_batch(&mut conn, &records).unwrap();
@@ -91,6 +92,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
         VisitRecord {
             id: "v2".to_string(),
@@ -103,6 +105,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
         VisitRecord {
             id: "v3".to_string(),
@@ -115,6 +118,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_user_id: None,
         },
     ];
     insert_visits_batch(&mut conn, &records).unwrap();

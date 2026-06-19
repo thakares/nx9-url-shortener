@@ -1,3 +1,4 @@
+use crate::db::Db;
 use chrono::Utc;
 use rusqlite::{params, Connection};
 use std::sync::Mutex;
@@ -34,4 +35,39 @@ pub fn log_job_end(conn: &Mutex<Connection>, id: &str, status: &str, err_msg: Op
             params![status, now, err_msg, id],
         );
     }
+}
+
+pub mod quota_reconcile;
+pub use quota_reconcile::run_quota_reconciliation;
+
+// --- Database Connection Helpers for User-specific Databases ---
+
+pub fn open_user_content_conn(
+    db: &Db,
+    user_id: i64,
+) -> Result<rusqlite::Connection, rusqlite::Error> {
+    let db_path = db
+        .data_dir
+        .join("users")
+        .join(user_id.to_string())
+        .join("content.db");
+    let conn = rusqlite::Connection::open(db_path)?;
+    crate::db::sqlite::enable_wal(&conn, "content")?;
+    crate::db::sqlite::enable_foreign_keys(&conn, "content")?;
+    Ok(conn)
+}
+
+pub fn open_user_analytics_conn(
+    db: &Db,
+    user_id: i64,
+) -> Result<rusqlite::Connection, rusqlite::Error> {
+    let db_path = db
+        .data_dir
+        .join("users")
+        .join(user_id.to_string())
+        .join("analytics.db");
+    let conn = rusqlite::Connection::open(db_path)?;
+    crate::db::sqlite::enable_wal(&conn, "analytics")?;
+    crate::db::sqlite::enable_foreign_keys(&conn, "analytics")?;
+    Ok(conn)
 }

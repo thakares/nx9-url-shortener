@@ -63,11 +63,29 @@ pub async fn run(
         crate::jobs::run_expiry_checker(expiry_db).await;
     });
 
+    let reconcile_db = db.clone();
+    let reconcile_interval_hours = {
+        let conn = db.system.lock().unwrap();
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'quota_reconcile_interval_hours';",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .and_then(|val| val.parse::<u64>().ok())
+        .unwrap_or(24)
+    };
+    tokio::spawn(async move {
+        crate::jobs::run_quota_reconciliation(reconcile_db, reconcile_interval_hours).await;
+    });
+
     let state = AppState {
         admin_db: db.admin.clone(),
         content_db: db.content.clone(),
         analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
+        users_db: db.users.clone(),
+        user_dbs: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         db: db.clone(),
         config: config.clone(),
         analytics_queue: queue,

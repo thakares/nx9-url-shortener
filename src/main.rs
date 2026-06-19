@@ -54,6 +54,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Expand { code, data_dir } => {
             bzod::cli::expand::run(code, data_dir, config).await?;
         }
+        Commands::CreateUser {
+            username,
+            password,
+            data_dir,
+        } => {
+            bzod::cli::create_user::run(username, password, data_dir, config).await?;
+        }
+        Commands::DeleteUser {
+            user_id,
+            force,
+            data_dir,
+        } => {
+            bzod::cli::delete_user::run(user_id, force, data_dir, config).await?;
+        }
+        Commands::DisableUser { user_id, data_dir } => {
+            bzod::cli::disable_user::run(user_id, data_dir, config).await?;
+        }
+        Commands::EnableUser { user_id, data_dir } => {
+            bzod::cli::enable_user::run(user_id, data_dir, config).await?;
+        }
+        Commands::ResetPassword {
+            user_id,
+            password,
+            data_dir,
+        } => {
+            bzod::cli::reset_password::run(user_id, password, data_dir, config).await?;
+        }
+        Commands::ListUsers { data_dir } => {
+            bzod::cli::list_users::run(data_dir, config).await?;
+        }
+        Commands::BackupUser {
+            username,
+            out,
+            data_dir,
+        } => {
+            bzod::cli::backup_user::run(username, out, data_dir, config).await?;
+        }
+        Commands::RestoreUser { file, data_dir } => {
+            bzod::cli::restore_user::run(file, data_dir, config).await?;
+        }
     }
 
     Ok(())

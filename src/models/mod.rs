@@ -9,5 +9,8 @@ pub use api_key::ApiKey;
 pub use audit::AuditLog;
 pub use page::LandingPage;
 pub use url::{AuditEvent, LinkPreview, QrCode, Url};
-pub use user::{Session, User};
+pub use user::{
+    AccountType, ApiActor, ModerationSeverity, Session, SlugStatus, TenantUser, User, UserApiToken,
+    UserQuotas, UserSession, UsernameHistory,
+};
 pub use visit::{SummaryEntry, VisitRecord};
