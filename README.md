@@ -54,6 +54,23 @@ within a single deployable application.
 The goal is operational simplicity without sacrificing reliability, security, or ownership.
 
 ---
+## Runtime Efficiency (v0.5.1)
+
+| Metric              | Value      |
+|---------------------|------------|
+| Binary Size         | 11 MB      |
+| RSS Memory          | 11.8 MB    |
+| Peak RSS            | 11.8 MB    |
+| CPU Idle            | 0.02%      |
+| Swap Usage          | 0 KB       |
+| PIDs                | 7          |
+
+**On a typical 32 GB server:**
+- Memory usage: ~0.04%
+- No swapping
+- Plenty of headroom
+
+BZOD runs closer to a lightweight infrastructure service than a typical web application.
 
 # Design Philosophy
 
