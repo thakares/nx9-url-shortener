@@ -84,6 +84,7 @@
                         <th>SEO Preview Path</th>
                         <th>Status</th>
                         <th>Analytics</th>
+                        <th>QR Code</th>
                         <th>Created</th>
                         <th>Action</th>
                     </tr>
@@ -91,7 +92,7 @@
                 <tbody>
                     {% if pages.is_empty() %}
                         <tr>
-                            <td colspan="7" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            <td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
                                 No landing pages registered. Create one to get started!
                             </td>
                         </tr>
@@ -126,6 +127,8 @@
                                         📊 Analytics
                                     </a>
                                 </td>
+                                {% let code = page.code.as_str() %}
+                                {% include "components/qr_preview.html" %}
                                 <td style="font-size: 0.8rem; color: var(--text-secondary);">
                                     {{ page.created_at[0..10] }}
                                 </td>

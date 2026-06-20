@@ -68,6 +68,26 @@ impl Db {
             }
         }
 
+        // Pre-migration safety net: audit slug namespace for duplicates / format errors
+        match crate::db::users::audit_slug_namespace(config) {
+            Ok(report) => {
+                if !report.duplicates.is_empty() {
+                    tracing::error!(
+                        "Namespace conflicts detected before database migration: {:?}",
+                        report.duplicates
+                    );
+                    return Err(format!(
+                        "Database upgrade aborted due to slug conflicts: {:?}",
+                        report.duplicates
+                    )
+                    .into());
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to audit slug namespace before migration: {}", e);
+            }
+        }
+
         let admin_path = admin_dir.join("admin.db");
         let system_path = admin_dir.join("system.db");
         let users_db_path = admin_dir.join("users.db");
@@ -316,6 +336,44 @@ impl Db {
         };
 
         let _ = db.reconcile_global_slugs(config);
+
+        // Post-init: Clean up stale reservations
+        {
+            let system_conn = db.system.lock().unwrap();
+            match crate::db::users::cleanup_stale_reservations(&system_conn, &config.data_dir) {
+                Ok(count) => {
+                    if count > 0 {
+                        tracing::info!("Cleaned up {} stale reserving slugs", count);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to clean up stale reservations: {}", e);
+                }
+            }
+        }
+
+        // Post-init: Verify global registry integrity
+        {
+            let system_conn = db.system.lock().unwrap();
+            let users_conn = db.users.lock().unwrap();
+            match crate::db::users::verify_global_slug_registry_integrity(
+                &system_conn,
+                &users_conn,
+                &config.data_dir,
+            ) {
+                Ok((errors, warnings)) => {
+                    for err in errors {
+                        tracing::error!("Global registry integrity error: {}", err);
+                    }
+                    for warn in warnings {
+                        tracing::warn!("Global registry integrity warning: {}", warn);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Failed to verify global registry integrity: {}", e);
+                }
+            }
+        }
 
         Ok(db)
     }

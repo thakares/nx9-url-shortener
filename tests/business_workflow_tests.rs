@@ -177,7 +177,7 @@ async fn test_scenario_a_user_create_login_shorten_visit_analytics() {
     let redir_url = format!("{}/!mygoogle", base_url);
     let res = client.get(&redir_url).send().await.unwrap();
     // It should redirect to google.com
-    assert_eq!(res.status(), reqwest::StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(res.status(), reqwest::StatusCode::MOVED_PERMANENTLY);
     assert_eq!(
         res.headers().get("location").unwrap().to_str().unwrap(),
         "https://google.com"
@@ -573,7 +573,7 @@ async fn test_scenario_c_slug_transfer_workflow() {
         .send()
         .await
         .unwrap();
-    assert_eq!(res.status(), reqwest::StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(res.status(), reqwest::StatusCode::MOVED_PERMANENTLY);
     assert_eq!(
         res.headers().get("location").unwrap().to_str().unwrap(),
         "https://yahoo.com"

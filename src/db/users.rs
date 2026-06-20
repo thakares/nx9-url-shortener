@@ -303,6 +303,19 @@ pub fn get_user_quotas(conn: &Connection, user_id: i64) -> rusqlite::Result<Opti
     .optional()
 }
 
+pub fn check_quota_limit(conn: &Connection, user_id: i64, field: &str) -> rusqlite::Result<bool> {
+    if let Some(quotas) = get_user_quotas(conn, user_id)? {
+        match field {
+            "urls" => Ok(quotas.current_urls < quotas.max_urls),
+            "landings" => Ok(quotas.current_landings < quotas.max_landings),
+            "api_tokens" => Ok(quotas.current_api_tokens < quotas.max_api_tokens),
+            _ => Ok(false),
+        }
+    } else {
+        Ok(false)
+    }
+}
+
 pub fn update_user_quotas(
     conn: &Connection,
     user_id: i64,
@@ -458,12 +471,13 @@ pub fn register_global_slug(
     owner_user_id: i64,
     target_type: &str,
     target_id: &str,
+    status: &str,
 ) -> rusqlite::Result<()> {
     let now = Utc::now().to_rfc3339();
     system_conn.execute(
         "INSERT INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7);",
-        rusqlite::params![slug, owner_user_id, target_type, target_id, now, now, "active"],
+        rusqlite::params![slug, owner_user_id, target_type, target_id, now, now, status],
     )?;
 
     // Insert history
@@ -501,7 +515,7 @@ pub fn soft_delete_global_slug(
 ) -> rusqlite::Result<()> {
     let now = Utc::now().to_rfc3339();
     system_conn.execute(
-        "UPDATE global_slugs SET status = 'soft_deleted', deleted_at = ?1 WHERE slug = ?2;",
+        "UPDATE global_slugs SET status = 'disabled', deleted_at = ?1 WHERE slug = ?2;",
         rusqlite::params![now, slug],
     )?;
 
@@ -511,6 +525,459 @@ pub fn soft_delete_global_slug(
          VALUES (?1, ?2, NULL, 'deleted', ?3);",
         rusqlite::params![slug, owner_user_id, now],
     )?;
+
+    Ok(())
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SlugAuditReport {
+    pub duplicates: Vec<String>,
+    pub invalid_entries: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+pub fn audit_slug_namespace(
+    config: &crate::config::Config,
+) -> Result<SlugAuditReport, Box<dyn std::error::Error>> {
+    use std::collections::HashMap;
+    let mut duplicates = Vec::new();
+    let mut invalid_entries = Vec::new();
+    let warnings = Vec::new();
+
+    let mut slug_owners: HashMap<String, Vec<i64>> = HashMap::new();
+
+    // 1. Scan legacy content.db if it exists
+    let legacy_content_path = config.data_dir.join("content.db");
+    if legacy_content_path.exists() {
+        if let Ok(conn) = Connection::open(&legacy_content_path) {
+            // URLs
+            if let Ok(mut stmt) = conn.prepare("SELECT code FROM urls;") {
+                if let Ok(mut rows) = stmt.query([]) {
+                    while let Some(row) = rows.next().unwrap_or(None) {
+                        if let Ok(code) = row.get::<_, String>(0) {
+                            slug_owners.entry(code).or_default().push(1); // 1 = legacy admin
+                        }
+                    }
+                }
+            }
+            // Landing Pages
+            if let Ok(mut stmt) = conn.prepare("SELECT code FROM landing_pages;") {
+                if let Ok(mut rows) = stmt.query([]) {
+                    while let Some(row) = rows.next().unwrap_or(None) {
+                        if let Ok(code) = row.get::<_, String>(0) {
+                            slug_owners.entry(code).or_default().push(1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Scan all tenant databases in data_dir/users/<id>/content.db
+    let users_dir = config.data_dir.join("users");
+    if users_dir.exists() {
+        for entry in std::fs::read_dir(users_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                if let Some(name_str) = path.file_name().and_then(|n| n.to_str()) {
+                    if let Ok(user_id) = name_str.parse::<i64>() {
+                        let content_db_path = path.join("content.db");
+                        if content_db_path.exists() {
+                            if let Ok(conn) = Connection::open(&content_db_path) {
+                                // URLs
+                                if let Ok(mut stmt) = conn.prepare("SELECT code FROM urls;") {
+                                    if let Ok(mut rows) = stmt.query([]) {
+                                        while let Some(row) = rows.next().unwrap_or(None) {
+                                            if let Ok(code) = row.get::<_, String>(0) {
+                                                slug_owners.entry(code).or_default().push(user_id);
+                                            }
+                                        }
+                                    }
+                                }
+                                // Landing pages
+                                if let Ok(mut stmt) =
+                                    conn.prepare("SELECT code FROM landing_pages;")
+                                {
+                                    if let Ok(mut rows) = stmt.query([]) {
+                                        while let Some(row) = rows.next().unwrap_or(None) {
+                                            if let Ok(code) = row.get::<_, String>(0) {
+                                                slug_owners.entry(code).or_default().push(user_id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Populate report
+    for (slug, owners) in slug_owners {
+        if owners.len() > 1 {
+            duplicates.push(format!(
+                "Slug '{}' is defined in multiple content databases by owners {:?}",
+                slug, owners
+            ));
+        }
+        // Validate slug format
+        let valid_url = crate::utils::validation::validate_redirect_code(&slug);
+        let valid_page = crate::utils::validation::validate_page_code(&slug);
+        if !valid_url && !valid_page {
+            invalid_entries.push(format!("Slug '{}' is format-invalid", slug));
+        }
+    }
+
+    Ok(SlugAuditReport {
+        duplicates,
+        invalid_entries,
+        warnings,
+    })
+}
+
+pub fn cleanup_stale_reservations(
+    system_conn: &Connection,
+    data_dir: &std::path::Path,
+) -> Result<usize, Box<dyn std::error::Error>> {
+    use chrono::{DateTime, Utc};
+    let mut cleaned_count = 0;
+
+    let mut stmt = system_conn.prepare(
+        "SELECT slug, owner_user_id, target_type, created_at FROM global_slugs WHERE status = 'reserving';"
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut stale_slugs = Vec::new();
+
+    while let Some(row) = rows.next()? {
+        let slug: String = row.get(0)?;
+        let owner_user_id: i64 = row.get(1)?;
+        let target_type: String = row.get(2)?;
+        let created_at_str: String = row.get(3)?;
+
+        if let Ok(created_at) = DateTime::parse_from_rfc3339(&created_at_str) {
+            let age = Utc::now().signed_duration_since(created_at.with_timezone(&Utc));
+            if age > chrono::Duration::minutes(15) {
+                // Check if target record exists by looking up code = slug in owner's content.db
+                let content_db_path = if owner_user_id == 1 {
+                    let p1 = data_dir.join("users").join("1").join("content.db");
+                    if p1.exists() {
+                        p1
+                    } else {
+                        data_dir.join("content.db")
+                    }
+                } else {
+                    data_dir
+                        .join("users")
+                        .join(owner_user_id.to_string())
+                        .join("content.db")
+                };
+
+                let mut target_exists = false;
+                if content_db_path.exists() {
+                    if let Ok(conn) = Connection::open(&content_db_path) {
+                        if target_type == "url" {
+                            target_exists = conn
+                                .query_row(
+                                    "SELECT EXISTS(SELECT 1 FROM urls WHERE code = ?1);",
+                                    [&slug],
+                                    |r| r.get(0),
+                                )
+                                .unwrap_or(false);
+                        } else if target_type == "page" {
+                            target_exists = conn
+                                .query_row(
+                                    "SELECT EXISTS(SELECT 1 FROM landing_pages WHERE code = ?1);",
+                                    [&slug],
+                                    |r| r.get(0),
+                                )
+                                .unwrap_or(false);
+                        }
+                    }
+                }
+
+                if !target_exists {
+                    stale_slugs.push((slug, owner_user_id));
+                }
+            }
+        }
+    }
+
+    drop(rows);
+    drop(stmt);
+
+    for (slug, owner_user_id) in stale_slugs {
+        system_conn.execute("DELETE FROM global_slugs WHERE slug = ?1;", [&slug])?;
+        let now = Utc::now().to_rfc3339();
+        system_conn.execute(
+            "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp)
+             VALUES (?1, ?2, NULL, 'released', ?3);",
+            rusqlite::params![slug, owner_user_id, now],
+        )?;
+        cleaned_count += 1;
+    }
+
+    Ok(cleaned_count)
+}
+
+pub fn verify_global_slug_registry_integrity(
+    system_conn: &Connection,
+    users_conn: &Connection,
+    data_dir: &std::path::Path,
+) -> Result<(Vec<String>, Vec<String>), Box<dyn std::error::Error>> {
+    use chrono::{DateTime, Utc};
+    let mut errors = Vec::new();
+    let mut warnings = Vec::new();
+
+    // 1. Check duplicate slugs
+    let total_count: i64 =
+        system_conn.query_row("SELECT COUNT(*) FROM global_slugs;", [], |r| r.get(0))?;
+    let distinct_count: i64 =
+        system_conn.query_row("SELECT COUNT(DISTINCT slug) FROM global_slugs;", [], |r| {
+            r.get(0)
+        })?;
+    if total_count != distinct_count {
+        errors.push(format!(
+            "Duplicate slugs found in global_slugs table (total rows: {}, distinct slugs: {})",
+            total_count, distinct_count
+        ));
+    }
+
+    // 2. Scan all global slugs
+    let mut stmt = system_conn.prepare(
+        "SELECT slug, owner_user_id, target_type, target_id, created_at, status FROM global_slugs;",
+    )?;
+    let mut rows = stmt.query([])?;
+
+    while let Some(row) = rows.next()? {
+        let slug: String = row.get(0)?;
+        let owner_user_id: i64 = row.get(1)?;
+        let target_type: String = row.get(2)?;
+        let target_id: String = row.get(3)?;
+        let created_at_str: String = row.get(4)?;
+        let status: String = row.get(5)?;
+
+        // Target type check
+        if target_type != "url" && target_type != "page" {
+            errors.push(format!(
+                "Slug '{}' has invalid target_type '{}'",
+                slug, target_type
+            ));
+        }
+
+        // Status check
+        if status != "active" && status != "disabled" && status != "reserving" {
+            errors.push(format!("Slug '{}' has invalid status '{}'", slug, status));
+        }
+
+        // Check owner
+        let owner_exists: bool = users_conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1);",
+                [owner_user_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
+
+        if !owner_exists {
+            errors.push(format!(
+                "Slug '{}' references missing owner user ID {}",
+                slug, owner_user_id
+            ));
+            continue;
+        }
+
+        // Stale warning check
+        if status == "reserving" {
+            if let Ok(created_at) = DateTime::parse_from_rfc3339(&created_at_str) {
+                let age = Utc::now().signed_duration_since(created_at.with_timezone(&Utc));
+                if age > chrono::Duration::minutes(15) {
+                    warnings.push(format!(
+                        "Reserving slug '{}' has been stale for over 15 minutes",
+                        slug
+                    ));
+                }
+            }
+        }
+
+        // Check target record exists for active / disabled (and reserving with target_id)
+        if status == "active"
+            || status == "disabled"
+            || (status == "reserving" && !target_id.is_empty())
+        {
+            let content_db_path = if owner_user_id == 1 {
+                let p1 = data_dir.join("users").join("1").join("content.db");
+                if p1.exists() {
+                    p1
+                } else {
+                    data_dir.join("content.db")
+                }
+            } else {
+                data_dir
+                    .join("users")
+                    .join(owner_user_id.to_string())
+                    .join("content.db")
+            };
+
+            if !content_db_path.exists() {
+                errors.push(format!(
+                    "Slug '{}' owner content database does not exist at {:?}",
+                    slug, content_db_path
+                ));
+            } else {
+                match Connection::open(&content_db_path) {
+                    Ok(conn) => {
+                        let exists = if target_type == "url" {
+                            conn.query_row(
+                                "SELECT EXISTS(SELECT 1 FROM urls WHERE id = ?1);",
+                                [&target_id],
+                                |r| r.get(0),
+                            )
+                            .unwrap_or(false)
+                        } else if target_type == "page" {
+                            conn.query_row(
+                                "SELECT EXISTS(SELECT 1 FROM landing_pages WHERE id = ?1);",
+                                [&target_id],
+                                |r| r.get(0),
+                            )
+                            .unwrap_or(false)
+                        } else {
+                            false
+                        };
+
+                        if !exists {
+                            errors.push(format!("Slug '{}' (type: '{}', id: '{}') references missing target record in owner's content database", slug, target_type, target_id));
+                        }
+                    }
+                    Err(e) => {
+                        errors.push(format!(
+                            "Slug '{}' owner content database could not be opened: {}",
+                            slug, e
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((errors, warnings))
+}
+
+pub fn register_restored_user_slugs(
+    system_conn: &Connection,
+    target_user_id: i64,
+    restored_content_db_path: &std::path::Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let restored_content_conn = Connection::open(restored_content_db_path)?;
+
+    let mut urls = Vec::new();
+    let mut landing_pages = Vec::new();
+
+    // 1. Read URLs
+    {
+        let mut stmt =
+            restored_content_conn.prepare("SELECT code, id, created_at, status FROM urls;")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let code: String = row.get(0)?;
+            let id: String = row.get(1)?;
+            let created_at: String = row.get(2)?;
+            let status: String = row.get(3)?;
+            urls.push((code, id, created_at, status));
+        }
+    }
+
+    // 2. Read Landing Pages
+    {
+        let mut stmt = restored_content_conn
+            .prepare("SELECT code, id, created_at, state FROM landing_pages;")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let code: String = row.get(0)?;
+            let id: String = row.get(1)?;
+            let created_at: String = row.get(2)?;
+            let state: String = row.get(3)?;
+            landing_pages.push((code, id, created_at, state));
+        }
+    }
+
+    // 3. Check for collisions across all URLs and landing pages
+    let mut conflicting_slugs = Vec::new();
+    for (slug, _, _, _) in &urls {
+        let existing_owner: Option<i64> = system_conn
+            .query_row(
+                "SELECT owner_user_id FROM global_slugs WHERE slug = ?1;",
+                [slug],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        if let Some(owner) = existing_owner {
+            if owner != target_user_id {
+                conflicting_slugs.push(slug.clone());
+            }
+        }
+    }
+
+    for (slug, _, _, _) in &landing_pages {
+        let existing_owner: Option<i64> = system_conn
+            .query_row(
+                "SELECT owner_user_id FROM global_slugs WHERE slug = ?1;",
+                [slug],
+                |r| r.get(0),
+            )
+            .optional()?;
+
+        if let Some(owner) = existing_owner {
+            if owner != target_user_id {
+                conflicting_slugs.push(slug.clone());
+            }
+        }
+    }
+
+    if !conflicting_slugs.is_empty() {
+        return Err(format!(
+            "Restore failed. Conflicting slugs: {}",
+            conflicting_slugs.join(", ")
+        )
+        .into());
+    }
+
+    // 4. Perform registration
+    system_conn.execute(
+        "DELETE FROM global_slugs WHERE owner_user_id = ?1;",
+        [target_user_id],
+    )?;
+
+    for (slug, target_id, created_at, status) in urls {
+        let now = Utc::now().to_rfc3339();
+        let global_status = if status == "dead" {
+            "disabled"
+        } else {
+            "active"
+        };
+        system_conn.execute(
+            "INSERT OR REPLACE INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status) 
+             VALUES (?1, ?2, 'url', ?3, ?4, ?5, ?6);",
+            rusqlite::params![slug, target_user_id, target_id, created_at, now, global_status],
+        )?;
+    }
+
+    for (slug, target_id, created_at, state) in landing_pages {
+        let now = Utc::now().to_rfc3339();
+        let status = if state == "published" {
+            "active"
+        } else {
+            "disabled"
+        };
+        system_conn.execute(
+            "INSERT OR REPLACE INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status) 
+             VALUES (?1, ?2, 'page', ?3, ?4, ?5, ?6);",
+            rusqlite::params![slug, target_user_id, target_id, created_at, now, status],
+        )?;
+    }
 
     Ok(())
 }

@@ -42,6 +42,7 @@ pub struct UrlAnalyticsTemplate {
     pub page_end: usize,
     pub date_from: Option<String>,
     pub date_to: Option<String>,
+    pub is_admin: bool,
 }
 
 impl UrlAnalyticsTemplate {
@@ -84,6 +85,7 @@ pub struct PageAnalyticsTemplate {
     pub page_end: usize,
     pub date_from: Option<String>,
     pub date_to: Option<String>,
+    pub is_admin: bool,
 }
 
 impl PageAnalyticsTemplate {

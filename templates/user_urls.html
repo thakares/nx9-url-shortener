@@ -85,17 +85,8 @@
                             <tr>
                                 <td><a href="/{{ url.code }}" target="_blank" style="color: var(--accent-color); text-decoration: none; font-family: monospace;">/{{ url.code }}</a></td>
                                 <td style="max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ url.destination }}</td>
-                                <td>
-                                    <div style="display: flex; flex-direction: column; align-items: center; gap: 0.25rem;">
-                                        <a href="/api/qr/{{ url.code }}.png" target="_blank" title="View QR Code">
-                                            <img src="/api/qr/{{ url.code }}.svg" alt="QR" style="width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 1px;">
-                                        </a>
-                                        <div style="display: flex; gap: 0.25rem;">
-                                            <a href="/api/qr/{{ url.code }}.png" download class="badge" style="font-size: 0.65rem; background-color: rgba(99, 102, 241, 0.1); color: #818cf8; text-decoration: none; padding: 0.1rem 0.25rem;">PNG</a>
-                                            <a href="/api/qr/{{ url.code }}.svg" download class="badge" style="font-size: 0.65rem; background-color: rgba(99, 102, 241, 0.1); color: #818cf8; text-decoration: none; padding: 0.1rem 0.25rem;">SVG</a>
-                                        </div>
-                                    </div>
-                                </td>
+                                {% let code = url.code.as_str() %}
+                                {% include "components/qr_preview.html" %}
                                 <td>{{ url.status }}</td>
                                 <td>{% if url.tags.is_empty() %}-{% else %}{{ url.tags.join(", ") }}{% endif %}</td>
                                 <td>

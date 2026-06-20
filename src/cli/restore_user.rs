@@ -1,7 +1,5 @@
 use crate::config::Config;
 use crate::db::Db;
-use chrono::Utc;
-use rusqlite::OptionalExtension;
 use std::fs::File;
 use std::path::PathBuf;
 use tar::Archive;
@@ -158,103 +156,18 @@ pub async fn run(
         }
     }
 
-    // 4. Register slugs in global_slugs
-    let restored_content_conn = rusqlite::Connection::open(dest_dir.join("content.db"))?;
+    // 4. Register slugs in global_slugs using the shared helper
     {
-        let mut system_conn = db.system.lock().unwrap();
-        let tx = system_conn.transaction()?;
-
-        // Delete any existing global slugs owned by this user
-        tx.execute(
-            "DELETE FROM global_slugs WHERE owner_user_id = ?1;",
-            [target_user_id],
+        let system_conn = db.system.lock().unwrap();
+        crate::db::users::register_restored_user_slugs(
+            &system_conn,
+            target_user_id,
+            &dest_dir.join("content.db"),
         )?;
-
-        // Register URLs
-        {
-            let mut stmt =
-                restored_content_conn.prepare("SELECT code, id, created_at, status FROM urls;")?;
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                let slug: String = row.get(0)?;
-                let target_id: String = row.get(1)?;
-                let created_at: String = row.get(2)?;
-                let status: String = row.get(3)?;
-                let now = Utc::now().to_rfc3339();
-
-                let existing_owner: Option<i64> = tx
-                    .query_row(
-                        "SELECT owner_user_id FROM global_slugs WHERE slug = ?1;",
-                        [&slug],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-
-                if let Some(owner) = existing_owner {
-                    if owner != target_user_id {
-                        error!(
-                            "Conflict: Slug '{}' is already owned by user ID {}. Skipping.",
-                            slug, owner
-                        );
-                        continue;
-                    }
-                }
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status) 
-                     VALUES (?1, ?2, 'url', ?3, ?4, ?5, ?6);",
-                    rusqlite::params![slug, target_user_id, target_id, created_at, now, status],
-                )?;
-            }
-        }
-
-        // Register Landing Pages
-        {
-            let mut stmt = restored_content_conn
-                .prepare("SELECT code, id, created_at, state FROM landing_pages;")?;
-            let mut rows = stmt.query([])?;
-            while let Some(row) = rows.next()? {
-                let slug: String = row.get(0)?;
-                let target_id: String = row.get(1)?;
-                let created_at: String = row.get(2)?;
-                let state: String = row.get(3)?;
-                let now = Utc::now().to_rfc3339();
-                let status = if state == "published" {
-                    "active"
-                } else {
-                    "disabled"
-                };
-
-                let existing_owner: Option<i64> = tx
-                    .query_row(
-                        "SELECT owner_user_id FROM global_slugs WHERE slug = ?1;",
-                        [&slug],
-                        |r| r.get(0),
-                    )
-                    .optional()?;
-
-                if let Some(owner) = existing_owner {
-                    if owner != target_user_id {
-                        error!(
-                            "Conflict: Slug '{}' is already owned by user ID {}. Skipping.",
-                            slug, owner
-                        );
-                        continue;
-                    }
-                }
-
-                tx.execute(
-                    "INSERT OR REPLACE INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status) 
-                     VALUES (?1, ?2, 'page', ?3, ?4, ?5, ?6);",
-                    rusqlite::params![slug, target_user_id, target_id, created_at, now, status],
-                )?;
-            }
-        }
-
-        tx.commit()?;
     }
 
     // 5. Reconcile quotas for restored user
+    let restored_content_conn = rusqlite::Connection::open(dest_dir.join("content.db"))?;
     crate::db::users::reconcile_user_quotas(
         &db.users.lock().unwrap(),
         target_user_id,

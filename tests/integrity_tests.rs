@@ -58,8 +58,15 @@ async fn test_global_slug_index_consistency() {
     // Register globally
     {
         let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(&system_conn, "!integ-slug", user_id, "url", &url_id)
-            .unwrap();
+        bzod::db::users::register_global_slug(
+            &system_conn,
+            "!integ-slug",
+            user_id,
+            "url",
+            &url_id,
+            "active",
+        )
+        .unwrap();
     }
 
     // Consistency Check:

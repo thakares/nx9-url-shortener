@@ -63,14 +63,19 @@ pub async fn resolve_page(
             .into_response();
     }
 
-    // 2. Get user specific database connections
-    let user_dbs = match state.get_user_dbs(owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    // 2. Get content database connection - admin (user_id=1) uses legacy content_db,
+    //    tenant users use per-user content databases
+    let content_conn = if owner_user_id == 1 {
+        state.content_db.clone()
+    } else {
+        match state.get_user_dbs(owner_user_id) {
+            Ok(dbs) => dbs.content,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
     };
 
     let page_opt = {
-        let conn = user_dbs.content.lock().unwrap();
+        let conn = content_conn.lock().unwrap();
         match crate::db::content::get_landing_page_by_code(&conn, &code) {
             Ok(page) => page,
             Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),

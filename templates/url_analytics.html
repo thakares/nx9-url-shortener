@@ -4,17 +4,111 @@
 
 {% block active_urls %}active{% endblock %}
 
+{% block sidebar_links %}
+{% if is_admin %}
+<li class="{% block active_dashboard %}{% endblock %}">
+    <a href="/admin/dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+    </a>
+</li>
+<li class="active">
+    <a href="/admin/urls">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Short URLs
+    </a>
+</li>
+<li>
+    <a href="/admin/pages">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Landing Pages
+    </a>
+</li>
+<li>
+    <a href="/admin/users">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Users Management
+    </a>
+</li>
+<li>
+    <a href="/admin/settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+    </a>
+</li>
+<li>
+    <a href="/admin/audit">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Audit Log
+    </a>
+</li>
+<li>
+    <a href="/admin/status">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><polyline points="10 6 14 12 10 18"/><line x1="18" y1="12" x2="14" y2="12"/><line x1="6" y1="12" x2="10" y2="12"/></svg>
+        Status
+    </a>
+</li>
+{% else %}
+<li>
+    <a href="/user/dashboard">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+        Dashboard
+    </a>
+</li>
+<li class="active">
+    <a href="/user/urls">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Short URLs
+    </a>
+</li>
+<li>
+    <a href="/user/pages">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Landing Pages
+    </a>
+</li>
+<li>
+    <a href="/user/settings">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+    </a>
+</li>
+<li>
+    <a href="/user/audit">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Audit Log
+    </a>
+</li>
+<li>
+    <a href="/user/status">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><polyline points="10 6 14 12 10 18"/><line x1="18" y1="12" x2="14" y2="12"/><line x1="6" y1="12" x2="10" y2="12"/></svg>
+        Status
+    </a>
+</li>
+{% endif %}
+{% endblock %}
+
+{% block sidebar_footer %}
+<div class="sidebar-footer">
+    <div class="admin-user-info">
+        <div class="avatar">{{ admin_username[0..1].to_uppercase() }}</div>
+        <span>{{ admin_username }}</span>
+    </div>
+    <a href="{% if is_admin %}/admin/logout{% else %}/logout{% endif %}" class="logout-btn">Log Out</a>
+</div>
+{% endblock %}
+
 {% block header_title %}URL Analytics: /{{ url.code }}{% endblock %}
 
 {% block header_actions %}
 <div style="display: flex; gap: 0.5rem;">
-    <a href="/admin/analytics/url/{{ url.id }}/export/csv?date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+    <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}/export/csv{% else %}/user/analytics/url/{{ url.id }}/export/csv{% endif %}?date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
         📥 Export CSV
     </a>
-    <a href="/admin/analytics/url/{{ url.id }}/export/json?date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+    <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}/export/json{% else %}/user/analytics/url/{{ url.id }}/export/json{% endif %}?date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
         📥 Export JSON
     </a>
-    <a href="/admin/urls" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+    <a href="{% if is_admin %}/admin/urls{% else %}/user/urls{% endif %}" class="btn btn-secondary" style="padding: 0.5rem 1rem; font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.25rem;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         Back to URLs
     </a>
@@ -24,7 +118,7 @@
 {% block content %}
 <!-- Date Filter Form -->
 <div class="card" style="margin-bottom: 2rem;">
-    <form method="GET" action="/admin/analytics/url/{{ url.id }}" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+    <form method="GET" action="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
         <div class="form-group" style="margin: 0; flex: 1; min-width: 150px;">
             <label for="date_from" style="margin-bottom: 0.25rem; font-size: 0.85rem;">Date From</label>
             <input type="date" id="date_from" name="date_from" class="form-input" value="{{ date_from.as_deref().unwrap_or("") }}" style="padding: 0.4rem 0.6rem;">
@@ -34,7 +128,7 @@
             <input type="date" id="date_to" name="date_to" class="form-input" value="{{ date_to.as_deref().unwrap_or("") }}" style="padding: 0.4rem 0.6rem;">
         </div>
         <button type="submit" class="btn" style="padding: 0.45rem 1.25rem; font-size: 0.9rem;">Apply Filters</button>
-        <a href="/admin/analytics/url/{{ url.id }}" class="btn btn-secondary" style="padding: 0.45rem 1.25rem; font-size: 0.9rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Clear</a>
+        <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}" class="btn btn-secondary" style="padding: 0.45rem 1.25rem; font-size: 0.9rem; text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Clear</a>
     </form>
 </div>
 
@@ -224,8 +318,8 @@
 
         <div class="pagination" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem;">
             {% if current_page > 1 %}
-                <a href="/admin/analytics/url/{{ url.id }}?analytics_page=1&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
-                <a href="/admin/analytics/url/{{ url.id }}?analytics_page={{ current_page - 1 }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>
+                <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}?analytics_page=1&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
+                <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}?analytics_page={{ current_page - 1 }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>
             {% else %}
                 <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</span>
                 <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</span>
@@ -235,13 +329,13 @@
                 {% if self.is_current(p) %}
                     <span class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; font-weight: bold;">[{{ p }}]</span>
                 {% else %}
-                    <a href="/admin/analytics/url/{{ url.id }}?analytics_page={{ p }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">{{ p }}</a>
+                    <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}?analytics_page={{ p }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">{{ p }}</a>
                 {% endif %}
             {% endfor %}
 
             {% if current_page < total_pages %}
-                <a href="/admin/analytics/url/{{ url.id }}?analytics_page={{ current_page + 1 }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</a>
-                <a href="/admin/analytics/url/{{ url.id }}?analytics_page={{ total_pages }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</a>
+                <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}?analytics_page={{ current_page + 1 }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</a>
+                <a href="{% if is_admin %}/admin/analytics/url/{{ url.id }}{% else %}/user/analytics/url/{{ url.id }}{% endif %}?analytics_page={{ total_pages }}&date_from={{ date_from.as_deref().unwrap_or("") }}&date_to={{ date_to.as_deref().unwrap_or("") }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</a>
             {% else %}
                 <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</span>
                 <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</span>

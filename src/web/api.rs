@@ -149,20 +149,105 @@ pub async fn api_create_url(
         None
     };
 
+    // Dynamically resolve target user ID and content DB
+    let (target_user_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+        crate::models::ApiActor::User(ref u) => {
+            let user_dbs = match state.get_user_dbs(u.id) {
+                Ok(dbs) => dbs,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ApiError {
+                            error: "Database error".to_string(),
+                        }),
+                    )
+                        .into_response()
+                }
+            };
+            (u.id, user_dbs.content.clone())
+        }
+    };
+
+    // Check quota
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, target_user_id, "urls")
+            .unwrap_or(false)
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(ApiError {
+                    error: "Quota limit exceeded".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    // Check availability
+    {
+        let system_conn = state.system_db.lock().unwrap();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiError {
+                    error: "Short code already exists".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            target_user_id,
+            "url",
+            "",
+            "reserving",
+        ) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: format!("Failed to reserve slug: {}", e),
+                }),
+            )
+                .into_response();
+        }
+    }
+
     let tags = payload.tags.unwrap_or_default();
-    let conn = state.content_db.lock().unwrap();
-    match crate::db::content::create_url_extended(
-        &conn,
-        &code,
-        &dest,
-        payload.title.as_deref(),
-        payload.description.as_deref(),
-        &tags,
-        payload.expires_at.as_deref(),
-        password_hash.as_deref(),
-        payload.max_access_count,
-    ) {
+    let res = {
+        let conn = content_db.lock().unwrap();
+        crate::db::content::create_url_extended(
+            &conn,
+            &code,
+            &dest,
+            payload.title.as_deref(),
+            payload.description.as_deref(),
+            &tags,
+            payload.expires_at.as_deref(),
+            password_hash.as_deref(),
+            payload.max_access_count,
+        )
+    };
+
+    match res {
         Ok(url) => {
+            // Activate slug
+            {
+                let system_conn = state.system_db.lock().unwrap();
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
+                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            // Increment quota
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ =
+                    crate::db::users::increment_quota_counter(&users_conn, target_user_id, "urls");
+            }
+
             let ip = get_client_ip(&headers, connect_info);
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
@@ -189,24 +274,17 @@ pub async fn api_create_url(
             }
             (StatusCode::CREATED, Json(url)).into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
+        Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, target_user_id);
             (
-                StatusCode::CONFLICT,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError {
-                    error: "Short code already exists".to_string(),
+                    error: e.to_string(),
                 }),
             )
                 .into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
     }
 }
 
@@ -434,16 +512,109 @@ pub async fn api_create_page(
         }
     }
 
-    let conn = state.content_db.lock().unwrap();
-    match create_landing_page(
-        &conn,
-        &code,
-        &payload.slug,
-        &payload.title,
-        &payload.html_content,
-        &payload.state,
-    ) {
+    // Dynamically resolve target user ID and content DB
+    let (target_user_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+        crate::models::ApiActor::User(ref u) => {
+            let user_dbs = match state.get_user_dbs(u.id) {
+                Ok(dbs) => dbs,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(ApiError {
+                            error: "Database error".to_string(),
+                        }),
+                    )
+                        .into_response()
+                }
+            };
+            (u.id, user_dbs.content.clone())
+        }
+    };
+
+    // Check quota
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, target_user_id, "landings")
+            .unwrap_or(false)
+        {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(ApiError {
+                    error: "Quota limit exceeded".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    // Check availability
+    {
+        let system_conn = state.system_db.lock().unwrap();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return (
+                StatusCode::CONFLICT,
+                Json(ApiError {
+                    error: "Short code already exists".to_string(),
+                }),
+            )
+                .into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            target_user_id,
+            "page",
+            "",
+            "reserving",
+        ) {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiError {
+                    error: format!("Failed to reserve slug: {}", e),
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    let res = {
+        let conn = content_db.lock().unwrap();
+        create_landing_page(
+            &conn,
+            &code,
+            &payload.slug,
+            &payload.title,
+            &payload.html_content,
+            &payload.state,
+        )
+    };
+
+    match res {
         Ok(page) => {
+            // Activate slug
+            {
+                let system_conn = state.system_db.lock().unwrap();
+                let global_status = if payload.state == "published" {
+                    "active"
+                } else {
+                    "disabled"
+                };
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
+                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            // Increment quota
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ = crate::db::users::increment_quota_counter(
+                    &users_conn,
+                    target_user_id,
+                    "landings",
+                );
+            }
+
             let ip = get_client_ip(&headers, connect_info);
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
@@ -457,24 +628,17 @@ pub async fn api_create_page(
             );
             (StatusCode::CREATED, Json(page)).into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
+        Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, target_user_id);
             (
-                StatusCode::CONFLICT,
+                StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError {
-                    error: "Short code already exists".to_string(),
+                    error: e.to_string(),
                 }),
             )
                 .into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
     }
 }
 

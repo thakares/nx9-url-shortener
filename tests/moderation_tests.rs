@@ -25,7 +25,8 @@ async fn test_content_flagging_and_disabling() {
     let system_conn = db.system.lock().unwrap();
 
     // Register slug
-    bzod::db::users::register_global_slug(&system_conn, "!badslug", 10, "url", "url_abc").unwrap();
+    bzod::db::users::register_global_slug(&system_conn, "!badslug", 10, "url", "url_abc", "active")
+        .unwrap();
 
     // Verify it is active initially
     let status: String = system_conn

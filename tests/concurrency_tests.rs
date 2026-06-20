@@ -30,7 +30,7 @@ async fn test_concurrent_slug_creation() {
     let task1 = tokio::spawn(async move {
         let conn = rusqlite::Connection::open(&path1).unwrap();
         b1.wait().await;
-        bzod::db::users::register_global_slug(&conn, "!conc-slug", 10, "url", "url10")
+        bzod::db::users::register_global_slug(&conn, "!conc-slug", 10, "url", "url10", "active")
     });
 
     let b2 = barrier.clone();
@@ -38,7 +38,7 @@ async fn test_concurrent_slug_creation() {
     let task2 = tokio::spawn(async move {
         let conn = rusqlite::Connection::open(&path2).unwrap();
         b2.wait().await;
-        bzod::db::users::register_global_slug(&conn, "!conc-slug", 20, "url", "url20")
+        bzod::db::users::register_global_slug(&conn, "!conc-slug", 20, "url", "url20", "active")
     });
 
     let res1 = task1.await.unwrap();

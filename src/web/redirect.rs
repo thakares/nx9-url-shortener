@@ -24,8 +24,10 @@ pub async fn resolve_redirect(
     headers: HeaderMap,
     connect_info: Option<ConnectInfo<SocketAddr>>,
 ) -> Response {
-    // Basic validation of code (must be 6 hex characters or a valid custom slug)
-    if !crate::utils::validation::validate_redirect_code(&code) {
+    // Basic validation of code (must be 6 hex characters, 4 hex characters, or a valid custom slug)
+    if !crate::utils::validation::validate_redirect_code(&code)
+        && !crate::utils::validation::validate_page_code(&code)
+    {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
@@ -49,7 +51,7 @@ pub async fn resolve_redirect(
         .optional()
     };
 
-    let (owner_user_id, _target_type, _target_id, slug_status) = match slug_info {
+    let (owner_user_id, target_type, _target_id, slug_status) = match slug_info {
         Ok(Some(info)) => info,
         Ok(None) => {
             // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
@@ -67,14 +69,24 @@ pub async fn resolve_redirect(
             .into_response();
     }
 
-    // 2. Get user specific database connections
-    let user_dbs = match state.get_user_dbs(owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    // If target type is page, redirect permanently to /p/slug
+    if target_type == "page" {
+        return Redirect::permanent(&format!("/p/{}", code)).into_response();
+    }
+
+    // 2. Get content database connection - admin (user_id=1) uses legacy content_db,
+    //    tenant users use per-user content databases
+    let content_conn = if owner_user_id == 1 {
+        state.content_db.clone()
+    } else {
+        match state.get_user_dbs(owner_user_id) {
+            Ok(dbs) => dbs.content,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
     };
 
     let url_opt = {
-        let conn = user_dbs.content.lock().unwrap();
+        let conn = content_conn.lock().unwrap();
         match crate::db::content::get_url_by_code(&conn, &code) {
             Ok(url) => url,
             Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
@@ -96,7 +108,7 @@ pub async fn resolve_redirect(
             if expires_at.with_timezone(&Utc) < Utc::now() {
                 // Mark as expired in DB asynchronously/immediately
                 {
-                    let conn = user_dbs.content.lock().unwrap();
+                    let conn = content_conn.lock().unwrap();
                     let _ = conn.execute(
                         "UPDATE urls SET expired = 1 WHERE id = ?1;",
                         [url.id.clone()],
@@ -131,12 +143,12 @@ pub async fn resolve_redirect(
 
     // 6. Increment access count & retrieve preview config
     let _new_access_count = {
-        let conn = user_dbs.content.lock().unwrap();
+        let conn = content_conn.lock().unwrap();
         crate::db::content::increment_access_count(&conn, &url.id).unwrap_or(url.access_count + 1)
     };
 
     let preview_opt = {
-        let conn = user_dbs.content.lock().unwrap();
+        let conn = content_conn.lock().unwrap();
         crate::db::preview::get_preview(&conn, &url.id).unwrap_or(None)
     };
 
@@ -188,6 +200,14 @@ pub async fn resolve_redirect(
         }
         .into_response()
     } else {
-        Redirect::temporary(&url.destination).into_response()
+        {
+            use axum::http::{header, HeaderValue};
+            let mut resp = (StatusCode::MOVED_PERMANENTLY, "").into_response();
+            resp.headers_mut().insert(
+                header::LOCATION,
+                HeaderValue::from_str(&url.destination).unwrap(),
+            );
+            resp
+        }
     }
 }

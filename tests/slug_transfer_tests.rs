@@ -72,8 +72,15 @@ async fn test_slug_transfer() {
     // Register globally
     {
         let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(&system_conn, "!trans-slug", id_a, "url", &url.id)
-            .unwrap();
+        bzod::db::users::register_global_slug(
+            &system_conn,
+            "!trans-slug",
+            id_a,
+            "url",
+            &url.id,
+            "active",
+        )
+        .unwrap();
 
         let users_conn = db.users.lock().unwrap();
         bzod::db::users::increment_quota_counter(&users_conn, id_a, "urls").unwrap();

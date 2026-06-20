@@ -22,11 +22,23 @@ pub async fn run(
     println!("Data directory: {:?}", config.data_dir);
     println!();
 
-    let databases = ["admin", "content", "analytics", "system"];
     let mut all_healthy = true;
 
-    for db_name in &databases {
-        let db_path = config.data_dir.join(format!("{}.db", db_name));
+    // Define target databases in the new layout
+    let admin_dir = config.data_dir.join("admin");
+    let dbs = vec![
+        ("admin", admin_dir.join("admin.db")),
+        ("system", admin_dir.join("system.db")),
+        ("users", admin_dir.join("users.db")),
+        ("legacy content", config.data_dir.join("content.db")),
+        ("legacy analytics", config.data_dir.join("analytics.db")),
+    ];
+
+    for (db_name, db_path) in dbs {
+        // Skip legacy databases if they don't exist
+        if db_name.starts_with("legacy") && !db_path.exists() {
+            continue;
+        }
 
         if !db_path.exists() {
             println!("Database: {}", db_name);
@@ -74,6 +86,58 @@ pub async fn run(
         }
         println!();
     }
+
+    // Global Slug Registry Integrity Check
+    println!("Global Slug Registry Integrity Check");
+    println!("====================================");
+    let system_db_path = admin_dir.join("system.db");
+    let users_db_path = admin_dir.join("users.db");
+
+    if system_db_path.exists() && users_db_path.exists() {
+        match (
+            Connection::open(&system_db_path),
+            Connection::open(&users_db_path),
+        ) {
+            (Ok(sys_conn), Ok(usr_conn)) => {
+                match crate::db::users::verify_global_slug_registry_integrity(
+                    &sys_conn,
+                    &usr_conn,
+                    &config.data_dir,
+                ) {
+                    Ok((errors, warnings)) => {
+                        if errors.is_empty() && warnings.is_empty() {
+                            println!("  Status: HEALTHY (no issues found)");
+                        } else {
+                            if !errors.is_empty() {
+                                println!("  Errors (Action Required):");
+                                for err in &errors {
+                                    println!("    - {}", err);
+                                }
+                                all_healthy = false;
+                            }
+                            if !warnings.is_empty() {
+                                println!("  Warnings (Attention Needed):");
+                                for warn in &warnings {
+                                    println!("    - {}", warn);
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("  Status: ERROR running integrity check: {}", e);
+                        all_healthy = false;
+                    }
+                }
+            }
+            _ => {
+                println!("  Status: ERROR opening system.db or users.db for integrity check");
+                all_healthy = false;
+            }
+        }
+    } else {
+        println!("  Status: SKIPPED (system.db/users.db not found)");
+    }
+    println!();
 
     println!("--------------------");
     if all_healthy {

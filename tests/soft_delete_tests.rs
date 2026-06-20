@@ -22,8 +22,15 @@ async fn test_soft_delete_reserves_slug() {
     let system_conn = db.system.lock().unwrap();
 
     // Register slug
-    bzod::db::users::register_global_slug(&system_conn, "!slug-to-delete", 10, "url", "url_123")
-        .unwrap();
+    bzod::db::users::register_global_slug(
+        &system_conn,
+        "!slug-to-delete",
+        10,
+        "url",
+        "url_123",
+        "active",
+    )
+    .unwrap();
 
     // Soft delete slug
     bzod::db::users::soft_delete_global_slug(&system_conn, "!slug-to-delete", 10).unwrap();
@@ -39,7 +46,7 @@ async fn test_soft_delete_reserves_slug() {
             |row| row.get(0),
         )
         .unwrap();
-    assert_eq!(status, "soft_deleted");
+    assert_eq!(status, "disabled");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -55,8 +62,15 @@ async fn test_permanent_delete_releases_slug() {
     let system_conn = db.system.lock().unwrap();
 
     // Register slug
-    bzod::db::users::register_global_slug(&system_conn, "!slug-to-purge", 10, "url", "url_456")
-        .unwrap();
+    bzod::db::users::register_global_slug(
+        &system_conn,
+        "!slug-to-purge",
+        10,
+        "url",
+        "url_456",
+        "active",
+    )
+    .unwrap();
 
     // Release global slug (permanent deletion)
     bzod::db::users::release_global_slug(&system_conn, "!slug-to-purge", 10).unwrap();

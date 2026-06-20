@@ -80,6 +80,7 @@ async fn test_global_slug_lookup_and_redirection() {
             user_id,
             "url",
             "xyz",
+            "active",
         )
         .unwrap();
     }
@@ -173,6 +174,7 @@ async fn test_disabled_slug_returns_410() {
             user_id,
             "url",
             "xyz",
+            "active",
         )
         .unwrap();
 

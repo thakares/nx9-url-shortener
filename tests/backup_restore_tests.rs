@@ -135,8 +135,15 @@ async fn test_backup_restore_roundtrip() {
 
         // Register global slug
         let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(&system_conn, "!rt-slug", user_id, "url", "rt-id")
-            .unwrap();
+        bzod::db::users::register_global_slug(
+            &system_conn,
+            "!rt-slug",
+            user_id,
+            "url",
+            "rt-id",
+            "active",
+        )
+        .unwrap();
     }
 
     // Backup user
@@ -234,8 +241,15 @@ async fn test_restore_slug_collision_rejection() {
         .unwrap();
 
         let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(&system_conn, "!collision-slug", id_a, "url", "a-id")
-            .unwrap();
+        bzod::db::users::register_global_slug(
+            &system_conn,
+            "!collision-slug",
+            id_a,
+            "url",
+            "a-id",
+            "active",
+        )
+        .unwrap();
     }
 
     // Backup User A
@@ -289,18 +303,25 @@ async fn test_restore_slug_collision_rejection() {
         .unwrap();
 
         let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(&system_conn, "!collision-slug", id_b, "url", "b-id")
-            .unwrap();
+        bzod::db::users::register_global_slug(
+            &system_conn,
+            "!collision-slug",
+            id_b,
+            "url",
+            "b-id",
+            "active",
+        )
+        .unwrap();
     }
 
-    // Attempt to restore User A from backup
-    bzod::cli::restore_user::run(
+    // Attempt to restore User A from backup - must fail on collision
+    let res = bzod::cli::restore_user::run(
         backup_file.to_string_lossy().to_string(),
         None,
         config.clone(),
     )
-    .await
-    .unwrap();
+    .await;
+    assert!(res.is_err());
 
     // Verify that User B still owns the slug in global_slugs and User A's slug registration was skipped/rejected
     {

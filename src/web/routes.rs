@@ -53,8 +53,24 @@ pub fn create_router(state: AppState) -> Router {
             get(admin::user_url_analytics_get),
         )
         .route(
+            "/user/analytics/url/:id/export/csv",
+            get(admin::user_url_analytics_csv_export),
+        )
+        .route(
+            "/user/analytics/url/:id/export/json",
+            get(admin::user_url_analytics_json_export),
+        )
+        .route(
             "/user/analytics/page/:id",
             get(admin::user_page_analytics_get),
+        )
+        .route(
+            "/user/analytics/page/:id/export/csv",
+            get(admin::user_page_analytics_csv_export),
+        )
+        .route(
+            "/user/analytics/page/:id/export/json",
+            get(admin::user_page_analytics_json_export),
         )
         .route("/api-tokens", get(admin::api_tokens_get))
         .route("/api-tokens/create", post(admin::api_tokens_create_post))

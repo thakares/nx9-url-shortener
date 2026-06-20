@@ -23,7 +23,8 @@ async fn test_global_slug_uniqueness() {
     let system_conn = db.system.lock().unwrap();
 
     // Register a slug
-    bzod::db::users::register_global_slug(&system_conn, "!myslug", 1, "url", "url1").unwrap();
+    bzod::db::users::register_global_slug(&system_conn, "!myslug", 1, "url", "url1", "active")
+        .unwrap();
 
     // Verify it is not available
     let avail = bzod::db::users::is_slug_available(&system_conn, "!myslug").unwrap();
@@ -113,6 +114,7 @@ async fn test_slug_release_on_user_deletion() {
             user_id,
             "url",
             "url_xyz",
+            "active",
         )
         .unwrap();
         let avail = bzod::db::users::is_slug_available(&system_conn, "!user-slug").unwrap();

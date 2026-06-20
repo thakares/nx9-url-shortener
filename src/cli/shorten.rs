@@ -33,7 +33,16 @@ pub async fn run(
         None => crate::utils::random::generate_token(3),
     };
 
-    // 3. Persist URL
+    // 3. Register slug in system.db with status 'reserving' and check availability
+    {
+        let system_conn = db.system.lock().unwrap();
+        if !crate::db::users::is_slug_available(&system_conn, &code)? {
+            return Err("Short code/slug already exists".into());
+        }
+        crate::db::users::register_global_slug(&system_conn, &code, 1, "url", "", "reserving")?;
+    }
+
+    // 4. Persist URL
     let conn = db.content.lock().unwrap();
     let res = crate::db::content::create_url_extended(
         &conn,
@@ -48,7 +57,21 @@ pub async fn run(
     );
 
     match res {
-        Ok(_) => {
+        Ok(url) => {
+            // Activate slug in system.db
+            {
+                let system_conn = db.system.lock().unwrap();
+                system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
+                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
+                )?;
+            }
+            // Increment quota for user ID 1
+            {
+                let users_conn = db.users.lock().unwrap();
+                crate::db::users::increment_quota_counter(&users_conn, 1, "urls")?;
+            }
+
             let proto = if config.cookie_secure {
                 "https"
             } else {
@@ -63,11 +86,10 @@ pub async fn run(
             println!("{}/{}", base_url, code);
             Ok(())
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
-            Err("Short code/slug already exists".into())
+        Err(e) => {
+            let system_conn = db.system.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, 1);
+            Err(e.into())
         }
-        Err(e) => Err(e.into()),
     }
 }

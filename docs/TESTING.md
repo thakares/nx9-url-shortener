@@ -1,34 +1,68 @@
-# TESTING.md
+# BZOD Testing & Validation Guide
 
-# BZOD Test Procedures
+## Overview
 
-This document describes the official verification procedures for BZOD.
+BZOD follows a defense-in-depth validation strategy.
 
-The objective is not merely to confirm that code compiles, but to ensure that the complete platform can be built, deployed, backed up, restored, migrated, and recovered successfully.
+A release is considered valid only when:
+
+* Code quality checks pass
+* Automated tests pass
+* Upgrade validation passes
+* Backup/restore validation passes
+* Namespace integrity validation passes
+* Multi-user isolation validation passes
+* Disaster recovery validation passes
+
+The objective is not simply to ensure the application starts, but to ensure that it can be safely upgraded, operated, backed up, restored, and recovered.
 
 ---
 
-# Philosophy
+# Validation Philosophy
 
 BZOD prioritizes:
 
-1. Data Integrity
-2. Operational Simplicity
-3. Recovery Capability
-4. Deployment Reproducibility
-5. Functional Correctness
+1. Namespace Integrity
+2. Data Integrity
+3. Multi-Tenant Isolation
+4. Operational Simplicity
+5. Recovery Capability
+6. Security
+7. Functional Correctness
 
-A passing unit test suite alone is insufficient.
+A successful release is not merely one that runs.
 
-A release is considered valid only if backup, restore, migration, and recovery procedures have been verified.
+A successful release is one that can be recovered.
 
 ---
 
-# Test Categories
+# Automated Test Coverage
 
-## 1. Build Verification
+Current validation suite includes:
 
-Verify the application compiles successfully.
+* Unit Tests
+* Integration Tests
+* HTTP E2E Tests
+* Business Workflow Tests
+* Security Tests
+* Backup & Restore Tests
+* Disaster Recovery Tests
+* Migration Tests
+* Upgrade Validation Tests
+* Namespace Integrity Tests
+* Ownership Isolation Tests
+* Dashboard Parity Tests
+* QR Endpoint Tests
+* Concurrency Tests
+* WAL Recovery Tests
+
+The platform currently executes approximately 100+ automated tests.
+
+---
+
+# 1. Build Validation
+
+Verify successful compilation.
 
 ```bash
 cargo check
@@ -36,261 +70,79 @@ cargo build
 cargo build --release
 ```
 
-Expected Result:
+Expected:
 
-* No compiler errors
-* No panics during startup
-* Release binary generated successfully
+* No compilation failures
+* Release binary generated
 
 ---
 
-## 2. Static Analysis
+# 2. Formatting Validation
 
 ```bash
 cargo fmt --check
-cargo clippy --all-targets
 ```
 
-Expected Result:
+Expected:
 
-* Formatting passes
-* No significant Clippy warnings
+* No formatting errors
 
 ---
 
-## 3. Unit Tests
+# 3. Static Analysis
 
 ```bash
-cargo test
+cargo clippy --all-targets -- -D warnings
 ```
 
-Expected Result:
+Expected:
+
+* Zero warnings
+* Zero errors
+
+---
+
+# 4. Complete Automated Test Suite
+
+```bash
+cargo test --all-targets -- --nocapture
+```
+
+Expected:
 
 * All tests pass
+* No failures
 * No ignored critical tests
 
 ---
 
-## 4. Database Initialization
+# 5. Database Initialization Validation
 
-Create a clean environment.
-
-```bash
-rm -rf data
-
-./bzod stats
-```
-
-Expected Result:
-
-* Databases are automatically created
-* Migrations applied successfully
-
-Verify:
-
-```bash
-./bzod doctor
-```
-
-Expected Result:
-
-```text
-Overall status: HEALTHY
-```
-
----
-
-## 5. Migration Verification
-
-Run migrations repeatedly.
-
-```bash
-./bzod migrate
-./bzod migrate
-./bzod migrate
-```
-
-Expected Result:
-
-* No duplicate migrations
-* No errors
-* Schema remains stable
-
----
-
-## 6. Administrator Creation
-
-Create an administrator account.
-
-```bash
-./bzod create-admin
-```
-
-Expected Result:
-
-* User created successfully
-* Authentication works
-
-Attempt duplicate creation:
-
-```bash
-./bzod create-admin
-```
-
-Expected Result:
-
-* Duplicate username rejected
-
----
-
-## 7. Backup Verification
-
-Create backup archive.
-
-```bash
-./bzod backup
-```
-
-Expected Result:
-
-* Backup archive generated
-* Archive contains all databases
-
-Verify:
-
-```bash
-tar -tzf backup-*.tar.gz
-```
-
-Expected Result:
-
-```text
-admin.db
-content.db
-analytics.db
-system.db
-```
-
----
-
-## 8. Restore Verification
-
-Create sample data.
-
-Generate:
-
-* Administrator
-* URL records
-* Landing pages
-* Analytics records
-
-Create backup:
-
-```bash
-./bzod backup
-```
-
-Delete databases:
+Create clean environment:
 
 ```bash
 rm -rf data
 ```
-
-Restore:
-
-```bash
-./bzod restore --file backup.tar.gz
-```
-
-Expected Result:
-
-* Restore completes successfully
-* All records preserved
-
-Verify:
-
-```bash
-./bzod doctor
-./bzod stats
-```
-
-Expected Result:
-
-```text
-Overall status: HEALTHY
-```
-
-and original record counts preserved.
-
----
-## 9. Disaster Recovery Scenario
-
-1. Create backup
-2. Stop container
-3. Delete databases
-4. Restore from backup
-5. Fix permissions
-6. Restart container
-7. Validate:
-    - URLs
-    - Landing pages
-    - Audit logs
-    - Settings
-    - Analytics
-    - Status page
-
-Expected Result:
-System fully restored without data loss.
-## 10. Disaster Recovery Test
-
-This is the most important test.
-
-Procedure:
-
-1. Backup system.
-2. Delete entire data directory.
-3. Restore backup.
-4. Start server.
-5. Login to Admin UI.
-
-Commands:
-
-```bash
-./bzod backup
-
-rm -rf data
-
-./bzod restore --file backup.tar.gz
-
-./bzod serve
-```
-
-Expected Result:
-
-* System fully operational
-* No manual database repair required
-
----
-
-## 11. Database Health Verification
 
 Run:
 
 ```bash
-./bzod doctor
+bzod stats
 ```
 
-Expected Result:
+Expected:
 
-For every database:
+* Database hierarchy created
+* Migrations applied
+* System healthy
 
-```text
-Integrity: ok
-Foreign keys: enabled
-Journal mode: wal
+Validate:
+
+```bash
+bzod doctor
 ```
 
-Final result:
+Expected:
 
 ```text
 Overall status: HEALTHY
@@ -298,358 +150,335 @@ Overall status: HEALTHY
 
 ---
 
-## 12. SQLite Integrity Checks
+# 6. Namespace Integrity Validation
 
-Manual verification.
+BZOD maintains a global slug namespace.
 
-```bash
-sqlite3 data/admin.db "PRAGMA integrity_check;"
-sqlite3 data/content.db "PRAGMA integrity_check;"
-sqlite3 data/analytics.db "PRAGMA integrity_check;"
-sqlite3 data/system.db "PRAGMA integrity_check;"
-```
-
-Expected Result:
+The following must never coexist:
 
 ```text
-ok
+Admin URL
+hello
+
+User URL
+hello
+
+Landing Page
+hello
 ```
 
-for all databases.
+Validate:
+
+```bash
+bzod doctor
+```
+
+Expected:
+
+```text
+No namespace conflicts detected
+```
+
+Duplicate slugs must abort upgrade and restore operations.
 
 ---
 
-## 13. Web Interface Verification
+# 7. Multi-User Isolation Validation
 
-Start server.
+Verify:
 
-```bash
-./bzod serve
+* User A cannot access User B URLs
+* User A cannot access User B Pages
+* User A cannot access User B Analytics
+* User A cannot export User B analytics
+
+Expected:
+
+```http
+403 Forbidden
+```
+
+for all unauthorized access.
+
+---
+
+# 8. Dashboard Parity Validation
+
+Verify:
+
+## Administrator URLs
+
+Contains:
+
+* Analytics
+* QR Preview
+* PNG Download
+* SVG Download
+
+## User URLs
+
+Contains identical functionality.
+
+Differences allowed:
+
+* User Management
+* Moderation
+* Backups
+* Health
+* Audit
+* Quotas
+
+Everything else must match.
+
+---
+
+# 9. Analytics Validation
+
+Verify:
+
+* URL Analytics
+* Landing Page Analytics
+* CSV Export
+* JSON Export
+* Date Filters
+* Charts
+* Referrer Breakdown
+* Country Breakdown
+* Browser Breakdown
+* Device Breakdown
+
+Expected:
+
+Administrator and owner views return identical analytics.
+
+---
+
+# 10. QR Validation
+
+Verify:
+
+```text
+/api/qr/<slug>.png
+/api/qr/<slug>.svg
+```
+
+Expected:
+
+```http
+200 OK
 ```
 
 Verify:
 
-* Homepage loads
-* Redirects function
-* Landing pages render
-* Admin login works
-* Dashboard loads
-* API endpoints respond
+```text
+Content-Type: image/png
+Content-Type: image/svg+xml
+```
+
+Disabled resources:
+
+```http
+410 Gone
+```
+
+Missing resources:
+
+```http
+404 Not Found
+```
 
 ---
 
-## 14. Docker Verification
+# 11. Routing Validation
 
-Build image.
+URL resources:
+
+```text
+/<slug>
+```
+
+must redirect correctly.
+
+Landing Pages:
+
+```text
+/<slug>
+```
+
+must redirect permanently to:
+
+```text
+/p/<slug>
+```
+
+Expected:
+
+```http
+301 Moved Permanently
+```
+
+and:
+
+```http
+200 OK
+```
+
+for final landing page render.
+
+---
+
+# 12. Backup Validation
+
+Create backup:
+
+```bash
+bzod backup
+```
+
+Expected:
+
+Archive generated successfully.
+
+Validate archive contents.
+
+---
+
+# 13. Restore Validation
+
+Restore backup:
+
+```bash
+bzod restore --file backup.tar.gz
+```
+
+Expected:
+
+* Restore succeeds
+* All data preserved
+* Namespace integrity preserved
+
+---
+
+# 14. Collision Protection Validation
+
+Attempt restore containing duplicate slugs.
+
+Expected:
+
+```text
+Restore aborted
+Slug conflict detected
+```
+
+No partial restore.
+
+---
+
+# 15. Upgrade Validation
+
+Verify upgrade from legacy deployments.
+
+Expected:
+
+* User databases migrated
+* Analytics preserved
+* Links preserved
+* Landing pages preserved
+* Authentication preserved
+
+Duplicate slugs must abort upgrade.
+
+---
+
+# 16. Disaster Recovery Validation
+
+Procedure:
+
+1. Backup system
+2. Stop service
+3. Remove data directory
+4. Restore backup
+5. Start service
+
+Expected:
+
+* Full recovery
+* No manual repair
+* All URLs functional
+* All Landing Pages functional
+* Analytics preserved
+
+---
+
+# 17. Docker Validation
 
 ```bash
 docker compose build --no-cache
-```
-
-Start service.
-
-```bash
 docker compose up -d
 ```
 
 Verify:
 
 ```bash
-docker compose logs -f
+docker compose logs
 ```
 
-Expected Result:
+Expected:
 
 ```text
-Listening for requests
+Server started successfully
 ```
+
+Container health:
+
+```text
+healthy
+```
+
+---
+
+# 18. WAL Recovery Validation
 
 Verify:
 
-```bash
-./bzod doctor
-```
-
-inside container.
+* SQLite WAL mode enabled
+* Recovery after backup succeeds
+* No corruption detected
 
 ---
 
-## 15. Upgrade Verification
-
-1. Create backup.
-2. Upgrade binary.
-3. Run migration.
-4. Start service.
-
-```bash
-./bzod backup
-
-./bzod migrate
-
-./bzod serve
-```
-
-Expected Result:
-
-* Existing data preserved
-* No migration failures
-
----
-## Analytics Verification
-
-Verify:
-
-* URL analytics page loads
-* Landing page analytics page loads
-* Visitor activity table renders
-* Empty visitor tables render correctly
-* CSV export downloads successfully
-* JSON export downloads successfully
-* Date filtering works
-* Invalid date filters return HTTP 400
-* Pagination preserves active filters
-* Exports respect active filters
-# Release Acceptance Criteria
-
-A release is considered production-ready only if:
-
-* Build verification passes
-* Static analysis passes
-* Unit tests pass
-* Backup verification passes
-* Restore verification passes
-* Disaster recovery verification passes
-* Doctor reports HEALTHY
-* Docker deployment succeeds
-* Web UI functions correctly
-
-Failure of backup, restore, or disaster recovery tests is considered a release blocker.
-
----
-
-# BZOD v0.5.0
-
-## Overview
-
-BZOD v0.5.0 includes a comprehensive automated validation suite covering functionality, security, migrations, disaster recovery, concurrency, multi-user isolation, and operational workflows.
-
-The goal is to ensure production upgrades and deployments can be performed safely with minimal risk.
-
----
-
-# Test Categories
-
-## Core Unit Tests
-
-Validates:
-
-* SQLite configuration
-* WAL configuration
-* Integrity checks
-* Analytics helpers
-* QR code generation
-* Database initialization
-
----
-
-## Authentication Tests
-
-Validates:
-
-* Session creation
-* Session expiration
-* API token creation
-* API token revocation
-
-Files:
-
-* auth_tests.rs
-* auth_migration_tests.rs
-
----
-
-## User Management Tests
-
-Validates:
-
-* User creation
-* Password reset
-* Disable / Enable
-* Status transitions
-* Reserved usernames
-
-Files:
-
-* user_management_tests.rs
-
----
-
-## Multi-User Isolation Tests
-
-Validates:
-
-* Database isolation
-* Cross-user access denial
-* Tenant separation
-
-Files:
-
-* user_isolation_tests.rs
-
----
-
-## Slug Namespace Tests
-
-Validates:
-
-* Global uniqueness
-* Reserved slugs
-* Slug release behavior
-* Slug ownership transfers
-
-Files:
-
-* slug_namespace_tests.rs
-* slug_transfer_tests.rs
-
----
-
-## Security Tests
-
-Validates:
-
-* CSRF protections
-* Session expiration
-* Bootstrap credential invalidation
-* SQL injection resistance
-* Path traversal rejection
-
-Files:
-
-* security_tests.rs
-
----
-
-## Backup & Disaster Recovery Tests
-
-Validates:
-
-* Backup generation
-* Restore operations
-* Backup metadata integrity
-* Corrupted backup rejection
-* Rollback on restore failures
-
-Files:
-
-* backup_restore_tests.rs
-* disaster_recovery_tests.rs
-
----
-
-## Upgrade Validation Tests
-
-Validates migration from legacy v0.4.0 deployments.
-
-Checks:
-
-* Database relocation
-* Analytics preservation
-* Link preservation
-* Credential compatibility
-* Redirection integrity
-
-Files:
-
-* upgrade_validation_tests.rs
-
----
-
-## HTTP End-to-End Tests
-
-Validates:
-
-* Login
-* Logout
-* Session cookies
-* CSRF protection
-* Administrative authorization
-
-Files:
-
-* http_e2e_tests.rs
-
----
-
-## Business Workflow Tests
-
-Scenario A
-
-Administrator creates user → User logs in → User creates link → Visitor accesses link → Analytics recorded.
-
-Scenario B
-
-Administrator disables user → Sessions invalidated → Login rejected.
-
-Scenario C
-
-Slug transfer between users → Redirect preserved → Analytics preserved.
-
-Files:
-
-* business_workflow_tests.rs
-
----
-
-## Concurrency Tests
-
-Validates:
-
-* Concurrent slug creation
-* Namespace consistency
-
-Files:
-
-* concurrency_tests.rs
-
----
-
-## WAL Recovery Tests
-
-Validates:
-
-* SQLite WAL durability
-* Recovery after backup operations
-
-Files:
-
-* wal_recovery_tests.rs
-
----
-
-# Running All Tests
-
-```bash
-cargo test --all-targets -- --nocapture
-```
-
-# Release Validation
+# Release Validation Checklist
 
 Before every release:
 
 ```bash
 cargo fmt --check
+
 cargo clippy --all-targets -- -D warnings
+
 cargo test --all-targets -- --nocapture
+
 cargo build --release
+
 cargo audit
 ```
 
-A release is considered valid only if all steps complete successfully.
+Release is approved only if all steps succeed.
 
+---
 
-# Guiding Principle
+# Release Blockers
 
-A successful release is not merely one that starts.
+The following are release blockers:
 
-A successful release is one that can be recovered.
+* Namespace conflicts
+* Backup failure
+* Restore failure
+* Upgrade failure
+* Multi-user isolation failure
+* Ownership validation failure
+* Security test failure
+* Data corruption
+* Disaster recovery failure
+
+A release that cannot be restored is not considered production ready.

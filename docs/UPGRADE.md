@@ -1,25 +1,24 @@
 # Upgrade Guide
 
-Version: v0.5.0
+Version: v0.5.1
 
-This document describes the upgrade process from previous BZOD releases to BZOD v0.5.0.
+This document describes the upgrade process for existing BZOD deployments upgrading to BZOD v0.5.1.
 
 ---
 
 # Overview
 
-BZOD v0.5.0 introduces the largest architectural change in project history:
+BZOD v0.5.1 is a platform hardening release focused on:
 
-* Multi-user architecture
-* Tenant isolation
-* Global slug namespace
-* Centralized authentication
-* User quotas
-* User-specific analytics
-* Administrative user management
-* Backup and restore framework
+* Global namespace integrity
+* Multi-tenant safety
+* Dashboard parity
+* QR reliability
+* Upgrade validation
+* Restore collision protection
+* Ownership isolation
 
-Existing v0.4.x deployments can be upgraded without data loss.
+While v0.5.0 introduced the multi-user architecture, v0.5.1 strengthens the operational and data integrity guarantees required for production deployments.
 
 ---
 
@@ -28,80 +27,175 @@ Existing v0.4.x deployments can be upgraded without data loss.
 Supported:
 
 ```text
-v0.4.0  → v0.5.0
-v0.4.x  → v0.5.0
+v0.5.0 → v0.5.1
+v0.4.x → v0.5.1
+```
+
+Recommended:
+
+```text
+v0.4.x → v0.5.0 → v0.5.1
 ```
 
 Unsupported:
 
 ```text
-v0.3.x → v0.5.0
+v0.3.x → v0.5.1
 ```
 
 Older installations should first upgrade to v0.4.x.
 
 ---
 
+# Major Changes in v0.5.1
+
+## Global Namespace Enforcement
+
+BZOD now enforces a single platform-wide slug namespace.
+
+The following resources can no longer share the same slug:
+
+* Administrator URLs
+* Administrator Landing Pages
+* User URLs
+* User Landing Pages
+
+Example:
+
+```text
+Admin URL:
+hello
+
+User URL:
+hello
+```
+
+Result:
+
+```text
+Upgrade aborted.
+Namespace conflict detected.
+```
+
+---
+
+## Global Slug Registry
+
+BZOD now treats the slug registry as the authoritative source of truth.
+
+All slugs are registered in:
+
+```text
+system.db
+```
+
+Table:
+
+```text
+global_slugs
+```
+
+The registry tracks:
+
+```text
+slug
+owner_user_id
+target_type
+target_id
+status
+```
+
+---
+
+## Reservation-Based Slug Allocation
+
+Slug creation now follows:
+
+```text
+Quota Validation
+↓
+Reserve Global Slug
+↓
+Create Resource
+↓
+Activate Slug
+↓
+Update Quotas
+↓
+Audit Log
+```
+
+Benefits:
+
+* Prevents race conditions
+* Prevents duplicate allocations
+* Improves rollback safety
+* Improves multi-user integrity
+
+---
+
+## Stale Reservation Recovery
+
+BZOD automatically cleans abandoned reservations created by:
+
+* Server crashes
+* Interrupted requests
+* Failed transactions
+
+Stale reservations are validated and cleaned during startup.
+
+---
+
 # Breaking Changes
 
-## Database Layout
+## Global Slug Uniqueness
 
-### v0.4.x
+Deployments containing duplicate slugs will not upgrade.
 
-```text
-data/
-├── admin.db
-├── content.db
-└── analytics.db
-```
-
-### v0.5.0
+Example:
 
 ```text
-data/
-├── users.db
-├── system.db
-└── users/
-    └── 1/
-        ├── content.db
-        └── analytics.db
+User 1:
+!nx9-dns-server
+
+User 3:
+!nx9-dns-server
 ```
+
+Result:
+
+```text
+Upgrade aborted.
+
+Database upgrade aborted due to slug conflicts.
+```
+
+Conflicts must be resolved before migration can continue.
 
 ---
 
-## Authentication
+## Restore Collision Protection
 
-Authentication is now centralized.
+Restore operations now validate namespace integrity.
 
-Old:
-
-```text
-admin.db
-```
-
-New:
+Example:
 
 ```text
-users.db
+Existing slug:
+company
+
+Backup slug:
+company
 ```
 
-Sessions are managed globally.
-
----
-
-## Global Slug Namespace
-
-Slugs are now unique platform-wide.
-
-Examples:
+Result:
 
 ```text
-/example
-/company
-/docs
+Restore aborted.
+Slug conflict detected.
 ```
 
-cannot exist twice.
+No partial restore occurs.
 
 ---
 
@@ -109,22 +203,23 @@ cannot exist twice.
 
 Before upgrading:
 
-* Verify current version
-* Stop active traffic
 * Create backup
 * Verify backup integrity
+* Stop active traffic
+* Run diagnostics
+* Resolve namespace conflicts
 
 ---
 
-## Step 1: Create Backup
+# Step 1: Create Backup
 
-CLI:
+Full backup:
 
 ```bash
 bzod backup
 ```
 
-or manually archive:
+Manual backup:
 
 ```bash
 tar czf bzod-backup.tar.gz data/
@@ -132,9 +227,18 @@ tar czf bzod-backup.tar.gz data/
 
 ---
 
-## Step 2: Verify Backup
+# Step 2: Verify Backup
 
-Confirm archive contains:
+Verify archive contents:
+
+```text
+users.db
+system.db
+
+users/
+```
+
+If upgrading from legacy versions:
 
 ```text
 admin.db
@@ -142,9 +246,35 @@ content.db
 analytics.db
 ```
 
+should also be present.
+
 ---
 
-## Step 3: Stop Service
+# Step 3: Run Diagnostics
+
+Execute:
+
+```bash
+bzod doctor
+```
+
+Expected:
+
+```text
+Overall Status: HEALTHY
+```
+
+Verify:
+
+```text
+No namespace conflicts detected
+No ownership violations detected
+No registry corruption detected
+```
+
+---
+
+# Step 4: Stop Service
 
 Systemd:
 
@@ -162,15 +292,15 @@ docker compose down
 
 # Upgrade Procedure
 
-## Replace Binary
+## Install New Version
 
-Install new release:
+Build:
 
 ```bash
 cargo build --release
 ```
 
-or download release binary.
+Or install official release binary.
 
 ---
 
@@ -180,93 +310,136 @@ or download release binary.
 bzod serve
 ```
 
-On first startup BZOD automatically:
+or:
 
-1. Detects legacy databases.
-2. Creates users.db.
-3. Creates system.db.
-4. Creates administrator tenant.
-5. Moves content.db.
-6. Moves analytics.db.
-7. Creates global slug registry.
-8. Runs migrations.
-
----
-
-# Automatic Migration
-
-Migration performs:
-
-## Administrator Creation
-
-Legacy administrator becomes:
-
-```text
-User ID: 1
-Type: admin
+```bash
+docker compose up -d
 ```
 
 ---
 
-## Content Migration
+# Automatic Upgrade Actions
 
-All URLs migrate into:
+During startup BZOD automatically performs:
+
+1. Database migration checks
+2. Namespace integrity validation
+3. Registry validation
+4. Stale reservation cleanup
+5. Global slug verification
+6. Schema migration execution
+
+---
+
+# Namespace Validation
+
+BZOD scans:
 
 ```text
-users/1/content.db
+legacy databases
+administrator databases
+tenant databases
+```
+
+for duplicate slugs.
+
+Example:
+
+```text
+Owner 1:
+hello
+
+Owner 3:
+hello
+```
+
+Result:
+
+```text
+Namespace conflict detected.
+Upgrade aborted.
 ```
 
 ---
 
-## Analytics Migration
+# Registry Validation
 
-All analytics migrate into:
+BZOD validates:
+
+* Duplicate slug entries
+* Missing owners
+* Missing targets
+* Invalid target types
+* Invalid status values
+
+Allowed target types:
 
 ```text
-users/1/analytics.db
+url
+page
 ```
 
----
-
-## Global Slug Registration
-
-All existing slugs are inserted into:
+Allowed statuses:
 
 ```text
-system.db.global_slugs
+reserving
+active
+disabled
 ```
 
 ---
 
 # Post-Upgrade Validation
 
-## Login
+Run:
 
-Verify:
+```bash
+bzod doctor
+```
+
+Expected:
 
 ```text
-Admin login succeeds
+Namespace Integrity: PASS
+Registry Integrity: PASS
+Ownership Integrity: PASS
+Database Integrity: PASS
 ```
 
 ---
 
-## URLs
+# Login Validation
 
 Verify:
 
 ```text
-Short URLs redirect
+Administrator login succeeds
+User login succeeds
 ```
 
-Example:
+---
+
+# URL Validation
+
+Verify:
 
 ```text
 https://example.com/abc123
 ```
 
+redirects correctly.
+
+Expected:
+
+```http
+302 Found
+```
+
+or configured redirect behavior.
+
 ---
 
-## Landing Pages
+# Landing Page Validation
 
 Verify:
 
@@ -274,50 +447,132 @@ Verify:
 https://example.com/p/demo
 ```
 
-renders correctly.
-
----
-
-## Analytics
-
-Verify:
-
-* Visits visible
-* Reports load
-* Charts render
-
----
-
-## User Management
+renders successfully.
 
 Verify:
 
 ```text
-Admin → Users
+https://example.com/demo
 ```
 
-loads correctly.
+redirects permanently:
+
+```http
+301 Moved Permanently
+```
+
+to:
+
+```text
+/p/demo
+```
 
 ---
 
-# Upgrade Validation Tests
+# QR Validation
 
-BZOD v0.5.0 includes automated migration tests.
+Verify:
 
-Validated:
+```text
+/api/qr/demo.png
+/api/qr/demo.svg
+```
 
-* Legacy admin migration
-* Legacy content migration
-* Legacy analytics migration
-* Slug registration
-* Redirect preservation
-* Analytics preservation
+Expected:
 
-Test suite:
+```http
+200 OK
+```
+
+Content types:
+
+```text
+image/png
+image/svg+xml
+```
+
+Disabled resources:
+
+```http
+410 Gone
+```
+
+Missing resources:
+
+```http
+404 Not Found
+```
+
+---
+
+# Dashboard Validation
+
+Verify Administrator Dashboards:
+
+* URLs
+* Landing Pages
+* Analytics
+* QR Preview
+* PNG Download
+* SVG Download
+
+Verify Standard User Dashboards:
+
+* URLs
+* Landing Pages
+* Analytics
+* QR Preview
+* PNG Download
+* SVG Download
+
+Both should provide equivalent functionality except for administrator-only operations.
+
+---
+
+# Ownership Isolation Validation
+
+Verify:
+
+```text
+User A
+```
+
+cannot access:
+
+```text
+User B Analytics
+User B URLs
+User B Landing Pages
+User B Exports
+```
+
+Expected:
+
+```http
+403 Forbidden
+```
+
+---
+
+# Backup & Restore Validation
+
+Create backup:
 
 ```bash
-cargo test --test upgrade_validation_tests
+bzod backup
 ```
+
+Restore backup:
+
+```bash
+bzod restore backup.tar.gz
+```
+
+Expected:
+
+* No namespace conflicts
+* No ownership conflicts
+* No partial restores
 
 ---
 
@@ -325,39 +580,33 @@ cargo test --test upgrade_validation_tests
 
 If upgrade validation fails:
 
-## Stop Server
+Stop service:
 
 ```bash
 sudo systemctl stop bzod
 ```
 
-or
+or:
 
 ```bash
 docker compose down
 ```
 
----
-
-## Restore Backup
+Restore backup:
 
 ```bash
-bzod restore backup.zip
+bzod restore backup.tar.gz
 ```
 
 or restore archived data directory.
 
----
-
-## Reinstall Previous Release
-
-Deploy previous v0.4.x binary.
+Reinstall previous release.
 
 ---
 
 # Docker Upgrade
 
-Pull new image:
+Pull image:
 
 ```bash
 docker compose pull
@@ -369,13 +618,19 @@ Restart:
 docker compose up -d
 ```
 
-Monitor logs:
+Monitor:
 
 ```bash
 docker compose logs -f
 ```
 
-Verify migrations complete successfully.
+Expected:
+
+```text
+Namespace validation passed
+Registry validation passed
+Server started successfully
+```
 
 ---
 
@@ -399,75 +654,142 @@ Verify:
 sudo systemctl status bzod
 ```
 
+Expected:
+
+```text
+active (running)
+```
+
+---
+
+# Automated Upgrade Validation
+
+Execute:
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets -- --nocapture
+```
+
+Particularly validate:
+
+```text
+upgrade_validation_tests
+backup_restore_tests
+slug_registry_tests
+ownership_tests
+analytics_parity_tests
+transaction_tests
+```
+
 ---
 
 # Recommended Upgrade Workflow
 
 ```text
-1. Create backup
-2. Stop service
-3. Install v0.5.0
-4. Start service
-5. Run migrations
-6. Validate login
-7. Validate URLs
-8. Validate analytics
-9. Validate admin dashboard
-10. Return to production
+1. Create Backup
+2. Verify Backup
+3. Run bzod doctor
+4. Resolve Namespace Conflicts
+5. Stop Service
+6. Install v0.5.1
+7. Start Service
+8. Validate Registry
+9. Validate URLs
+10. Validate Landing Pages
+11. Validate QR Endpoints
+12. Validate Dashboards
+13. Validate Ownership Isolation
+14. Return To Production
 ```
 
 ---
 
 # Troubleshooting
 
-## Login Fails
+## Upgrade Aborted Due To Slug Conflicts
 
-Check:
+Example:
 
 ```text
-users.db
+Slug '!nx9-dns-server'
+is defined in multiple content databases
+by owners [1,3]
 ```
 
-Verify administrator account exists.
+Cause:
+
+```text
+Duplicate slug detected.
+```
+
+Resolution:
+
+```text
+Rename or remove conflicting resources.
+Restart upgrade.
+```
 
 ---
 
-## URLs Missing
+## QR Codes Return 404
 
 Verify:
 
 ```text
-users/1/content.db
+global_slugs
 ```
 
-contains migrated records.
+contains the slug.
+
+Verify slug status:
+
+```text
+active
+```
 
 ---
 
-## Analytics Missing
+## Landing Page Redirect Fails
 
 Verify:
 
 ```text
-users/1/analytics.db
+target_type = page
 ```
 
-contains visit data.
+in:
+
+```text
+global_slugs
+```
 
 ---
 
-## Slug Resolution Fails
+## Ownership Errors
 
-Verify:
+Run:
 
-```sql
-SELECT * FROM global_slugs;
+```bash
+bzod doctor
 ```
 
-returns expected entries.
+Verify ownership integrity passes.
 
 ---
 
 # Upgrade Status
 
-BZOD v0.5.0 upgrade path has been validated through automated migration and integration testing and is considered production-ready for upgrades from v0.4.x deployments.
+BZOD v0.5.1 upgrade path has been validated through:
+
+* Migration Tests
+* Upgrade Validation Tests
+* Namespace Integrity Tests
+* Ownership Isolation Tests
+* Backup & Restore Tests
+* Dashboard Parity Tests
+* QR Endpoint Tests
+* Routing Tests
+
+The v0.5.1 upgrade path is considered production-ready.

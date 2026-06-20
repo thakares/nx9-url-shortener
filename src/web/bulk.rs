@@ -165,7 +165,53 @@ pub async fn api_bulk_url(
             .into_response();
     }
 
-    let mut conn = state.content_db.lock().unwrap();
+    // Dynamically resolve target user ID and content DB
+    let (target_user_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+        crate::models::ApiActor::User(ref u) => {
+            let user_dbs = match state.get_user_dbs(u.id) {
+                Ok(dbs) => dbs,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(BulkErrorResponse {
+                            error: "Database error".to_string(),
+                        }),
+                    )
+                        .into_response()
+                }
+            };
+            (u.id, user_dbs.content.clone())
+        }
+    };
+
+    // Check quota
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if let Some(quotas) =
+            crate::db::users::get_user_quotas(&users_conn, target_user_id).unwrap_or(None)
+        {
+            if quotas.current_urls + (payload.len() as i64) > quotas.max_urls {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(BulkErrorResponse {
+                        error: "Quota limit exceeded".to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        } else {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(BulkErrorResponse {
+                    error: "User quota not found".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    }
+
+    let mut conn = content_db.lock().unwrap();
     let tx = match conn.transaction() {
         Ok(t) => t,
         Err(e) => {
@@ -180,6 +226,7 @@ pub async fn api_bulk_url(
     };
 
     let mut created_urls = Vec::new();
+    let mut reserved_slugs: Vec<String> = Vec::new();
 
     for item in payload {
         let mut code = item.code.unwrap_or_default().trim().to_lowercase();
@@ -188,6 +235,12 @@ pub async fn api_bulk_url(
         } else {
             if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
                 let _ = tx.rollback();
+                // Release reserving slugs
+                let system_conn = state.system_db.lock().unwrap();
+                for slug in &reserved_slugs {
+                    let _ =
+                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
+                }
                 return (
                     StatusCode::BAD_REQUEST,
                     Json(BulkErrorResponse {
@@ -198,11 +251,66 @@ pub async fn api_bulk_url(
             }
         }
 
+        // Reserve slug
+        {
+            let system_conn = state.system_db.lock().unwrap();
+            // Check availability in system.db and also check in our currently reserved slugs in this batch
+            let available = crate::db::users::is_slug_available(&system_conn, &code)
+                .unwrap_or(false)
+                && !reserved_slugs.contains(&code);
+
+            if !available {
+                let _ = tx.rollback();
+                for slug in &reserved_slugs {
+                    let _ =
+                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
+                }
+                return (
+                    StatusCode::CONFLICT,
+                    Json(BulkErrorResponse {
+                        error: format!("Short code '{}' already exists", code),
+                    }),
+                )
+                    .into_response();
+            }
+
+            if let Err(e) = crate::db::users::register_global_slug(
+                &system_conn,
+                &code,
+                target_user_id,
+                "url",
+                "",
+                "reserving",
+            ) {
+                let _ = tx.rollback();
+                for slug in &reserved_slugs {
+                    let _ =
+                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
+                }
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(BulkErrorResponse {
+                        error: format!("Failed to reserve slug '{}': {}", code, e),
+                    }),
+                )
+                    .into_response();
+            }
+            reserved_slugs.push(code.clone());
+        }
+
         let password_hash = if let Some(ref pwd) = item.password {
             match hash_password(pwd) {
                 Ok(h) => Some(h),
                 Err(e) => {
                     let _ = tx.rollback();
+                    let system_conn = state.system_db.lock().unwrap();
+                    for slug in &reserved_slugs {
+                        let _ = crate::db::users::release_global_slug(
+                            &system_conn,
+                            slug,
+                            target_user_id,
+                        );
+                    }
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(BulkErrorResponse {
@@ -229,20 +337,13 @@ pub async fn api_bulk_url(
             item.max_access_count,
         ) {
             Ok(url) => created_urls.push(url),
-            Err(rusqlite::Error::SqliteFailure(err, _))
-                if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-            {
-                let _ = tx.rollback();
-                return (
-                    StatusCode::CONFLICT,
-                    Json(BulkErrorResponse {
-                        error: format!("Short code '{}' already exists", code),
-                    }),
-                )
-                    .into_response();
-            }
             Err(e) => {
                 let _ = tx.rollback();
+                let system_conn = state.system_db.lock().unwrap();
+                for slug in &reserved_slugs {
+                    let _ =
+                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
+                }
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(BulkErrorResponse {
@@ -255,6 +356,10 @@ pub async fn api_bulk_url(
     }
 
     if let Err(e) = tx.commit() {
+        let system_conn = state.system_db.lock().unwrap();
+        for slug in &reserved_slugs {
+            let _ = crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
+        }
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(BulkErrorResponse {
@@ -262,6 +367,25 @@ pub async fn api_bulk_url(
             }),
         )
             .into_response();
+    }
+
+    // Activate slugs
+    {
+        let system_conn = state.system_db.lock().unwrap();
+        for url in &created_urls {
+            let _ = system_conn.execute(
+                "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
+                rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), url.code],
+            );
+        }
+    }
+
+    // Increment quota counters
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        for _ in 0..created_urls.len() {
+            let _ = crate::db::users::increment_quota_counter(&users_conn, target_user_id, "urls");
+        }
     }
 
     // Write Audit Log for the entire batch

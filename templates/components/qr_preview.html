@@ -1,0 +1,9 @@
+<td style="text-align: center; vertical-align: middle;">
+    <a href="/api/qr/{{ code }}.png" target="_blank" title="View QR Code">
+        <img src="/api/qr/{{ code }}.svg" alt="QR" style="width: 32px; height: 32px; border-radius: 4px; border: 1px solid var(--border-color); background: white; padding: 1px;">
+    </a>
+    <div style="margin-top: 0.25rem; display: flex; gap: 0.25rem; justify-content: center;">
+        <a href="/api/qr/{{ code }}.png" download class="badge" style="font-size: 0.65rem; background-color: rgba(99, 102, 241, 0.1); color: #818cf8; text-decoration: none; padding: 0.1rem 0.25rem;">PNG</a>
+        <a href="/api/qr/{{ code }}.svg" download class="badge" style="font-size: 0.65rem; background-color: rgba(99, 102, 241, 0.1); color: #818cf8; text-decoration: none; padding: 0.1rem 0.25rem;">SVG</a>
+    </div>
+</td>

@@ -768,12 +768,29 @@ pub async fn user_urls_create(
         .into_response();
     }
 
-    let is_slug_avail = {
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, user.id, "urls").unwrap_or(false) {
+            return Redirect::to("/user/urls?error=Quota limit exceeded").into_response();
+        }
+    }
+
+    {
         let system_conn = state.system_db.lock().unwrap();
-        crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false)
-    };
-    if !is_slug_avail {
-        return Redirect::to("/user/urls?error=Short code/slug already exists").into_response();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return Redirect::to("/user/urls?error=Short code/slug already exists").into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            user.id,
+            "url",
+            "",
+            "reserving",
+        ) {
+            return Redirect::to(&format!("/user/urls?error=Failed to reserve slug: {}", e))
+                .into_response();
+        }
     }
 
     let mut dest = form.destination.trim().to_string();
@@ -864,18 +881,17 @@ pub async fn user_urls_create(
 
     match res {
         Ok(url) => {
-            let _ = crate::db::users::increment_quota_counter(
-                &state.users_db.lock().unwrap(),
-                user.id,
-                "urls",
-            );
-            let _ = crate::db::users::register_global_slug(
-                &state.system_db.lock().unwrap(),
-                &code,
-                user.id,
-                "url",
-                &url.id,
-            );
+            {
+                let system_conn = state.system_db.lock().unwrap();
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
+                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ = crate::db::users::increment_quota_counter(&users_conn, user.id, "urls");
+            }
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
                 &state,
@@ -888,12 +904,11 @@ pub async fn user_urls_create(
             );
             Redirect::to("/user/urls").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
-            Redirect::to("/user/urls?error=Short code/slug already exists").into_response()
+        Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, user.id);
+            Redirect::to(&format!("/user/urls?error=Database error: {}", e)).into_response()
         }
-        Err(e) => Redirect::to(&format!("/user/urls?error=Database error: {}", e)).into_response(),
     }
 }
 
@@ -1067,12 +1082,30 @@ pub async fn user_pages_create(
         return Redirect::to("/user/pages?error=Slug is required").into_response();
     }
 
-    let is_slug_avail = {
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, user.id, "landings").unwrap_or(false) {
+            return Redirect::to("/user/pages?error=Quota limit exceeded").into_response();
+        }
+    }
+
+    {
         let system_conn = state.system_db.lock().unwrap();
-        crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false)
-    };
-    if !is_slug_avail {
-        return Redirect::to("/user/pages?error=Short code/slug already exists").into_response();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return Redirect::to("/user/pages?error=Short code/slug already exists")
+                .into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            user.id,
+            "page",
+            "",
+            "reserving",
+        ) {
+            return Redirect::to(&format!("/user/pages?error=Failed to reserve slug: {}", e))
+                .into_response();
+        }
     }
 
     let res = {
@@ -1089,18 +1122,22 @@ pub async fn user_pages_create(
 
     match res {
         Ok(page) => {
-            let _ = crate::db::users::increment_quota_counter(
-                &state.users_db.lock().unwrap(),
-                user.id,
-                "landings",
-            );
-            let _ = crate::db::users::register_global_slug(
-                &state.system_db.lock().unwrap(),
-                &code,
-                user.id,
-                "page",
-                &page.id,
-            );
+            {
+                let system_conn = state.system_db.lock().unwrap();
+                let global_status = if form.state == "published" {
+                    "active"
+                } else {
+                    "disabled"
+                };
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
+                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ = crate::db::users::increment_quota_counter(&users_conn, user.id, "landings");
+            }
             let ip = get_client_ip(&headers, connect_info);
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
@@ -1114,12 +1151,11 @@ pub async fn user_pages_create(
             );
             Redirect::to("/user/pages").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
-            Redirect::to("/user/pages?error=Short code already exists").into_response()
+        Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, user.id);
+            Redirect::to(&format!("/user/pages?error=Database error: {}", e)).into_response()
         }
-        Err(e) => Redirect::to(&format!("/user/pages?error=Database error: {}", e)).into_response(),
     }
 }
 
@@ -1411,23 +1447,52 @@ pub async fn user_restore_backup_post(
         .data_dir
         .join("users")
         .join(user.id.to_string());
+
+    let temp_unpack_dir =
+        std::env::temp_dir().join(format!("bzod_restore_unpack_{}", uuid::Uuid::new_v4()));
+    if let Err(e) = std::fs::create_dir_all(&temp_unpack_dir) {
+        let _ = std::fs::remove_file(&temp_file_path);
+        return Redirect::to(&format!(
+            "/user/settings?error=Failed to create temp dir: {}",
+            e
+        ))
+        .into_response();
+    }
+
     let restore_res = {
         let file = match File::open(&temp_file_path) {
             Ok(f) => f,
             Err(e) => {
+                let _ = std::fs::remove_file(&temp_file_path);
+                let _ = std::fs::remove_dir_all(&temp_unpack_dir);
                 return Redirect::to(&format!(
                     "/user/settings?error=Failed to open upload: {}",
                     e
                 ))
-                .into_response()
+                .into_response();
             }
         };
         let tar_gz = GzDecoder::new(file);
         let mut archive = tar::Archive::new(tar_gz);
-        if let Err(e) = archive.unpack(&user_dir) {
-            Err(e)
+        if let Err(e) = archive.unpack(&temp_unpack_dir) {
+            Err(Box::new(e) as Box<dyn std::error::Error>)
         } else {
-            Ok(())
+            // Check for collision using temp content.db
+            let system_conn = state.system_db.lock().unwrap();
+            let temp_content_db = temp_unpack_dir.join("content.db");
+            if temp_content_db.exists() {
+                if let Err(e) = crate::db::users::register_restored_user_slugs(
+                    &system_conn,
+                    user.id,
+                    &temp_content_db,
+                ) {
+                    Err(e)
+                } else {
+                    Ok(())
+                }
+            } else {
+                Err("Backup is missing content.db".into())
+            }
         }
     };
 
@@ -1435,6 +1500,39 @@ pub async fn user_restore_backup_post(
 
     match restore_res {
         Ok(_) => {
+            // Success! Copy unpacked files from temp_unpack_dir to user_dir
+            if let Err(e) = std::fs::create_dir_all(&user_dir) {
+                let _ = std::fs::remove_dir_all(&temp_unpack_dir);
+                return Redirect::to(&format!(
+                    "/user/settings?error=Failed to create user directory: {}",
+                    e
+                ))
+                .into_response();
+            }
+
+            for file_name in &["content.db", "analytics.db", "profile.db"] {
+                let src = temp_unpack_dir.join(file_name);
+                if src.exists() {
+                    let dst = user_dir.join(file_name);
+                    if let Err(e) = std::fs::copy(&src, &dst) {
+                        let _ = std::fs::remove_dir_all(&temp_unpack_dir);
+                        return Redirect::to(&format!(
+                            "/user/settings?error=Failed to copy database: {}",
+                            e
+                        ))
+                        .into_response();
+                    }
+                }
+            }
+            let _ = std::fs::remove_dir_all(&temp_unpack_dir);
+
+            // Reconcile quotas
+            let users_conn = state.users_db.lock().unwrap();
+            if let Ok(content_conn) = rusqlite::Connection::open(user_dir.join("content.db")) {
+                let _ =
+                    crate::db::users::reconcile_user_quotas(&users_conn, user.id, &content_conn);
+            }
+
             let mut pool = state.user_dbs.lock().unwrap();
             pool.remove(&user.id);
             let _ = write_audit_log(
@@ -1451,6 +1549,7 @@ pub async fn user_restore_backup_post(
                 .into_response()
         }
         Err(e) => {
+            let _ = std::fs::remove_dir_all(&temp_unpack_dir);
             Redirect::to(&format!("/user/settings?error=Restore failed: {}", e)).into_response()
         }
     }
@@ -1665,6 +1764,7 @@ pub async fn urls_create(
     }
 
     let ip = get_client_ip(&headers, connect_info);
+    let admin_user_id = user.id.parse::<i64>().unwrap_or(1);
 
     // Custom Slug takes priority if provided
     let mut code = form.custom_slug.trim().to_lowercase();
@@ -1758,6 +1858,33 @@ pub async fn urls_create(
         Some(form.description.trim())
     };
 
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, admin_user_id, "urls").unwrap_or(false)
+        {
+            return Redirect::to("/admin/urls?error=Quota limit exceeded").into_response();
+        }
+    }
+
+    {
+        let system_conn = state.system_db.lock().unwrap();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return Redirect::to("/admin/urls?error=Short code/slug already exists")
+                .into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            admin_user_id,
+            "url",
+            "",
+            "reserving",
+        ) {
+            return Redirect::to(&format!("/admin/urls?error=Failed to reserve slug: {}", e))
+                .into_response();
+        }
+    }
+
     let res = {
         let conn = state.content_db.lock().unwrap();
         crate::db::content::create_url_extended(
@@ -1776,6 +1903,18 @@ pub async fn urls_create(
     match res {
         Ok(url) => {
             {
+                let system_conn = state.system_db.lock().unwrap();
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
+                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ =
+                    crate::db::users::increment_quota_counter(&users_conn, admin_user_id, "urls");
+            }
+            {
                 let conn = state.admin_db.lock().unwrap();
                 let _ = write_audit_log(
                     &conn,
@@ -1790,12 +1929,11 @@ pub async fn urls_create(
             }
             Redirect::to("/admin/urls").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
-            Redirect::to("/admin/urls?error=Short code/slug already exists").into_response()
+        Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, admin_user_id);
+            Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response(),
     }
 }
 
@@ -2264,6 +2402,7 @@ pub async fn pages_create(
     }
 
     let ip = get_client_ip(&headers, connect_info);
+    let admin_user_id = user.id.parse::<i64>().unwrap_or(1);
 
     // Custom Slug takes priority if provided
     let mut code = form.custom_slug.trim().to_lowercase();
@@ -2291,6 +2430,33 @@ pub async fn pages_create(
         return Redirect::to("/admin/pages?error=Slug is required").into_response();
     }
 
+    {
+        let users_conn = state.users_db.lock().unwrap();
+        if !crate::db::users::check_quota_limit(&users_conn, admin_user_id, "landings")
+            .unwrap_or(false)
+        {
+            return Redirect::to("/admin/pages?error=Quota limit exceeded").into_response();
+        }
+    }
+
+    {
+        let system_conn = state.system_db.lock().unwrap();
+        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+            return Redirect::to("/admin/pages?error=Short code already exists").into_response();
+        }
+        if let Err(e) = crate::db::users::register_global_slug(
+            &system_conn,
+            &code,
+            admin_user_id,
+            "page",
+            "",
+            "reserving",
+        ) {
+            return Redirect::to(&format!("/admin/pages?error=Failed to reserve slug: {}", e))
+                .into_response();
+        }
+    }
+
     let res = {
         let conn = state.content_db.lock().unwrap();
         create_landing_page(
@@ -2306,6 +2472,26 @@ pub async fn pages_create(
     match res {
         Ok(page) => {
             {
+                let system_conn = state.system_db.lock().unwrap();
+                let global_status = if form.state == "published" {
+                    "active"
+                } else {
+                    "disabled"
+                };
+                let _ = system_conn.execute(
+                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
+                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
+                );
+            }
+            {
+                let users_conn = state.users_db.lock().unwrap();
+                let _ = crate::db::users::increment_quota_counter(
+                    &users_conn,
+                    admin_user_id,
+                    "landings",
+                );
+            }
+            {
                 let conn_admin = state.admin_db.lock().unwrap();
                 let _ = write_audit_log(
                     &conn_admin,
@@ -2320,12 +2506,9 @@ pub async fn pages_create(
             }
             Redirect::to("/admin/pages").into_response()
         }
-        Err(rusqlite::Error::SqliteFailure(err, _))
-            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
-        {
-            Redirect::to("/admin/pages?error=Short code already exists").into_response()
-        }
         Err(e) => {
+            let system_conn = state.system_db.lock().unwrap();
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, admin_user_id);
             Redirect::to(&format!("/admin/pages?error=Database error: {}", e)).into_response()
         }
     }
@@ -3786,6 +3969,7 @@ pub async fn url_analytics_get(
         page_end,
         date_from: clean_date_from,
         date_to: clean_date_to,
+        is_admin: true,
     };
 
     template.into_response()
@@ -3947,6 +4131,7 @@ pub async fn page_analytics_get(
         page_end,
         date_from: clean_date_from,
         date_to: clean_date_to,
+        is_admin: true,
     };
 
     template.into_response()
@@ -5390,6 +5575,22 @@ pub async fn health_get(
 
     let csrf_token = generate_csrf_token(&session_id);
 
+    let (registry_errors, registry_warnings) = {
+        let system_conn = state.system_db.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        crate::db::users::verify_global_slug_registry_integrity(
+            &system_conn,
+            &users_conn,
+            &state.config.data_dir,
+        )
+        .unwrap_or_else(|e| {
+            (
+                vec![format!("Failed to run integrity check: {}", e)],
+                vec![],
+            )
+        })
+    };
+
     let template = crate::templates::HealthTemplate {
         admin_username: user.username,
         db_reports,
@@ -5400,6 +5601,8 @@ pub async fn health_get(
         tenants_db_size,
         job_history,
         health_checks,
+        registry_errors,
+        registry_warnings,
         csrf_token,
         success: params.get("success").cloned(),
         error: params.get("error").cloned(),
@@ -5914,11 +6117,32 @@ pub async fn user_url_analytics_get(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
 ) -> Response {
     let (user, _session_id) = match require_user_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
     };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Redirect::to("/user/urls?error=Link not found").into_response();
+            }
+            Err(_) => return Redirect::to("/user/urls?error=Database error").into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "url" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
 
     let user_dbs = match state.get_user_dbs(user.id) {
         Ok(dbs) => dbs,
@@ -5934,61 +6158,152 @@ pub async fn user_url_analytics_get(
         }
     };
 
-    let visits = {
-        let conn = user_dbs.analytics.lock().unwrap();
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code 
-                 FROM visits WHERE target_type = 'url' AND target_id = ?1 ORDER BY timestamp DESC;"
-            )
-            .unwrap();
-        let rows = stmt
-            .query_map([&url.id], |row| {
-                Ok(crate::models::VisitRecord {
-                    id: row.get(0)?,
-                    target_type: row.get(1)?,
-                    target_id: row.get(2)?,
-                    timestamp: row.get(3)?,
-                    ip_address: row.get(4)?,
-                    user_agent: row.get(5)?,
-                    referer: row.get(6)?,
-                    accept_language: row.get(7)?,
-                    country: row.get(8)?,
-                    status_code: row.get(9)?,
-                    owner_user_id: Some(user.id),
-                })
-            })
-            .unwrap();
-        rows.filter_map(|r| r.ok())
-            .enumerate()
-            .map(|(idx, r)| {
-                let (browser, _, _) = parse_ua(&r.user_agent);
-                let referrer = clean_referrer(&r.referer);
-                crate::templates::VisitorLogEntry {
-                    sr: idx + 1,
-                    timestamp: r.timestamp,
-                    ip_address: r.ip_address,
-                    country: if r.country.is_empty() {
-                        "Unknown".to_string()
-                    } else {
-                        r.country
-                    },
-                    referrer,
-                    browser,
-                    user_agent: r.user_agent,
-                    utm_source: "-".to_string(),
-                    utm_campaign: "-".to_string(),
-                }
-            })
-            .collect::<Vec<_>>()
+    let conn = user_dbs.analytics.lock().unwrap();
+
+    let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
+    let has_utm_source = schema_cols.contains("utm_source");
+    let has_utm_campaign = schema_cols.contains("utm_campaign");
+    if has_utm_source || has_utm_campaign {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "UTM mapping verification failed",
+        )
+            .into_response();
+    }
+
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(query.date_from.as_deref(), query.date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let total_clicks = get_target_visit_total_filtered(
+        &conn,
+        "url",
+        &id,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    )
+    .unwrap_or(0);
+
+    let unique_visitors = get_target_unique_visitors(&conn, "url", &id).unwrap_or(0);
+    let qr_scans = crate::db::qr::get_qr_scan_count(&conn, &id).unwrap_or(0);
+    let direct_clicks = (total_clicks - qr_scans).max(0);
+
+    let clicks_data = get_clicks_trend(&conn, "url", &id, 30)
+        .or_else(|_| get_clicks_trend_raw(&conn, "url", &id, 30))
+        .unwrap_or_default();
+    let mut trend_map = std::collections::BTreeMap::new();
+    for i in (0..30).rev() {
+        let date_str = (Utc::now() - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        trend_map.insert(date_str, 0i64);
+    }
+    for (d, c) in clicks_data {
+        trend_map.insert(d, c);
+    }
+    let formatted_trend: Vec<(String, i64)> = trend_map.into_iter().collect();
+    let traffic_chart = generate_line_chart(&formatted_trend);
+
+    let monthly_data = get_monthly_clicks_trend(&conn, "url", &id, 12).unwrap_or_default();
+    let monthly_chart = generate_line_chart(&monthly_data);
+
+    let countries_data = get_metric_rankings(&conn, "url", &id, "country", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "country", 5))
+        .unwrap_or_default();
+    let countries_chart = generate_bar_chart(&countries_data);
+
+    let referrers_data = get_metric_rankings(&conn, "url", &id, "referrer", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "referrer", 5))
+        .unwrap_or_default();
+    let referrers_chart = generate_bar_chart(&referrers_data);
+
+    let browsers_data = get_metric_rankings(&conn, "url", &id, "browser", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "url", &id, "browser", 5))
+        .unwrap_or_default();
+    let browsers_chart = generate_bar_chart(&browsers_data);
+
+    let calculated_total_pages = (total_clicks as usize).div_ceil(ANALYTICS_PAGE_SIZE);
+    let total_pages = std::cmp::max(1, calculated_total_pages);
+    let requested_page = query.analytics_page.unwrap_or(1);
+    let current_page = if requested_page == 0 {
+        1
+    } else {
+        requested_page
+    }
+    .clamp(1, total_pages);
+    let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
+
+    let visits_raw = get_target_visits_paginated(
+        &conn,
+        "url",
+        &id,
+        ANALYTICS_PAGE_SIZE as i64,
+        offset as i64,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    )
+    .unwrap_or_default();
+
+    let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
+        .into_iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let sr = offset + idx + 1;
+            crate::templates::VisitorLogEntry {
+                sr,
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: if r.country.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    r.country
+                },
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+                utm_source: "-".to_string(),
+                utm_campaign: "-".to_string(),
+            }
+        })
+        .collect();
+
+    let start_page = current_page.saturating_sub(3).max(1);
+    let end_page = std::cmp::min(total_pages, current_page + 3);
+    let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+    let page_start = if total_clicks == 0 { 0 } else { offset + 1 };
+    let page_end = if total_clicks == 0 {
+        0
+    } else {
+        std::cmp::min(total_clicks as usize, offset + ANALYTICS_PAGE_SIZE)
     };
 
-    let template = crate::templates::UserUrlAnalyticsTemplate {
-        admin_username: user.username.clone(),
-        username: user.username,
-        url_code: url.code,
-        destination: url.destination,
+    let template = crate::templates::UrlAnalyticsTemplate {
+        admin_username: user.username,
+        url,
+        total_clicks,
+        unique_visitors,
+        qr_scans,
+        direct_clicks,
+        traffic_chart,
+        monthly_chart,
+        countries_chart,
+        referrers_chart,
+        browsers_chart,
         visits,
+        current_page,
+        total_pages,
+        visible_pages,
+        total_records: total_clicks,
+        page_start,
+        page_end,
+        date_from: clean_date_from,
+        date_to: clean_date_to,
+        is_admin: false,
     };
 
     template.into_response()
@@ -5998,11 +6313,32 @@ pub async fn user_page_analytics_get(
     State(state): State<AppState>,
     jar: CookieJar,
     Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
 ) -> Response {
     let (user, _session_id) = match require_user_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
     };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Redirect::to("/user/pages?error=Landing page not found").into_response();
+            }
+            Err(_) => return Redirect::to("/user/pages?error=Database error").into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "page" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
 
     let user_dbs = match state.get_user_dbs(user.id) {
         Ok(dbs) => dbs,
@@ -6020,62 +6356,610 @@ pub async fn user_page_analytics_get(
         }
     };
 
-    let visits = {
-        let conn = user_dbs.analytics.lock().unwrap();
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, target_type, target_id, timestamp, ip_address, user_agent, referer, accept_language, country, status_code 
-                 FROM visits WHERE target_type = 'page' AND target_id = ?1 ORDER BY timestamp DESC;"
-            )
-            .unwrap();
-        let rows = stmt
-            .query_map([&page.id], |row| {
-                Ok(crate::models::VisitRecord {
-                    id: row.get(0)?,
-                    target_type: row.get(1)?,
-                    target_id: row.get(2)?,
-                    timestamp: row.get(3)?,
-                    ip_address: row.get(4)?,
-                    user_agent: row.get(5)?,
-                    referer: row.get(6)?,
-                    accept_language: row.get(7)?,
-                    country: row.get(8)?,
-                    status_code: row.get(9)?,
-                    owner_user_id: Some(user.id),
-                })
-            })
-            .unwrap();
-        rows.filter_map(|r| r.ok())
-            .enumerate()
-            .map(|(idx, r)| {
-                let (browser, _, _) = parse_ua(&r.user_agent);
-                let referrer = clean_referrer(&r.referer);
-                crate::templates::VisitorLogEntry {
-                    sr: idx + 1,
-                    timestamp: r.timestamp,
-                    ip_address: r.ip_address,
-                    country: if r.country.is_empty() {
-                        "Unknown".to_string()
-                    } else {
-                        r.country
-                    },
-                    referrer,
-                    browser,
-                    user_agent: r.user_agent,
-                    utm_source: "-".to_string(),
-                    utm_campaign: "-".to_string(),
-                }
-            })
-            .collect::<Vec<_>>()
+    let conn = user_dbs.analytics.lock().unwrap();
+
+    let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
+    let has_utm_source = schema_cols.contains("utm_source");
+    let has_utm_campaign = schema_cols.contains("utm_campaign");
+    if has_utm_source || has_utm_campaign {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "UTM mapping verification failed",
+        )
+            .into_response();
+    }
+
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(query.date_from.as_deref(), query.date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let total_views = get_target_visit_total_filtered(
+        &conn,
+        "page",
+        &id,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    )
+    .unwrap_or(0);
+
+    let unique_visitors = get_target_unique_visitors(&conn, "page", &id).unwrap_or(0);
+
+    let clicks_data = get_clicks_trend(&conn, "page", &id, 30)
+        .or_else(|_| get_clicks_trend_raw(&conn, "page", &id, 30))
+        .unwrap_or_default();
+    let mut trend_map = std::collections::BTreeMap::new();
+    for i in (0..30).rev() {
+        let date_str = (Utc::now() - chrono::Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
+        trend_map.insert(date_str, 0i64);
+    }
+    for (d, c) in clicks_data {
+        trend_map.insert(d, c);
+    }
+    let formatted_trend: Vec<(String, i64)> = trend_map.into_iter().collect();
+    let traffic_chart = generate_line_chart(&formatted_trend);
+
+    let monthly_data = get_monthly_clicks_trend(&conn, "page", &id, 12).unwrap_or_default();
+    let monthly_chart = generate_line_chart(&monthly_data);
+
+    let countries_data = get_metric_rankings(&conn, "page", &id, "country", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "page", &id, "country", 5))
+        .unwrap_or_default();
+    let countries_chart = generate_bar_chart(&countries_data);
+
+    let referrers_data = get_metric_rankings(&conn, "page", &id, "referrer", 5)
+        .or_else(|_| get_metric_rankings_raw(&conn, "page", &id, "referrer", 5))
+        .unwrap_or_default();
+    let referrers_chart = generate_bar_chart(&referrers_data);
+
+    let calculated_total_pages = (total_views as usize).div_ceil(ANALYTICS_PAGE_SIZE);
+    let total_pages = std::cmp::max(1, calculated_total_pages);
+    let requested_page = query.analytics_page.unwrap_or(1);
+    let current_page = if requested_page == 0 {
+        1
+    } else {
+        requested_page
+    }
+    .clamp(1, total_pages);
+    let offset = (current_page - 1) * ANALYTICS_PAGE_SIZE;
+
+    let visits_raw = get_target_visits_paginated(
+        &conn,
+        "page",
+        &id,
+        ANALYTICS_PAGE_SIZE as i64,
+        offset as i64,
+        clean_date_from.as_deref(),
+        clean_date_to.as_deref(),
+    )
+    .unwrap_or_default();
+
+    let visits: Vec<crate::templates::VisitorLogEntry> = visits_raw
+        .into_iter()
+        .enumerate()
+        .map(|(idx, r)| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let sr = offset + idx + 1;
+            crate::templates::VisitorLogEntry {
+                sr,
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: if r.country.is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    r.country
+                },
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+                utm_source: "-".to_string(),
+                utm_campaign: "-".to_string(),
+            }
+        })
+        .collect();
+
+    let start_page = current_page.saturating_sub(3).max(1);
+    let end_page = std::cmp::min(total_pages, current_page + 3);
+    let visible_pages: Vec<usize> = (start_page..=end_page).collect();
+
+    let page_start = if total_views == 0 { 0 } else { offset + 1 };
+    let page_end = if total_views == 0 {
+        0
+    } else {
+        std::cmp::min(total_views as usize, offset + ANALYTICS_PAGE_SIZE)
     };
 
-    let template = crate::templates::UserPageAnalyticsTemplate {
-        admin_username: user.username.clone(),
-        username: user.username,
-        page_code: page.code,
-        title: page.title,
+    let template = crate::templates::PageAnalyticsTemplate {
+        admin_username: user.username,
+        page,
+        total_views,
+        unique_visitors,
+        traffic_chart,
+        monthly_chart,
+        countries_chart,
+        referrers_chart,
         visits,
+        current_page,
+        total_pages,
+        visible_pages,
+        total_records: total_views,
+        page_start,
+        page_end,
+        date_from: clean_date_from,
+        date_to: clean_date_to,
+        is_admin: false,
     };
 
     template.into_response()
+}
+
+async fn perform_user_csv_export(
+    user_dbs: crate::state::UserDbs,
+    target_type: &'static str,
+    id: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Response {
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(date_from.as_deref(), date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let target_exists = {
+        let conn = user_dbs.content.lock().unwrap();
+        if target_type == "url" {
+            get_url_by_id(&conn, &id)
+                .map(|u| u.is_some())
+                .unwrap_or(false)
+        } else {
+            get_landing_page_by_id(&conn, &id)
+                .map(|p| p.is_some())
+                .unwrap_or(false)
+        }
+    };
+    if !target_exists {
+        return (StatusCode::NOT_FOUND, "Target not found").into_response();
+    }
+
+    let count = {
+        let conn = user_dbs.analytics.lock().unwrap();
+        get_target_visit_total_filtered(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        )
+        .unwrap_or(0)
+    };
+
+    let (has_utm_source, has_utm_campaign) = {
+        let conn = user_dbs.analytics.lock().unwrap();
+        let cols = get_visits_schema_columns(&conn).unwrap_or_default();
+        (cols.contains("utm_source"), cols.contains("utm_campaign"))
+    };
+
+    let (tx, rx) =
+        tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(32);
+    let analytics_db = user_dbs.analytics.clone();
+    let target_id = id.clone();
+
+    tokio::task::spawn_blocking(move || {
+        let conn = analytics_db.lock().unwrap();
+
+        let mut header = "Timestamp,IP Address,Country,Referrer,Browser,User-Agent".to_string();
+        if has_utm_source {
+            header.push_str(",UTM Source");
+        }
+        if has_utm_campaign {
+            header.push_str(",UTM Campaign");
+        }
+        header.push('\n');
+
+        if tx
+            .blocking_send(Ok(axum::body::Bytes::from(header)))
+            .is_err()
+        {
+            return;
+        }
+
+        let select_fields = if has_utm_source && has_utm_campaign {
+            "timestamp, ip_address, country, referer, user_agent, utm_source, utm_campaign"
+        } else if has_utm_source {
+            "timestamp, ip_address, country, referer, user_agent, utm_source"
+        } else if has_utm_campaign {
+            "timestamp, ip_address, country, referer, user_agent, utm_campaign"
+        } else {
+            "timestamp, ip_address, country, referer, user_agent"
+        };
+
+        let mut sql = format!(
+            "SELECT {} FROM visits WHERE target_type = ?1 AND target_id = ?2",
+            select_fields
+        );
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> =
+            vec![Box::new(target_type.to_string()), Box::new(target_id)];
+
+        if let Some(df) = clean_date_from.as_deref() {
+            sql.push_str(&format!(" AND timestamp >= ?{}", params.len() + 1));
+            params.push(Box::new(format!("{}T00:00:00Z", df)));
+        }
+
+        if let Some(dt) = clean_date_to.as_deref() {
+            if let Ok(parsed_date) = chrono::NaiveDate::parse_from_str(dt, "%Y-%m-%d") {
+                let next_day = parsed_date + chrono::Duration::days(1);
+                sql.push_str(&format!(" AND timestamp < ?{}", params.len() + 1));
+                params.push(Box::new(format!(
+                    "{}T00:00:00Z",
+                    next_day.format("%Y-%m-%d")
+                )));
+            }
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC, id DESC");
+
+        let mut stmt = match conn.prepare(&sql) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut rows = match stmt.query(rusqlite::params_from_iter(param_refs)) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+
+        let mut csv_buffer = String::new();
+
+        while let Ok(Some(row)) = rows.next() {
+            let timestamp: String = row.get(0).unwrap_or_default();
+            let ip_address: String = row.get(1).unwrap_or_default();
+            let country: String = row.get(2).unwrap_or_default();
+            let referer: String = row.get(3).unwrap_or_default();
+            let user_agent: String = row.get(4).unwrap_or_default();
+
+            let (browser, _, _) = parse_ua(&user_agent);
+            let referrer = clean_referrer(&referer);
+            let country_display = if country.is_empty() {
+                "Unknown".to_string()
+            } else {
+                country
+            };
+
+            let mut line = format!(
+                "{},{},{},{},{},{}",
+                escape_csv_field(&timestamp),
+                escape_csv_field(&ip_address),
+                escape_csv_field(&country_display),
+                escape_csv_field(&referrer),
+                escape_csv_field(&browser),
+                escape_csv_field(&user_agent)
+            );
+
+            let mut col_idx = 5;
+            if has_utm_source {
+                let utm_src: String = row.get(col_idx).unwrap_or_default();
+                line.push_str(&format!(",{}", escape_csv_field(&utm_src)));
+                col_idx += 1;
+            }
+            if has_utm_campaign {
+                let utm_camp: String = row.get(col_idx).unwrap_or_default();
+                line.push_str(&format!(",{}", escape_csv_field(&utm_camp)));
+            }
+            line.push('\n');
+
+            csv_buffer.push_str(&line);
+            if csv_buffer.len() >= 8192 {
+                let bytes = axum::body::Bytes::from(csv_buffer);
+                if tx.blocking_send(Ok(bytes)).is_err() {
+                    return;
+                }
+                csv_buffer = String::new();
+            }
+        }
+
+        if !csv_buffer.is_empty() {
+            let _ = tx.blocking_send(Ok(axum::body::Bytes::from(csv_buffer)));
+        }
+    });
+
+    let stream = DbExportStream { receiver: rx };
+    let filename = if target_type == "url" {
+        format!("url_{}_analytics.csv", id)
+    } else {
+        format!("page_{}_analytics.csv", id)
+    };
+
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "text/csv"),
+            (
+                "Content-Disposition",
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
+            ("X-BZOD-Export-Records", &count.to_string()),
+        ],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response()
+}
+
+async fn perform_user_json_export(
+    user_dbs: crate::state::UserDbs,
+    target_type: &'static str,
+    id: String,
+    date_from: Option<String>,
+    date_to: Option<String>,
+) -> Response {
+    let (clean_date_from, clean_date_to) =
+        match validate_date_filters(date_from.as_deref(), date_to.as_deref()) {
+            Ok(res) => res,
+            Err(status) => return status.into_response(),
+        };
+
+    let target_exists = {
+        let conn = user_dbs.content.lock().unwrap();
+        if target_type == "url" {
+            get_url_by_id(&conn, &id)
+                .map(|u| u.is_some())
+                .unwrap_or(false)
+        } else {
+            get_landing_page_by_id(&conn, &id)
+                .map(|p| p.is_some())
+                .unwrap_or(false)
+        }
+    };
+    if !target_exists {
+        return (StatusCode::NOT_FOUND, "Target not found").into_response();
+    }
+
+    let count = {
+        let conn = user_dbs.analytics.lock().unwrap();
+        get_target_visit_total_filtered(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        )
+        .unwrap_or(0)
+    };
+
+    if count > MAX_JSON_EXPORT_ROWS as i64 {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
+
+    let visits_raw = {
+        let conn = user_dbs.analytics.lock().unwrap();
+        match get_target_visits_all_in_memory(
+            &conn,
+            target_type,
+            &id,
+            clean_date_from.as_deref(),
+            clean_date_to.as_deref(),
+        ) {
+            Ok(v) => v,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        }
+    };
+
+    #[derive(serde::Serialize)]
+    struct JsonExportRow {
+        timestamp: String,
+        ip_address: String,
+        country: String,
+        referrer: String,
+        browser: String,
+        user_agent: String,
+    }
+
+    let export_rows: Vec<JsonExportRow> = visits_raw
+        .into_iter()
+        .map(|r| {
+            let (browser, _, _) = parse_ua(&r.user_agent);
+            let referrer = clean_referrer(&r.referer);
+            let country_display = if r.country.is_empty() {
+                "Unknown".to_string()
+            } else {
+                r.country
+            };
+            JsonExportRow {
+                timestamp: r.timestamp,
+                ip_address: r.ip_address,
+                country: country_display,
+                referrer,
+                browser,
+                user_agent: r.user_agent,
+            }
+        })
+        .collect();
+
+    let body_str = match serde_json::to_string(&export_rows) {
+        Ok(s) => s,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response()
+        }
+    };
+
+    let filename = if target_type == "url" {
+        format!("url_{}_analytics.json", id)
+    } else {
+        format!("page_{}_analytics.json", id)
+    };
+
+    (
+        StatusCode::OK,
+        [
+            ("Content-Type", "application/json"),
+            (
+                "Content-Disposition",
+                &format!("attachment; filename=\"{}\"", filename),
+            ),
+            ("X-BZOD-Export-Records", &count.to_string()),
+        ],
+        body_str,
+    )
+        .into_response()
+}
+
+pub async fn user_url_analytics_csv_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _session_id) = match require_user_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "url" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    let user_dbs = match state.get_user_dbs(user.id) {
+        Ok(dbs) => dbs,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    perform_user_csv_export(user_dbs, "url", id, query.date_from, query.date_to).await
+}
+
+pub async fn user_url_analytics_json_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _session_id) = match require_user_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "url" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    let user_dbs = match state.get_user_dbs(user.id) {
+        Ok(dbs) => dbs,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    perform_user_json_export(user_dbs, "url", id, query.date_from, query.date_to).await
+}
+
+pub async fn user_page_analytics_csv_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _session_id) = match require_user_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "page" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    let user_dbs = match state.get_user_dbs(user.id) {
+        Ok(dbs) => dbs,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    perform_user_csv_export(user_dbs, "page", id, query.date_from, query.date_to).await
+}
+
+pub async fn user_page_analytics_json_export(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<AnalyticsQuery>,
+) -> Response {
+    let (user, _session_id) = match require_user_auth(&state, &jar).await {
+        Ok(u) => u,
+        Err(redir) => return redir.into_response(),
+    };
+
+    // Ownership check
+    let (owner_user_id, target_type) = {
+        let conn = state.system_db.lock().unwrap();
+        match conn.query_row(
+            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            [&id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok(val) => val,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return StatusCode::NOT_FOUND.into_response();
+            }
+            Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    };
+
+    if owner_user_id != user.id || target_type != "page" {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+
+    let user_dbs = match state.get_user_dbs(user.id) {
+        Ok(dbs) => dbs,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+
+    perform_user_json_export(user_dbs, "page", id, query.date_from, query.date_to).await
 }

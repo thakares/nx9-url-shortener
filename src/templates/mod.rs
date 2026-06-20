@@ -276,6 +276,8 @@ pub struct HealthTemplate {
     pub tenants_db_size: String,
     pub job_history: Vec<crate::web::admin::JobHistoryRow>,
     pub health_checks: Vec<crate::web::admin::HealthCheckRow>,
+    pub registry_errors: Vec<String>,
+    pub registry_warnings: Vec<String>,
     pub csrf_token: String,
     pub success: Option<String>,
     pub error: Option<String>,
@@ -361,52 +363,6 @@ pub struct UserAnalyticsTemplate {
 }
 
 impl IntoResponse for UserAnalyticsTemplate {
-    fn into_response(self) -> Response {
-        match self.render() {
-            Ok(html) => Html(html).into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Render error: {}", e),
-            )
-                .into_response(),
-        }
-    }
-}
-
-#[derive(Template)]
-#[template(path = "user_url_analytics.html")]
-pub struct UserUrlAnalyticsTemplate {
-    pub admin_username: String,
-    pub username: String,
-    pub url_code: String,
-    pub destination: String,
-    pub visits: Vec<VisitorLogEntry>,
-}
-
-impl IntoResponse for UserUrlAnalyticsTemplate {
-    fn into_response(self) -> Response {
-        match self.render() {
-            Ok(html) => Html(html).into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Render error: {}", e),
-            )
-                .into_response(),
-        }
-    }
-}
-
-#[derive(Template)]
-#[template(path = "user_page_analytics.html")]
-pub struct UserPageAnalyticsTemplate {
-    pub admin_username: String,
-    pub username: String,
-    pub page_code: String,
-    pub title: String,
-    pub visits: Vec<VisitorLogEntry>,
-}
-
-impl IntoResponse for UserPageAnalyticsTemplate {
     fn into_response(self) -> Response {
         match self.render() {
             Ok(html) => Html(html).into_response(),
