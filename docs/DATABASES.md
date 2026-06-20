@@ -2,7 +2,7 @@
 
 # BZOD Database Architecture
 
-BZOD v0.5.0 uses SQLite exclusively.
+BZOD v0.5.1 uses SQLite exclusively.
 
 Rather than using a single monolithic database, BZOD separates data into administrative and tenant-specific databases. This architecture improves security, isolation, backup flexibility, disaster recovery, and scalability.
 

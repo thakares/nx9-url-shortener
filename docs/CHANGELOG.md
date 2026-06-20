@@ -6,11 +6,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ---
 
-# v0.5.0 - General Availability (GA)
+# v0.5.1 - General Availability (GA)
 
-Release Date: 2026-06-19
+Release Date: 2026-06-20
 
-BZOD v0.5.0 is the largest release since project inception, transforming BZOD from a single-user URL shortener into a complete multi-user redirector, landing page, analytics, and administration platform.
+BZOD v0.5.1 is the largest release since project inception, transforming BZOD from a single-user URL shortener into a complete multi-user redirector, landing page, analytics, and administration platform.
 
 ---
 

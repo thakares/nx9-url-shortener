@@ -1,6 +1,6 @@
 # Backup & Restore Guide
 
-Version: v0.5.0
+Version: v0.5.1
 Applies To: BZOD Multi-User Platform
 
 ---

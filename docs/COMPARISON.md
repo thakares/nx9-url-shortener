@@ -1,4 +1,4 @@
-# BZOD v0.5.0 vs Self-Hosted URL Management Platforms
+# BZOD v0.5.1 vs Self-Hosted URL Management Platforms
 
 BZOD is a modern, privacy-focused, self-hosted URL Management Platform written in Rust and developed as part of the NX9 Platform.
 
@@ -21,13 +21,13 @@ Unlike traditional URL shorteners that focus primarily on URL redirection, BZOD 
 
 ---
 ### Rust URL Shortener Comparison
-| Project              | Language | Single Binary       | Landing Pages | QR Codes + Analytics | Password Protection | Backup & Restore | CLI Tools   | Audit Trail | Admin Dashboard | Notes                                      |
-|----------------------|----------|---------------------|---------------|----------------------|---------------------|------------------|-------------|-------------|-----------------|--------------------------------------------|
-| **BZOD**             | Rust     | ✅ (~18 MB)          | ✅             | ✅                    | ✅                   | ✅                | ✅           | ✅           | ✅               | Feature-rich, multi-user ready, strong philosophy |
-| Chhoto URL           | Rust     | ✅                   | ❌             | Partial              | ❌                   | ❌                | Limited     | ❌           | Basic           | Very minimal, smallest footprint           |
-| smrs                 | Rust     | ✅                   | ❌             | ❌                    | ❌                   | ❌                | Limited     | ❌           | Basic           | Personal project, very simple              |
-| urlshortener-rs      | Rust     | Library             | N/A           | N/A                  | N/A                  | N/A               | N/A         | N/A          | N/A             | Library, not full server                   |
-| Custom Rust          | Rust     | Varies              | Varies        | Varies               | Varies               | Varies            | Varies      | Varies       | Varies          | Usually minimal implementations            |
+| Project              | Language | Single Binary | Landing Pages | QR Codes + Analytics | Password Protection | Backup & Restore | CLI Tools   | Audit Trail | Admin Dashboard | Notes                                      |
+|----------------------|----------|---------------|---------------|----------------------|---------------------|------------------|-------------|-------------|-----------------|--------------------------------------------|
+| **BZOD**             | Rust     | ✅ (~11 MB)    | ✅             | ✅                    | ✅                   | ✅                | ✅           | ✅           | ✅               | Feature-rich, multi-user ready, strong philosophy |
+| Chhoto URL           | Rust     | ✅             | ❌             | Partial              | ❌                   | ❌                | Limited     | ❌           | Basic           | Very minimal, smallest footprint           |
+| smrs                 | Rust     | ✅             | ❌             | ❌                    | ❌                   | ❌                | Limited     | ❌           | Basic           | Personal project, very simple              |
+| urlshortener-rs      | Rust     | Library       | N/A           | N/A                  | N/A                  | N/A               | N/A         | N/A          | N/A             | Library, not full server                   |
+| Custom Rust          | Rust     | Varies        | Varies        | Varies               | Varies               | Varies            | Varies      | Varies       | Varies          | Usually minimal implementations            |
 
 # Executive Summary
 

@@ -1,8 +1,27 @@
 [package]
 name = "bzod"
+description = "Self-hosted multi-user URL management, landing page and QR analytics platform"
 version = "0.5.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/thakares/nx9-url-shortener"
+homepage = "https://bzo.in"
+documentation = "https://github.com/thakares/nx9-url-shortener"
+readme = "README.md"
+authors = ["Sunil P. Thakare"]
+
+keywords = [
+    "url-shortener",
+    "landing-pages",
+    "analytics",
+    "qr-code",
+    "self-hosted"
+]
+
+categories = [
+    "web-programming",
+    "command-line-utilities"
+]
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -28,7 +47,7 @@ hex = "0.4"
 time = "0.3"
 toml = "0.8"
 qrcode = "0.14"
-image = "0.25"
+image = { version = "0.25", default-features = false, features = ["png"] }
 zip = { version = "2.1", default-features = false, features = ["deflate"] }
 futures-util = "0.3"
 zstd = "0.13"
@@ -36,3 +55,9 @@ zstd = "0.13"
 [lints.clippy]
 let_unit_value = "allow"
 useless_vec = "allow"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

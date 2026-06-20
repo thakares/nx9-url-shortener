@@ -2,7 +2,7 @@
 
 BZOD includes a comprehensive command-line interface for server administration, backups, migrations, diagnostics, validation, and multi-user management.
 
-The current command list for BZOD v0.5.0 is:
+The current command list for BZOD v0.5.1 is:
 
 ```text
 $ bzod --help
