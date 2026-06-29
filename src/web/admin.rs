@@ -5658,17 +5658,37 @@ pub async fn health_get(
     let (registry_errors, registry_warnings) = {
         let system_conn = state.system_db.lock().unwrap();
         let users_conn = state.users_db.lock().unwrap();
-        crate::db::users::verify_global_slug_registry_integrity(
+        match crate::services::registry_validator::RegistryValidator::scan(
             &system_conn,
             &users_conn,
             &state.config.data_dir,
-        )
-        .unwrap_or_else(|e| {
-            (
-                vec![format!("Failed to run integrity check: {}", e)],
-                vec![],
-            )
-        })
+            None,
+        ) {
+            Ok(issues) => {
+                let mut errors = Vec::new();
+                let mut warnings = Vec::new();
+                for issue in issues {
+                    use crate::services::registry_validator::RegistryIssueType;
+                    match issue.issue_type {
+                        RegistryIssueType::StaleReservation
+                        | RegistryIssueType::TenantAdminHasIsolatedContent => {
+                            warnings.push(format!(
+                                "Warning for slug {}: {}",
+                                issue.slug, issue.description
+                            ));
+                        }
+                        _ => {
+                            errors.push(format!(
+                                "Error for slug {}: {}",
+                                issue.slug, issue.description
+                            ));
+                        }
+                    }
+                }
+                (errors, warnings)
+            }
+            Err(e) => (vec![format!("Failed to run registry scan: {}", e)], vec![]),
+        }
     };
 
     let template = crate::templates::HealthTemplate {

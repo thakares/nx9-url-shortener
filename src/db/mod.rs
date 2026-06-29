@@ -356,17 +356,19 @@ impl Db {
         {
             let system_conn = db.system.lock().unwrap();
             let users_conn = db.users.lock().unwrap();
-            match crate::db::users::verify_global_slug_registry_integrity(
+            match crate::services::registry_validator::RegistryValidator::scan(
                 &system_conn,
                 &users_conn,
                 &config.data_dir,
+                None,
             ) {
-                Ok((errors, warnings)) => {
-                    for err in errors {
-                        tracing::error!("Global registry integrity error: {}", err);
-                    }
-                    for warn in warnings {
-                        tracing::warn!("Global registry integrity warning: {}", warn);
+                Ok(issues) => {
+                    for issue in issues {
+                        tracing::error!(
+                            "Global registry integrity issue: {:?} for slug {}",
+                            issue.issue_type,
+                            issue.slug
+                        );
                     }
                 }
                 Err(e) => {

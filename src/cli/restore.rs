@@ -60,15 +60,20 @@ pub fn perform_restore(
     if system_db_path.exists() && users_db_path.exists() {
         let system_conn = rusqlite::Connection::open(&system_db_path)?;
         let users_conn = rusqlite::Connection::open(&users_db_path)?;
-        match crate::db::users::verify_global_slug_registry_integrity(
+        match crate::services::registry_validator::RegistryValidator::scan(
             &system_conn,
             &users_conn,
             &temp_dir,
+            None,
         ) {
-            Ok((errors, _warnings)) => {
-                if !errors.is_empty() {
+            Ok(issues) => {
+                if !issues.is_empty() {
                     let _ = std::fs::remove_dir_all(&temp_dir);
-                    return Err(format!("Registry integrity errors in backup: {:?}", errors).into());
+                    return Err(format!(
+                        "Registry integrity errors in backup: {} issues detected",
+                        issues.len()
+                    )
+                    .into());
                 }
             }
             Err(e) => {

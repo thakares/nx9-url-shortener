@@ -1,25 +1,25 @@
 use clap::{Parser, Subcommand};
 
+pub mod admin_migrate;
 pub mod backup;
+pub mod backup_user;
 pub mod create_admin;
+pub mod create_user;
+pub mod delete_user;
+pub mod disable_user;
 pub mod doctor;
+pub mod enable_user;
 pub mod expand;
+pub mod list_users;
 pub mod migrate;
+pub mod repair;
+pub mod reset_password;
 pub mod restore;
+pub mod restore_user;
 pub mod serve;
 pub mod shorten;
 pub mod stats;
 pub mod validate;
-
-pub mod admin_migrate;
-pub mod backup_user;
-pub mod create_user;
-pub mod delete_user;
-pub mod disable_user;
-pub mod enable_user;
-pub mod list_users;
-pub mod reset_password;
-pub mod restore_user;
 
 #[derive(Parser)]
 #[command(name = "bzod")]
@@ -178,5 +178,25 @@ pub enum Commands {
         /// Force the migration to execute
         #[arg(long)]
         force: bool,
+    },
+    /// Repair registry and database inconsistencies
+    Repair {
+        #[command(subcommand)]
+        command: RepairCommands,
+    },
+}
+
+#[derive(clap::Subcommand)]
+pub enum RepairCommands {
+    /// Repair Global Slug Registry inconsistencies
+    Registry {
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        force: bool,
+        #[arg(long)]
+        slug: Option<String>,
+        #[arg(long)]
+        data_dir: Option<String>,
     },
 }

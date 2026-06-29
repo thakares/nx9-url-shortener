@@ -103,6 +103,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             bzod::cli::admin_migrate::run(target_admin_id, data_dir, dry_run, force, config)
                 .await?;
         }
+        Commands::Repair { command } => {
+            bzod::cli::repair::run(command, config).await?;
+        }
     }
 
     Ok(())

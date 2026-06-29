@@ -101,32 +101,69 @@ pub async fn run(
             Connection::open(&users_db_path),
         ) {
             (Ok(sys_conn), Ok(usr_conn)) => {
-                match crate::db::users::verify_global_slug_registry_integrity(
+                match crate::services::registry_validator::RegistryValidator::scan(
                     &sys_conn,
                     &usr_conn,
                     &config.data_dir,
+                    None,
                 ) {
-                    Ok((errors, warnings)) => {
-                        if errors.is_empty() && warnings.is_empty() {
+                    Ok(issues) => {
+                        if issues.is_empty() {
                             println!("  Status: HEALTHY (no issues found)");
                         } else {
-                            if !errors.is_empty() {
-                                println!("  Errors (Action Required):");
-                                for err in &errors {
-                                    println!("    - {}", err);
+                            println!("  Status: ISSUES DETECTED");
+                            all_healthy = false;
+
+                            for issue in &issues {
+                                println!();
+                                println!("ERROR");
+                                println!();
+                                println!("Slug:");
+                                println!("    {}", issue.slug);
+                                println!();
+                                println!("Type:");
+                                println!(
+                                    "    {}",
+                                    if issue.target_type == "url" {
+                                        "URL"
+                                    } else if issue.target_type == "page" {
+                                        "Landing Page"
+                                    } else {
+                                        &issue.target_type
+                                    }
+                                );
+                                println!();
+                                println!("Owner:");
+                                println!("    User ID {}", issue.owner_user_id);
+                                println!();
+                                println!("Database:");
+                                println!("    {}", issue.database_path.display());
+                                println!();
+                                println!("Target UUID:");
+                                println!("    {}", issue.target_id);
+                                println!();
+                                println!("Issue:");
+                                println!("    {:?}", issue.issue_type);
+                                println!();
+                                println!("Description:");
+                                println!("    {}", issue.description);
+                                println!();
+                                println!("Suggested Repair:");
+                                println!();
+                                if issue.slug != "*" {
+                                    println!(
+                                        "    bzod repair registry --slug {} --dry-run",
+                                        issue.slug
+                                    );
+                                } else {
+                                    println!("    bzod repair registry --dry-run");
                                 }
-                                all_healthy = false;
-                            }
-                            if !warnings.is_empty() {
-                                println!("  Warnings (Attention Needed):");
-                                for warn in &warnings {
-                                    println!("    - {}", warn);
-                                }
+                                println!("--------------------");
                             }
                         }
                     }
                     Err(e) => {
-                        println!("  Status: ERROR running integrity check: {}", e);
+                        println!("  Status: ERROR running registry scan: {}", e);
                         all_healthy = false;
                     }
                 }
