@@ -2,7 +2,7 @@
 
 BZOD includes a comprehensive command-line interface for server administration, backups, migrations, diagnostics, validation, and multi-user management.
 
-The current command list for BZOD v0.5.1 is:
+The current command list for BZOD v0.5.3 is:
 
 ```text
 $ bzod --help
@@ -30,6 +30,8 @@ Commands:
   list-users      List all standard/system users
   backup-user     Backup a standard user's databases to a .tar.zst package
   restore-user    Restore a standard user's databases from a .tar.zst package
+  admin-migrate   FUTURE: Migrate legacy admin content to a specific admin tenant database
+  repair          Repair registry and database inconsistencies
   help            Print this message or the help of the given subcommand(s)
 
 Options:
@@ -119,6 +121,19 @@ Performs:
 * Database availability checks
 * Storage verification
 * System health diagnostics
+* Global registry integrity validation
+
+## Registry Repair
+
+```bash
+bzod repair registry --dry-run
+```
+
+Provides a transaction-safe repair utility for fixing global slug registry inconsistencies detected by `bzod doctor`.
+
+* Use `--dry-run` to preview changes safely.
+* Use `--force` to execute changes and remove orphaned entries.
+* Use `--slug <slug>` to target a single missing entry.
 
 ---
 
