@@ -808,12 +808,7 @@ pub fn verify_global_slug_registry_integrity(
             || (status == "reserving" && !target_id.is_empty())
         {
             let content_db_path = if owner_user_id == 1 {
-                let p1 = data_dir.join("users").join("1").join("content.db");
-                if p1.exists() {
-                    p1
-                } else {
-                    data_dir.join("content.db")
-                }
+                data_dir.join("users").join("1").join("content.db")
             } else {
                 data_dir
                     .join("users")
@@ -856,6 +851,78 @@ pub fn verify_global_slug_registry_integrity(
                             "Slug '{}' owner content database could not be opened: {}",
                             slug, e
                         ));
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Admin Content Reverse Consistency Check (Legacy DB)
+    let admin_content_db_path = data_dir.join("users").join("1").join("content.db");
+
+    if admin_content_db_path.exists() {
+        if let Ok(admin_content_conn) = Connection::open(&admin_content_db_path) {
+            // Check URLs
+            if let Ok(mut stmt) = admin_content_conn.prepare("SELECT code, id FROM urls;") {
+                if let Ok(mut rows) = stmt.query([]) {
+                    while let Ok(Some(row)) = rows.next() {
+                        let code: String = row.get(0).unwrap_or_default();
+                        let id: String = row.get(1).unwrap_or_default();
+                        let exists: bool = system_conn.query_row(
+                            "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = ?1 AND owner_user_id = 1 AND target_id = ?2);",
+                            rusqlite::params![code, id],
+                            |r| r.get(0)
+                        ).unwrap_or(false);
+                        if !exists {
+                            warnings.push(format!("Orphaned admin URL detected in legacy content DB: code='{}', id='{}' is missing from global_slugs", code, id));
+                        }
+                    }
+                }
+            }
+            // Check Landing Pages
+            if let Ok(mut stmt) = admin_content_conn.prepare("SELECT code, id FROM landing_pages;")
+            {
+                if let Ok(mut rows) = stmt.query([]) {
+                    while let Ok(Some(row)) = rows.next() {
+                        let code: String = row.get(0).unwrap_or_default();
+                        let id: String = row.get(1).unwrap_or_default();
+                        let exists: bool = system_conn.query_row(
+                            "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = ?1 AND owner_user_id = 1 AND target_id = ?2);",
+                            rusqlite::params![code, id],
+                            |r| r.get(0)
+                        ).unwrap_or(false);
+                        if !exists {
+                            warnings.push(format!("Orphaned admin Landing Page detected in legacy content DB: code='{}', id='{}' is missing from global_slugs", code, id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 4. Check for admin content in non-legacy tenant DBs
+    if let Ok(mut stmt) = users_conn
+        .prepare("SELECT id, username FROM users WHERE account_type = 'admin' AND id != 1;")
+    {
+        if let Ok(mut rows) = stmt.query([]) {
+            while let Ok(Some(row)) = rows.next() {
+                let id: i64 = row.get(0).unwrap_or(0);
+                let username: String = row.get(1).unwrap_or_default();
+                let tenant_db_path = data_dir
+                    .join("users")
+                    .join(id.to_string())
+                    .join("content.db");
+                if tenant_db_path.exists() {
+                    if let Ok(conn) = Connection::open(&tenant_db_path) {
+                        let url_count: i64 = conn
+                            .query_row("SELECT COUNT(*) FROM urls;", [], |r| r.get(0))
+                            .unwrap_or(0);
+                        let page_count: i64 = conn
+                            .query_row("SELECT COUNT(*) FROM landing_pages;", [], |r| r.get(0))
+                            .unwrap_or(0);
+                        if url_count > 0 || page_count > 0 {
+                            warnings.push(format!("Admin user '{}' (ID {}) has content in isolated tenant DB ({} URLs, {} pages). Admin content should be in legacy DB 1.", username, id, url_count, page_count));
+                        }
                     }
                 }
             }

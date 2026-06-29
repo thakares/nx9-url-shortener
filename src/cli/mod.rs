@@ -11,6 +11,7 @@ pub mod shorten;
 pub mod stats;
 pub mod validate;
 
+pub mod admin_migrate;
 pub mod backup_user;
 pub mod create_user;
 pub mod delete_user;
@@ -164,5 +165,18 @@ pub enum Commands {
         file: String,
         #[arg(long)]
         data_dir: Option<String>,
+    },
+    /// FUTURE: Migrate legacy admin content to a specific admin tenant database
+    AdminMigrate {
+        /// Target Admin ID
+        target_admin_id: i64,
+        #[arg(long)]
+        data_dir: Option<String>,
+        /// Preview what would be moved without making changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Force the migration to execute
+        #[arg(long)]
+        force: bool,
     },
 }

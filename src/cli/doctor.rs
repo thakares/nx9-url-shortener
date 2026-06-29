@@ -26,12 +26,14 @@ pub async fn run(
 
     // Define target databases in the new layout
     let admin_dir = config.data_dir.join("admin");
+    let legacy_user_dir = config.data_dir.join("users").join("1");
+
     let dbs = vec![
         ("admin", admin_dir.join("admin.db")),
         ("system", admin_dir.join("system.db")),
         ("users", admin_dir.join("users.db")),
-        ("legacy content", config.data_dir.join("content.db")),
-        ("legacy analytics", config.data_dir.join("analytics.db")),
+        ("legacy content", legacy_user_dir.join("content.db")),
+        ("legacy analytics", legacy_user_dir.join("analytics.db")),
     ];
 
     for (db_name, db_path) in dbs {

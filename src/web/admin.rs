@@ -1872,14 +1872,10 @@ pub async fn urls_create(
             return Redirect::to("/admin/urls?error=Short code/slug already exists")
                 .into_response();
         }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
-            &code,
-            admin_user_id,
-            "url",
-            "",
-            "reserving",
-        ) {
+        // Always use owner_user_id = 1 for admin content so it resolves via state.content_db
+        if let Err(e) =
+            crate::db::users::register_global_slug(&system_conn, &code, 1, "url", "", "reserving")
+        {
             return Redirect::to(&format!("/admin/urls?error=Failed to reserve slug: {}", e))
                 .into_response();
         }
@@ -1931,7 +1927,7 @@ pub async fn urls_create(
         }
         Err(e) => {
             let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, admin_user_id);
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, 1);
             Redirect::to(&format!("/admin/urls?error=Database error: {}", e)).into_response()
         }
     }
@@ -2444,14 +2440,10 @@ pub async fn pages_create(
         if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
             return Redirect::to("/admin/pages?error=Short code already exists").into_response();
         }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
-            &code,
-            admin_user_id,
-            "page",
-            "",
-            "reserving",
-        ) {
+        // Always use owner_user_id = 1 for admin content so it resolves via state.content_db
+        if let Err(e) =
+            crate::db::users::register_global_slug(&system_conn, &code, 1, "page", "", "reserving")
+        {
             return Redirect::to(&format!("/admin/pages?error=Failed to reserve slug: {}", e))
                 .into_response();
         }
@@ -2508,7 +2500,7 @@ pub async fn pages_create(
         }
         Err(e) => {
             let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, admin_user_id);
+            let _ = crate::db::users::release_global_slug(&system_conn, &code, 1);
             Redirect::to(&format!("/admin/pages?error=Database error: {}", e)).into_response()
         }
     }
@@ -2781,15 +2773,48 @@ pub async fn download_backup(
         let enc = GzEncoder::new(&mut buffer, Compression::default());
         let mut tar = Builder::new(enc);
 
-        let files = vec!["admin.db", "content.db", "analytics.db", "system.db"];
+        let files = vec![
+            ("admin.db", state.config.data_dir.join("admin/admin.db")),
+            ("system.db", state.config.data_dir.join("admin/system.db")),
+            ("users.db", state.config.data_dir.join("admin/users.db")),
+            (
+                "content.db",
+                state.config.data_dir.join("users/1/content.db"),
+            ),
+            (
+                "analytics.db",
+                state.config.data_dir.join("users/1/analytics.db"),
+            ),
+        ];
+
         let mut add_err = None;
-        for f in files {
-            let path = state.config.data_dir.join(f);
+        let mut manifest_files = Vec::new();
+
+        for (name, path) in files {
             if path.exists() {
-                if let Err(e) = tar.append_path_with_name(&path, f) {
+                if let Err(e) = tar.append_path_with_name(&path, name) {
                     add_err = Some(e);
                     break;
                 }
+                manifest_files.push(name.to_string());
+            }
+        }
+
+        if add_err.is_none() {
+            let manifest = serde_json::json!({
+                "created_at": chrono::Utc::now().to_rfc3339(),
+                "type": "legacy_flat_backup",
+                "files_included": manifest_files,
+                "note": "Multi-tenant databases flattened for backward compatibility.",
+            });
+            let manifest_str = manifest.to_string();
+            let mut header = tar::Header::new_gnu();
+            header.set_size(manifest_str.len() as u64);
+            header.set_cksum();
+            if let Err(e) =
+                tar.append_data(&mut header, "backup_manifest.json", manifest_str.as_bytes())
+            {
+                add_err = Some(e);
             }
         }
 
@@ -3372,28 +3397,75 @@ pub async fn restore_backup_post(
         // 2. Perform restore unpacking/validation
         let res = crate::cli::restore::perform_restore(&temp_file_path, &state.config.data_dir);
 
-        // 3. Reinitialize database connections
-        let new_admin = rusqlite::Connection::open(state.config.data_dir.join("admin.db"));
-        let new_content = rusqlite::Connection::open(state.config.data_dir.join("content.db"));
-        let new_analytics = rusqlite::Connection::open(state.config.data_dir.join("analytics.db"));
-        let new_system = rusqlite::Connection::open(state.config.data_dir.join("system.db"));
+        // 3. Post-Restore Path Normalization (Move flat files to multi-tenant structure)
+        let admin_dir = state.config.data_dir.join("admin");
+        let users_1_dir = state.config.data_dir.join("users").join("1");
+        let _ = std::fs::create_dir_all(&admin_dir);
+        let _ = std::fs::create_dir_all(&users_1_dir);
 
-        match (new_admin, new_content, new_analytics, new_system) {
-            (Ok(adm), Ok(cnt), Ok(any), Ok(sys)) => {
+        let admin_files = vec![
+            "admin.db",
+            "admin.db-wal",
+            "admin.db-shm",
+            "system.db",
+            "system.db-wal",
+            "system.db-shm",
+            "users.db",
+            "users.db-wal",
+            "users.db-shm",
+        ];
+        for f in admin_files {
+            let src = state.config.data_dir.join(f);
+            if src.exists() {
+                let _ = std::fs::rename(&src, admin_dir.join(f));
+            }
+        }
+
+        let content_files = vec![
+            "content.db",
+            "content.db-wal",
+            "content.db-shm",
+            "analytics.db",
+            "analytics.db-wal",
+            "analytics.db-shm",
+        ];
+        for f in content_files {
+            let src = state.config.data_dir.join(f);
+            if src.exists() {
+                let _ = std::fs::rename(&src, users_1_dir.join(f));
+            }
+        }
+
+        // 4. Reinitialize database connections using correct multi-tenant paths
+        let new_admin = rusqlite::Connection::open(state.config.data_dir.join("admin/admin.db"));
+        let new_system = rusqlite::Connection::open(state.config.data_dir.join("admin/system.db"));
+
+        let new_users = rusqlite::Connection::open(state.config.data_dir.join("admin/users.db"));
+
+        let new_content =
+            rusqlite::Connection::open(state.config.data_dir.join("users/1/content.db"));
+        let new_analytics =
+            rusqlite::Connection::open(state.config.data_dir.join("users/1/analytics.db"));
+
+        match (new_admin, new_content, new_analytics, new_system, new_users) {
+            (Ok(adm), Ok(cnt), Ok(any), Ok(sys), Ok(usr)) => {
                 let _ = crate::db::sqlite::enable_wal(&adm, "admin");
                 let _ = crate::db::sqlite::enable_wal(&cnt, "content");
                 let _ = crate::db::sqlite::enable_wal(&any, "analytics");
                 let _ = crate::db::sqlite::enable_wal(&sys, "system");
+                let _ = crate::db::sqlite::enable_wal(&usr, "users");
 
                 let _ = crate::db::sqlite::enable_foreign_keys(&adm, "admin");
                 let _ = crate::db::sqlite::enable_foreign_keys(&cnt, "content");
                 let _ = crate::db::sqlite::enable_foreign_keys(&any, "analytics");
                 let _ = crate::db::sqlite::enable_foreign_keys(&sys, "system");
+                let _ = crate::db::sqlite::enable_foreign_keys(&usr, "users");
 
                 *admin_conn = adm;
                 *content_conn = cnt;
                 *analytics_conn = any;
                 *system_conn = sys;
+                *state.db.users.lock().unwrap() = usr;
             }
             _ => {
                 return Redirect::to("/admin/settings?error=Failed to reopen restored databases")
@@ -3422,6 +3494,14 @@ pub async fn restore_backup_post(
                     headers.get("user-agent").and_then(|h| h.to_str().ok()),
                 );
             }
+
+            // Run doctor check to verify integrity after restore (spawn in background since we can't easily await here)
+            tracing::info!("Running post-restore diagnostics...");
+            let config_clone = state.config.clone();
+            tokio::spawn(async move {
+                let _ = crate::cli::doctor::run(None, config_clone).await;
+            });
+
             Redirect::to("/admin/login").into_response()
         }
         Err(e) => {

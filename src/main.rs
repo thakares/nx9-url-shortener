@@ -94,6 +94,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::RestoreUser { file, data_dir } => {
             bzod::cli::restore_user::run(file, data_dir, config).await?;
         }
+        Commands::AdminMigrate {
+            target_admin_id,
+            data_dir,
+            dry_run,
+            force,
+        } => {
+            bzod::cli::admin_migrate::run(target_admin_id, data_dir, dry_run, force, config)
+                .await?;
+        }
     }
 
     Ok(())

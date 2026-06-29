@@ -4,10 +4,41 @@ use crate::state::AppState;
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},
+    Json,
 };
 
 // Extractor: Authenticate API requests using Bearer token
 pub struct ApiUser(pub ApiActor);
+
+impl ApiUser {
+    pub fn require_admin(
+        &self,
+    ) -> Result<&crate::models::User, (StatusCode, Json<crate::web::api::ApiError>)> {
+        match &self.0 {
+            ApiActor::Admin(u) => Ok(u),
+            _ => Err((
+                StatusCode::FORBIDDEN,
+                Json(crate::web::api::ApiError {
+                    error: "Admin privileges required".to_string(),
+                }),
+            )),
+        }
+    }
+
+    pub fn require_tenant(
+        &self,
+    ) -> Result<&crate::models::TenantUser, (StatusCode, Json<crate::web::api::ApiError>)> {
+        match &self.0 {
+            ApiActor::User(u) => Ok(u),
+            _ => Err((
+                StatusCode::FORBIDDEN,
+                Json(crate::web::api::ApiError {
+                    error: "Tenant privileges required".to_string(),
+                }),
+            )),
+        }
+    }
+}
 
 #[axum::async_trait]
 impl<S> FromRequestParts<S> for ApiUser

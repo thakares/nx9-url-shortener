@@ -793,7 +793,11 @@ pub struct OverallStatsResponse {
 }
 
 // GET /api/v1/stats
-pub async fn api_overall_stats(State(state): State<AppState>, _user: ApiUser) -> Response {
+pub async fn api_overall_stats(State(state): State<AppState>, user: ApiUser) -> Response {
+    if let Err(err) = user.require_admin() {
+        return err.into_response();
+    }
+
     let (total_urls, active_links, dead_links) = {
         let conn = state.content_db.lock().unwrap();
         get_url_counts(&conn).unwrap_or((0, 0, 0))
@@ -982,9 +986,13 @@ pub struct AuditQuery {
 // GET /api/v1/audit
 pub async fn api_list_audit(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Query(query): Query<AuditQuery>,
 ) -> Response {
+    if let Err(err) = user.require_admin() {
+        return err.into_response();
+    }
+
     let limit = query.limit.unwrap_or(50);
     let offset = query.offset.unwrap_or(0);
 

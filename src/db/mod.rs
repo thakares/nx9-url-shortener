@@ -50,7 +50,7 @@ impl Db {
 
         // 1. If legacy admin.db exists at root, move admin/system DBs to config.data_dir/admin/
         if legacy_admin_db.exists() {
-            info!("Legacy admin.db found at root. Moving administrative databases to admin/ subfolder...");
+            tracing::warn!("LEGACY DETECTED: admin.db found at root. Moving administrative databases to multi-tenant admin/ subfolder...");
             let files = vec![
                 "admin.db",
                 "admin.db-wal",
@@ -219,7 +219,7 @@ impl Db {
         fs::create_dir_all(&legacy_user_dir)?;
 
         if legacy_content_db.exists() || legacy_analytics_db.exists() {
-            info!("Legacy content/analytics databases found at root. Moving to user ID 1 directory...");
+            tracing::warn!("LEGACY DETECTED: content/analytics databases found at root. Moving to multi-tenant user ID 1 directory...");
             let content_files = vec!["content.db", "content.db-wal", "content.db-shm"];
             for f in content_files {
                 let src = config.data_dir.join(f);
@@ -461,11 +461,7 @@ impl Db {
 
         for user_id in user_ids {
             let user_dir = config.data_dir.join("users").join(user_id.to_string());
-            let content_path = if user_id == 1 {
-                config.data_dir.join("content.db") // legacy admin content db path
-            } else {
-                user_dir.join("content.db")
-            };
+            let content_path = user_dir.join("content.db");
 
             if content_path.exists() {
                 let content_conn = Connection::open(&content_path)?;

@@ -63,15 +63,10 @@ pub async fn resolve_page(
             .into_response();
     }
 
-    // 2. Get content database connection - admin (user_id=1) uses legacy content_db,
-    //    tenant users use per-user content databases
-    let content_conn = if owner_user_id == 1 {
-        state.content_db.clone()
-    } else {
-        match state.get_user_dbs(owner_user_id) {
-            Ok(dbs) => dbs.content,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-        }
+    // 2. Get content database connection via tenant DB resolution
+    let content_conn = match state.get_user_dbs(owner_user_id) {
+        Ok(dbs) => dbs.content,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
     };
 
     let page_opt = {

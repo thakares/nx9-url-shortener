@@ -14,14 +14,26 @@ pub async fn run(
     println!("=== BZOD Database Stats ===");
     println!("Storage Directory: {:?}", config.data_dir);
 
-    let files = vec!["admin.db", "content.db", "analytics.db", "system.db"];
-    for f in files {
-        let p = config.data_dir.join(f);
-        if p.exists() {
-            let sz = std::fs::metadata(&p)?.len();
+    let files = vec![
+        ("admin.db", config.data_dir.join("admin/admin.db")),
+        ("system.db", config.data_dir.join("admin/system.db")),
+        ("users.db", config.data_dir.join("admin/users.db")),
+        (
+            "legacy content.db",
+            config.data_dir.join("users/1/content.db"),
+        ),
+        (
+            "legacy analytics.db",
+            config.data_dir.join("users/1/analytics.db"),
+        ),
+    ];
+
+    for (name, path) in files {
+        if path.exists() {
+            let sz = std::fs::metadata(&path)?.len();
             println!(
                 "  File: {} - Size: {} bytes ({:.2} MB)",
-                f,
+                name,
                 sz,
                 sz as f64 / 1_048_576.0
             );

@@ -19,10 +19,11 @@ pub fn get_memory_usage() -> String {
 pub fn get_db_file_info(data_dir: &Path) -> String {
     let mut stats = String::new();
     let files = vec![
-        ("admin.db", "Admin DB"),
-        ("content.db", "Content DB"),
-        ("analytics.db", "Analytics DB"),
-        ("system.db", "System DB"),
+        ("admin/admin.db", "Admin DB"),
+        ("admin/system.db", "System DB"),
+        ("admin/users.db", "Users DB"),
+        ("users/1/content.db", "Legacy Content DB"),
+        ("users/1/analytics.db", "Legacy Analytics DB"),
     ];
 
     for (f, name) in files {
