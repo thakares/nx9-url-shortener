@@ -181,3 +181,51 @@ pub async fn deploy_script() -> Response {
         Err(_) => (StatusCode::NOT_FOUND, "deploy.sh not found").into_response(),
     }
 }
+
+pub async fn social_preview() -> Response {
+    let mut target_path = std::path::PathBuf::from("www/images/preview.png");
+
+    if !target_path.exists() {
+        if let Ok(exe_path) = std::env::current_exe() {
+            if let Some(exe_dir) = exe_path.parent() {
+                let path1 = exe_dir.join("www/images/preview.png");
+                if path1.exists() {
+                    target_path = path1;
+                } else if let Some(parent1) = exe_dir.parent() {
+                    let path2 = parent1.join("www/images/preview.png");
+                    if path2.exists() {
+                        target_path = path2;
+                    } else if let Some(parent2) = parent1.parent() {
+                        let path3 = parent2.join("www/images/preview.png");
+                        if path3.exists() {
+                            target_path = path3;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if !target_path.exists() {
+        if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+            let path = std::path::PathBuf::from(manifest_dir).join("www/images/preview.png");
+            if path.exists() {
+                target_path = path;
+            }
+        }
+    }
+
+    match tokio::fs::read(target_path).await {
+        Ok(content) => (
+            StatusCode::OK,
+            [
+                ("content-type", "image/png"),
+                ("cache-control", "public, max-age=86400"),
+            ],
+            content,
+        )
+            .into_response(),
+
+        Err(_) => (StatusCode::NOT_FOUND, "preview.png not found").into_response(),
+    }
+}

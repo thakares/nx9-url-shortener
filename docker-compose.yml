@@ -39,6 +39,9 @@ services:
       - type: bind
         source: /DATA/AppData/bzod/www
         target: /app/www
+      - type: bind
+        source: /DATA/AppData/bzod/images
+        target: /app/images
     devices: []
     cap_add: []
     networks:
