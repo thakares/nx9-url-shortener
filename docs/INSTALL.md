@@ -1,6 +1,6 @@
 # BZOD Installation Guide
 
-Version: v0.5.1
+Version: v0.6.0
 
 ---
 
@@ -183,13 +183,13 @@ sudo pacman -S \
 Example:
 
 ```bash
-wget https://example.com/bzod-v0.5.0-linux-amd64.tar.gz
+wget https://example.com/bzod-v0.6.0-linux-amd64.tar.gz
 ```
 
 Extract:
 
 ```bash
-tar -xzf bzod-v0.5.0-linux-amd64.tar.gz
+tar -xzf bzod-v0.6.0-linux-amd64.tar.gz
 ```
 
 Install:

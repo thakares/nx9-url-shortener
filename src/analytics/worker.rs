@@ -7,7 +7,11 @@ use crate::db::analytics::insert_visits_batch;
 use crate::db::Db;
 use crate::models::VisitRecord;
 
-pub async fn run_worker(db: Db, mut receiver: mpsc::Receiver<VisitRecord>) {
+pub async fn run_worker(
+    db: Db,
+    mut receiver: mpsc::Receiver<VisitRecord>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let mut batch = Vec::new();
     let batch_size = 50;
     let flush_interval = Duration::from_secs(2);
@@ -36,6 +40,11 @@ pub async fn run_worker(db: Db, mut receiver: mpsc::Receiver<VisitRecord>) {
                 if !batch.is_empty() {
                     flush_batch(&db, &mut batch);
                 }
+            }
+            _ = shutdown_rx.changed() => {
+                info!("Analytics worker flushing pending records");
+                flush_batch(&db, &mut batch);
+                break;
             }
         }
     }

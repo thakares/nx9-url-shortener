@@ -10,13 +10,24 @@ pub fn create_url(
     description: Option<&str>,
     tags: &[String],
 ) -> Result<Url, AppError> {
-    let conn = db.content.lock().unwrap();
+    if !crate::utils::validation::validate_redirect_destination(destination) {
+        return Err(AppError::BadRequest(
+            "Destination must be a valid http(s) URL without control characters".into(),
+        ));
+    }
+    let conn = db
+        .content
+        .lock()
+        .map_err(|e| AppError::Internal(format!("content_db mutex poisoned: {}", e)))?;
     let url = crate::db::content::create_url(&conn, code, destination, title, description, tags)?;
     Ok(url)
 }
 
 pub fn get_url_by_code(db: &Db, code: &str) -> Result<Option<Url>, AppError> {
-    let conn = db.content.lock().unwrap();
+    let conn = db
+        .content
+        .lock()
+        .map_err(|e| AppError::Internal(format!("content_db mutex poisoned: {}", e)))?;
     let url = crate::db::content::get_url_by_code(&conn, code)?;
     Ok(url)
 }

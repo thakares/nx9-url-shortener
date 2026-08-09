@@ -44,7 +44,9 @@ async fn start_test_server(
 ) -> (reqwest::Client, String, tokio::task::JoinHandle<()>, Db) {
     let config = create_temp_config(temp_dir);
     let db = Db::init(&config).expect("Failed to init Db");
-    let queue = AnalyticsQueue::new(db.clone(), 100);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 100, rx);
 
     let state = AppState {
         admin_db: db.admin.clone(),

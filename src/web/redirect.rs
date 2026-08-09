@@ -1,19 +1,297 @@
+//! Public short-code redirect hot path.
+//!
+//! Design notes:
+//! - Destination `Location` headers never panic on malformed values.
+//! - Content DB work uses a single mutex acquisition where safe.
+//! - Expiration is enforced on the read path; persistent `expired=1` is left to
+//!   the background expiry job (`jobs::expiry`), not written here.
+//! - Blocking rusqlite work runs in `spawn_blocking` so Tokio workers are not starved.
+//! - Analytics enqueue remains non-blocking (`try_send` via the queue).
+
 use axum::{
     extract::{ConnectInfo, Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
 use rusqlite::OptionalExtension;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::analytics::get_client_country;
-use crate::models::VisitRecord;
+use crate::models::{LinkPreview, Url, VisitRecord};
 use crate::state::AppState;
 use crate::templates::PreviewTemplate;
 use crate::utils::get_client_ip;
+
+/// Compact outcome from blocking redirect DB work (avoids large enum / Result variants).
+enum ResolveOutcome {
+    Ready(Box<ResolvedUrl>),
+    /// Early HTTP response that does not need further processing.
+    Early {
+        status: StatusCode,
+        body: &'static str,
+    },
+    /// Permanent redirect to a relative path (e.g. page target → `/p/{code}`).
+    PermanentPath(String),
+    DbError {
+        operation: &'static str,
+        message: String,
+        owner_user_id: Option<i64>,
+        resource_id: Option<String>,
+    },
+}
+
+/// Safe client-facing DB error after structured server-side logging.
+fn db_error_response(
+    operation: &str,
+    code: &str,
+    owner_user_id: Option<i64>,
+    resource_id: Option<&str>,
+    err: impl std::fmt::Display,
+) -> Response {
+    error!(
+        operation = operation,
+        code = code,
+        owner_user_id = owner_user_id,
+        resource_id = resource_id.unwrap_or(""),
+        error = %err,
+        "redirect path database error"
+    );
+    (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
+}
+
+/// Build a permanent redirect without panicking on invalid destinations.
+///
+/// Defense in depth:
+/// 1. Canonical destination rules (http/https, no control chars) — same as writes.
+/// 2. `HeaderValue` construction — rejects remaining illegal header bytes.
+///
+/// Neither step may panic. Full destination values are not logged.
+fn permanent_redirect_to(destination: &str, code: &str) -> Response {
+    if !crate::utils::validation::validate_redirect_destination(destination) {
+        warn!(
+            operation = "validate_redirect_destination",
+            code = code,
+            destination_len = destination.len(),
+            "invalid stored redirect destination rejected"
+        );
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Invalid redirect destination",
+        )
+            .into_response();
+    }
+
+    match HeaderValue::from_str(destination) {
+        Ok(loc) => {
+            let mut resp = (StatusCode::MOVED_PERMANENTLY, "").into_response();
+            resp.headers_mut().insert(header::LOCATION, loc);
+            resp
+        }
+        Err(err) => {
+            warn!(
+                operation = "build_location_header",
+                code = code,
+                error = %err,
+                // Do not log the full destination if it may contain control chars;
+                // log length only for forensics.
+                destination_len = destination.len(),
+                "invalid redirect destination rejected (possible response-splitting attempt)"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Invalid redirect destination",
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Result of the initial global-slug + URL resolution phase.
+struct ResolvedUrl {
+    owner_user_id: i64,
+    url: Url,
+    content: Arc<Mutex<rusqlite::Connection>>,
+}
+
+/// Lookup global slug namespace then load the URL from the tenant content DB.
+/// Runs entirely on a blocking thread.
+fn resolve_url_blocking(
+    system_db: Arc<Mutex<rusqlite::Connection>>,
+    state: AppState,
+    code: &str,
+) -> ResolveOutcome {
+    // 1. Query global slug namespace in system.db
+    let slug_info = {
+        let system_conn = match system_db.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "lock_system_db",
+                    message: e.to_string(),
+                    owner_user_id: None,
+                    resource_id: None,
+                };
+            }
+        };
+        let mut stmt = match system_conn.prepare(
+            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;",
+        ) {
+            Ok(s) => s,
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "prepare_global_slugs",
+                    message: e.to_string(),
+                    owner_user_id: None,
+                    resource_id: None,
+                };
+            }
+        };
+        match stmt
+            .query_row(rusqlite::params![code], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .optional()
+        {
+            Ok(info) => info,
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "query_global_slugs",
+                    message: e.to_string(),
+                    owner_user_id: None,
+                    resource_id: None,
+                };
+            }
+        }
+    };
+
+    let (owner_user_id, target_type, _target_id, slug_status) = match slug_info {
+        Some(info) => info,
+        None => {
+            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
+            (1, "url".to_string(), "".to_string(), "active".to_string())
+        }
+    };
+
+    // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
+    if slug_status != "active" {
+        return ResolveOutcome::Early {
+            status: StatusCode::GONE,
+            body: "This content has been disabled or moderated",
+        };
+    }
+
+    // If target type is page, redirect permanently to /p/slug
+    if target_type == "page" {
+        return ResolveOutcome::PermanentPath(format!("/p/{}", code));
+    }
+
+    // 2. Get content database connection via tenant DB resolution
+    let content_conn = match state.get_user_dbs(owner_user_id) {
+        Ok(dbs) => dbs,
+        Err(e) => {
+            return ResolveOutcome::DbError {
+                operation: "get_user_dbs",
+                message: e.to_string(),
+                owner_user_id: Some(owner_user_id),
+                resource_id: None,
+            };
+        }
+    };
+
+    let url = {
+        let conn = match content_conn.content.lock() {
+            Ok(c) => c,
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "lock_content_db",
+                    message: e.to_string(),
+                    owner_user_id: Some(owner_user_id),
+                    resource_id: None,
+                };
+            }
+        };
+        match crate::db::content::get_url_by_code(&conn, code) {
+            Ok(Some(url)) => url,
+            Ok(None) => {
+                return ResolveOutcome::Early {
+                    status: StatusCode::NOT_FOUND,
+                    body: "Short code not found",
+                };
+            }
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "get_url_by_code",
+                    message: e.to_string(),
+                    owner_user_id: Some(owner_user_id),
+                    resource_id: None,
+                };
+            }
+        }
+    };
+
+    ResolveOutcome::Ready(Box::new(ResolvedUrl {
+        owner_user_id,
+        url,
+        content: content_conn.content,
+    }))
+}
+
+/// Increment access count and load preview under a single content-DB lock.
+fn increment_and_preview_blocking(
+    content: Arc<Mutex<rusqlite::Connection>>,
+    url_id: &str,
+    code: &str,
+    owner_user_id: i64,
+    fallback_access_count: i64,
+) -> Result<(i64, Option<LinkPreview>), String> {
+    let conn = content
+        .lock()
+        .map_err(|e| format!("lock_content_db_hot: {}", e))?;
+
+    let new_access_count = match crate::db::content::increment_access_count(&conn, url_id) {
+        Ok(n) => n,
+        Err(e) => {
+            // Preserve prior soft-failure semantics for the counter value used only
+            // internally; never silence the underlying error.
+            error!(
+                operation = "increment_access_count",
+                code = code,
+                owner_user_id = owner_user_id,
+                resource_id = url_id,
+                error = %e,
+                "failed to increment access count; continuing with estimated value"
+            );
+            fallback_access_count + 1
+        }
+    };
+
+    let preview = match crate::db::preview::get_preview(&conn, url_id) {
+        Ok(p) => p,
+        Err(e) => {
+            error!(
+                operation = "get_preview",
+                code = code,
+                owner_user_id = owner_user_id,
+                resource_id = url_id,
+                error = %e,
+                "failed to load link preview; continuing without preview"
+            );
+            None
+        }
+    };
+
+    Ok((new_access_count, preview))
+}
 
 // GET /:code
 // Resolve and redirect
@@ -31,69 +309,51 @@ pub async fn resolve_redirect(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    // 1. Query global slug namespace in system.db
-    let slug_info = {
-        let system_conn = state.system_db.lock().unwrap();
-        let mut stmt = match system_conn.prepare(
-            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;"
-        ) {
-            Ok(s) => s,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-        };
-        stmt.query_row(rusqlite::params![code], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })
-        .optional()
-    };
+    let system_db = state.system_db.clone();
+    let state_for_lookup = state.clone();
+    let code_for_lookup = code.clone();
 
-    let (owner_user_id, target_type, _target_id, slug_status) = match slug_info {
-        Ok(Some(info)) => info,
-        Ok(None) => {
-            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
-            (1, "url".to_string(), "".to_string(), "active".to_string())
-        }
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-    };
-
-    // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
-    if slug_status != "active" {
-        return (
-            StatusCode::GONE,
-            "This content has been disabled or moderated",
-        )
-            .into_response();
-    }
-
-    // If target type is page, redirect permanently to /p/slug
-    if target_type == "page" {
-        return Redirect::permanent(&format!("/p/{}", code)).into_response();
-    }
-
-    // 2. Get content database connection via tenant DB resolution
-    let content_conn = match state.get_user_dbs(owner_user_id) {
-        Ok(dbs) => dbs.content,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-    };
-
-    let url_opt = {
-        let conn = content_conn.lock().unwrap();
-        match crate::db::content::get_url_by_code(&conn, &code) {
-            Ok(url) => url,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    let outcome = match tokio::task::spawn_blocking(move || {
+        resolve_url_blocking(system_db, state_for_lookup, &code_for_lookup)
+    })
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            return db_error_response("spawn_blocking_resolve", &code, None, None, e.to_string());
         }
     };
 
-    let url = match url_opt {
-        Some(u) => u,
-        None => return (StatusCode::NOT_FOUND, "Short code not found").into_response(),
+    let resolved = match outcome {
+        ResolveOutcome::Ready(r) => r,
+        ResolveOutcome::Early { status, body } => return (status, body).into_response(),
+        ResolveOutcome::PermanentPath(path) => {
+            return Redirect::permanent(&path).into_response();
+        }
+        ResolveOutcome::DbError {
+            operation,
+            message,
+            owner_user_id,
+            resource_id,
+        } => {
+            return db_error_response(
+                operation,
+                &code,
+                owner_user_id,
+                resource_id.as_deref(),
+                message,
+            );
+        }
     };
 
-    // 3. Expiration check
+    let ResolvedUrl {
+        owner_user_id,
+        url,
+        content,
+    } = *resolved;
+
+    // 3. Expiration check (read-only on the hot path).
+    // Background job `jobs::expiry::run_expiry_checker` persists expired=1.
     if url.expired {
         return (StatusCode::GONE, "This link has expired").into_response();
     }
@@ -101,14 +361,6 @@ pub async fn resolve_redirect(
     if let Some(ref expires_at_str) = url.expires_at {
         if let Ok(expires_at) = chrono::DateTime::parse_from_rfc3339(expires_at_str) {
             if expires_at.with_timezone(&Utc) < Utc::now() {
-                // Mark as expired in DB asynchronously/immediately
-                {
-                    let conn = content_conn.lock().unwrap();
-                    let _ = conn.execute(
-                        "UPDATE urls SET expired = 1 WHERE id = ?1;",
-                        [url.id.clone()],
-                    );
-                }
                 return (StatusCode::GONE, "This link has expired").into_response();
             }
         }
@@ -136,15 +388,40 @@ pub async fn resolve_redirect(
         }
     }
 
-    // 6. Increment access count & retrieve preview config
-    let _new_access_count = {
-        let conn = content_conn.lock().unwrap();
-        crate::db::content::increment_access_count(&conn, &url.id).unwrap_or(url.access_count + 1)
-    };
-
-    let preview_opt = {
-        let conn = content_conn.lock().unwrap();
-        crate::db::preview::get_preview(&conn, &url.id).unwrap_or(None)
+    // 6. Increment access count & retrieve preview config (single content lock, off executor)
+    let url_id = url.id.clone();
+    let code_for_hot = code.clone();
+    let fallback_access_count = url.access_count;
+    let preview_opt = match tokio::task::spawn_blocking(move || {
+        increment_and_preview_blocking(
+            content,
+            &url_id,
+            &code_for_hot,
+            owner_user_id,
+            fallback_access_count,
+        )
+    })
+    .await
+    {
+        Ok(Ok((_new_access_count, preview))) => preview,
+        Ok(Err(msg)) => {
+            return db_error_response(
+                "increment_and_preview",
+                &code,
+                Some(owner_user_id),
+                Some(&url.id),
+                msg,
+            );
+        }
+        Err(e) => {
+            return db_error_response(
+                "spawn_blocking_hot",
+                &code,
+                Some(owner_user_id),
+                Some(&url.id),
+                e.to_string(),
+            );
+        }
     };
 
     // Asynchronously record analytics
@@ -195,14 +472,32 @@ pub async fn resolve_redirect(
         }
         .into_response()
     } else {
-        {
-            use axum::http::{header, HeaderValue};
-            let mut resp = (StatusCode::MOVED_PERMANENTLY, "").into_response();
-            resp.headers_mut().insert(
-                header::LOCATION,
-                HeaderValue::from_str(&url.destination).unwrap(),
-            );
-            resp
-        }
+        permanent_redirect_to(&url.destination, &code)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn permanent_redirect_rejects_crlf() {
+        let resp = permanent_redirect_to("https://evil.example/\r\nX-Injected: yes", "abc123");
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(resp.headers().get(header::LOCATION).is_none());
+    }
+
+    #[test]
+    fn permanent_redirect_rejects_control_chars() {
+        let resp = permanent_redirect_to("https://evil.example/\x00payload", "abc123");
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn permanent_redirect_accepts_valid_url() {
+        let resp = permanent_redirect_to("https://example.com/path?q=1", "abc123");
+        assert_eq!(resp.status(), StatusCode::MOVED_PERMANENTLY);
+        let loc = resp.headers().get(header::LOCATION).unwrap();
+        assert_eq!(loc, "https://example.com/path?q=1");
     }
 }

@@ -38,6 +38,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Commands::Validate { data_dir } => {
             bzod::cli::validate::run(data_dir, config).await?;
         }
+        Commands::AuditDestinations { data_dir } => {
+            bzod::cli::audit_destinations::run(data_dir, config).await?;
+        }
         Commands::CreateAdmin { username, data_dir } => {
             bzod::cli::create_admin::run(username, data_dir, config).await?;
         }

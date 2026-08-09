@@ -18,7 +18,7 @@ services:
       - PORT=8654
       - RUST_LOG=info
     hostname: bzod
-    image: nx9-url-shortener:v0.5.3
+    image: nx9-url-shortener:v0.6.0
     ports:
       - mode: ingress
         target: 8654

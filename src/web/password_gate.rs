@@ -26,6 +26,7 @@ pub async fn gate_post(
     State(state): State<AppState>,
     Path(code): Path<String>,
     jar: CookieJar,
+    headers: axum::http::HeaderMap,
     Form(form): Form<PasswordGateForm>,
 ) -> Response {
     let url_opt = match get_url_by_code(&state.db, &code) {
@@ -55,8 +56,9 @@ pub async fn gate_post(
     if verify_password(&form.password, password_hash) {
         // Correct password - set 15 min temporary cookie
         let cookie_name = format!("bzod_gate_{}", code);
+        let secure_flag = crate::utils::resolve_cookie_secure(state.config.cookie_secure, &headers);
         let cookie = Cookie::build((cookie_name, "authorized"))
-            .secure(state.config.cookie_secure)
+            .secure(secure_flag)
             .same_site(axum_extra::extract::cookie::SameSite::Strict)
             .http_only(true)
             .path("/")

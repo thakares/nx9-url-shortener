@@ -148,7 +148,9 @@ async fn test_upgrade_from_v0_4_0() {
     assert!(temp_dir.join("users/1/analytics.db").exists());
 
     // Spawn server
-    let queue = AnalyticsQueue::new(db.clone(), 10);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 10, rx);
     let state = AppState {
         admin_db: db.admin.clone(),
         content_db: db.content.clone(),

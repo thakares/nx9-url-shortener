@@ -6,7 +6,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-Embedded-blue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-green)
-![Version](https://img.shields.io/badge/Version-v0.5.3-purple)
+![Version](https://img.shields.io/badge/Version-v0.6.0-purple)
 
 [![GitHub](https://img.shields.io/badge/GitHub-thakares%2Fbzod-181717?logo=github)](https://github.com/thakares/bzod)
 [![Codeberg](https://img.shields.io/badge/Codeberg-thakares%2Fbzod-2185D0?logo=codeberg)](https://codeberg.org/thakares/bzod)
@@ -90,7 +90,7 @@ No recurring subscription fees.
 
 ---
 
-## Runtime Efficiency (v0.5.3)
+## Runtime Efficiency (v0.6.0)
 
 | Metric | Value |
 |---------|------:|
@@ -945,6 +945,33 @@ src/
 ├── templates/
 ├── utils/
 ├── web/
+│   ├── admin/
+│   │   ├── analytics.rs
+│   │   ├── api_keys.rs
+│   │   ├── audit.rs
+│   │   ├── auth.rs
+│   │   ├── backups.rs
+│   │   ├── dashboard.rs
+│   │   ├── health.rs
+│   │   ├── moderation.rs
+│   │   ├── mod.rs
+│   │   ├── pages.rs
+│   │   ├── quotas.rs
+│   │   ├── sessions.rs
+│   │   ├── settings.rs
+│   │   ├── urls.rs
+│   │   └── users.rs
+│   ├── api.rs
+│   ├── bulk.rs
+│   ├── middleware.rs
+│   ├── mod.rs
+│   ├── multi_user.rs
+│   ├── pages.rs
+│   ├── password_gate.rs
+│   ├── qr.rs
+│   ├── redirect.rs
+│   ├── routes.rs
+│   └── system.rs
 
 templates/
 
@@ -1108,6 +1135,8 @@ Highlights include:
 - Upgrade Validation
 - Backup Manifest
 - Transaction-safe Maintenance
+- Modular Admin Architecture (v0.6.0)
+- Redirect Handler Hardening (v0.6.0)
 
 ---
 

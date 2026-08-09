@@ -1,7 +1,12 @@
 pub mod api_keys;
 pub mod audit;
+pub mod backup_layout;
 pub mod bulk;
+pub mod bulk_urls;
+pub mod destination_audit;
 pub mod landing_pages;
 pub mod qr;
 pub mod registry_validator;
 pub mod shortener;
+pub mod slug_transfer;
+pub mod urls;

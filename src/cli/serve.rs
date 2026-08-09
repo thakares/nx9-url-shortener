@@ -7,6 +7,30 @@ use std::path::PathBuf;
 use std::time::Instant;
 use tracing::info;
 
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+}
+
 pub async fn run(
     host: Option<String>,
     port: Option<u16>,
@@ -29,39 +53,63 @@ pub async fn run(
     // Init DBs
     let db = Db::init(&config)?;
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let mut join_handles = Vec::new();
+
     // Init Queue
-    let queue = AnalyticsQueue::new(db.clone(), 1000);
+    let (queue, analytics_handle) = AnalyticsQueue::new(db.clone(), 1000, shutdown_rx.clone());
+    join_handles.push(("analytics_worker", analytics_handle));
 
     // Spawn background tasks
     let link_checker_db = db.clone();
     let link_checker_interval = config.link_check_interval_mins;
-    tokio::spawn(async move {
-        crate::jobs::run_link_checker(link_checker_db, link_checker_interval).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "link_checker",
+        tokio::spawn(async move {
+            crate::jobs::run_link_checker(link_checker_db, link_checker_interval, rx).await;
+        }),
+    ));
 
     let aggregator_db = db.clone();
     let aggregator_interval = config.aggregation_interval_mins;
-    tokio::spawn(async move {
-        crate::jobs::run_aggregator(aggregator_db, aggregator_interval).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "aggregator",
+        tokio::spawn(async move {
+            crate::jobs::run_aggregator(aggregator_db, aggregator_interval, rx).await;
+        }),
+    ));
 
     let retention_db = db.clone();
     let retention_days = config.data_retention_days;
-    tokio::spawn(async move {
-        crate::jobs::run_retention_cleaner(retention_db, retention_days).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "retention_cleaner",
+        tokio::spawn(async move {
+            crate::jobs::run_retention_cleaner(retention_db, retention_days, rx).await;
+        }),
+    ));
 
     // Spawn optional backup scheduler
     let backup_db = db.clone();
     let backup_config = config.clone();
-    tokio::spawn(async move {
-        crate::jobs::backup::run_backup_scheduler(backup_db, backup_config).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "backup_scheduler",
+        tokio::spawn(async move {
+            crate::jobs::backup::run_backup_scheduler(backup_db, backup_config, rx).await;
+        }),
+    ));
 
     let expiry_db = db.clone();
-    tokio::spawn(async move {
-        crate::jobs::run_expiry_checker(expiry_db).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "expiry_checker",
+        tokio::spawn(async move {
+            crate::jobs::run_expiry_checker(expiry_db, rx).await;
+        }),
+    ));
 
     let reconcile_db = db.clone();
     let reconcile_interval_hours = {
@@ -75,9 +123,13 @@ pub async fn run(
         .and_then(|val| val.parse::<u64>().ok())
         .unwrap_or(24)
     };
-    tokio::spawn(async move {
-        crate::jobs::run_quota_reconciliation(reconcile_db, reconcile_interval_hours).await;
-    });
+    let rx = shutdown_rx.clone();
+    join_handles.push((
+        "quota_reconciliation",
+        tokio::spawn(async move {
+            crate::jobs::run_quota_reconciliation(reconcile_db, reconcile_interval_hours, rx).await;
+        }),
+    ));
 
     let state = AppState {
         admin_db: db.admin.clone(),
@@ -98,7 +150,31 @@ pub async fn run(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     info!("Listening for requests on http://{}", addr);
-    axum::serve(listener, router).await?;
+
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            info!("Shutdown signal received");
+            info!("Stopping HTTP server...");
+            let _ = shutdown_tx.send(true);
+        })
+        .await?;
+
+    info!("Stopping background workers...");
+
+    let timeout_duration = std::time::Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + timeout_duration;
+
+    for (name, handle) in join_handles {
+        match tokio::time::timeout_at(deadline, handle).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => tracing::error!("Background task '{}' panicked: {:?}", name, e),
+            Err(_) => tracing::warn!("Background task did not terminate: {}", name),
+        }
+    }
+
+    info!("Background workers stopped");
+    info!("BZOD shutdown complete");
 
     Ok(())
 }

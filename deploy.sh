@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+BZOD_VERSION="0.6.0"
+
 SERVICE_USER="bzod"
 INSTALL_PATH="/usr/local/bin/bzod"
 CONFIG_DIR="/etc/bzod"
@@ -48,7 +50,7 @@ case $ARCH in
 esac
 
 REPO="thakares/nx9-url-shortener"
-RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${BINARY_NAME}"
+RELEASE_URL="https://github.com/${REPO}/releases/download/v${BZOD_VERSION}/${BINARY_NAME}"
 
 TMP_BINARY=$(mktemp)
 
@@ -93,13 +95,24 @@ if [ ! -x "${INSTALL_PATH}" ]; then
     exit 1
 fi
 
-"${INSTALL_PATH}" --version >/dev/null && echo -e "${GREEN}✓ Binary verified${NC}" || {
+"${INSTALL_PATH}" --version >/dev/null && echo -e "${GREEN}✓ Binary verified (--version)${NC}" || {
     echo -e "${RED}Binary verification failed${NC}"
     exit 1
 }
 
-# Show installed version
+# Verify -V also works
+"${INSTALL_PATH}" -V >/dev/null && echo -e "${GREEN}✓ Binary verified (-V)${NC}" || {
+    echo -e "${RED}Binary -V verification failed${NC}"
+    exit 1
+}
+
+# Show installed version and verify it matches requested version
 VERSION=$("${INSTALL_PATH}" --version 2>/dev/null | head -n1 || echo "unknown")
+EXPECTED_VERSION="bzod ${BZOD_VERSION}"
+if [ "${VERSION}" != "${EXPECTED_VERSION}" ]; then
+    echo -e "${RED}Version mismatch: expected '${EXPECTED_VERSION}', got '${VERSION}'${NC}"
+    exit 1
+fi
 echo -e "${GREEN}✓ Installed ${VERSION} (${ARCH})${NC}"
 
 # 3. Create System User
@@ -175,11 +188,23 @@ systemctl daemon-reload
 # 7. Initialize & Start
 echo -e "\n${BLUE}[7/8] Initializing and starting service...${NC}"
 
-if [ ! -f "${DATA_DIR}/content.db" ] && [ ! -f "${DATA_DIR}/admin.db" ] && [ ! -f "${DATA_DIR}/analytics.db" ]; then
-    runuser -u "${SERVICE_USER}" -- "${INSTALL_PATH}" init-db --data-dir "${DATA_DIR}"
-    echo -e "${GREEN}✓ Databases initialized${NC}"
-else
+# Database creation and migration is handled automatically by 'bzod serve'
+if [ -f "${DATA_DIR}/admin/admin.db" ] || [ -f "${DATA_DIR}/admin.db" ]; then
     echo -e "${GREEN}✓ Existing database detected (upgrade mode)${NC}"
+
+    # Pre-upgrade: stop service and backup databases
+    if systemctl is-active --quiet bzod 2>/dev/null; then
+        echo -e "${BLUE}  Stopping BZOD for safe database backup...${NC}"
+        systemctl stop bzod
+    fi
+
+    BACKUP_DIR="/var/lib/bzod/pre-upgrade-backup-v${BZOD_VERSION}"
+    mkdir -p "${BACKUP_DIR}"
+    cp -a "${DATA_DIR}" "${BACKUP_DIR}/data" 2>/dev/null || true
+    cp "${ENV_FILE}" "${BACKUP_DIR}/bzod.env" 2>/dev/null || true
+    echo -e "${GREEN}  ✓ Pre-upgrade backup created at ${BACKUP_DIR}${NC}"
+else
+    echo -e "${GREEN}✓ Fresh installation (databases will be created on first start)${NC}"
 fi
 
 systemctl enable --now bzod

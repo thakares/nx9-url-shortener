@@ -1,6 +1,6 @@
 # BZOD Architecture Guide
 
-Version: v0.5.3
+Version: v0.6.0
 
 ---
 
@@ -89,7 +89,22 @@ Responsible for:
 Major modules:
 
 ```text
-admin.rs
+admin/          (modular feature directory)
+  auth.rs       (authentication and session handling)
+  dashboard.rs  (dashboard rendering)
+  urls.rs       (URL management handlers)
+  pages.rs      (landing page management handlers)
+  analytics.rs  (analytics and export handlers)
+  settings.rs   (settings and configuration handlers)
+  users.rs      (user management handlers)
+  sessions.rs   (session administration)
+  quotas.rs     (quota management)
+  health.rs     (health diagnostics)
+  backups.rs    (backup and restore handlers)
+  api_keys.rs   (API key management)
+  audit.rs      (audit log handlers)
+  moderation.rs (content moderation handlers)
+  mod.rs        (module exports and shared helpers)
 api.rs
 pages.rs
 redirect.rs
@@ -339,9 +354,11 @@ Locate owner database
   ↓
 Resolve URL
   ↓
+Validate destination
+  ↓
 Record analytics
   ↓
-302 Redirect
+301 Redirect (with safe Location header construction)
 ```
 
 ---
@@ -590,7 +607,7 @@ Coverage includes:
 * Upgrade validation
 * Multi-user isolation
 
-v0.5.0 includes more than 90 automated tests.
+The project includes comprehensive automated test coverage spanning unit, integration, security, and end-to-end tests.
 
 ---
 
@@ -635,7 +652,7 @@ Planned for future releases:
 
 # Summary
 
-BZOD v0.5.0 is built around a simple principle:
+BZOD is built around a simple principle:
 
 > Keep deployment simple, keep data local, keep users isolated, and keep recovery easy.
 

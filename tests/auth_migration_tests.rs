@@ -37,7 +37,9 @@ fn compute_sha256(value: &str) -> String {
 
 fn build_state(config: Config) -> (Db, bzod::state::AppState) {
     let db = Db::init(&config).expect("Failed to init Db");
-    let queue = AnalyticsQueue::new(db.clone(), 1000);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 1000, rx);
     let state = bzod::state::AppState {
         admin_db: db.admin.clone(),
         content_db: db.content.clone(),

@@ -23,7 +23,10 @@ fn create_temp_config(temp_dir: PathBuf) -> Config {
     config.backup_dir = temp_dir.clone();
     config.admin_username = "admin".to_string();
     config.base_url = Some("http://localhost:8080".to_string());
-    config.cookie_secure = false; // Disable secure flag for testing over HTTP loopback
+    // We leave config.cookie_secure as default (true).
+    // The new resolve_cookie_secure logic will automatically drop Secure
+    // for HTTP requests over the 127.0.0.1 loopback during this test,
+    // proving the local development fix works end-to-end.
     config.bootstrap_password_sha256 = compute_sha256("bootstrap-secret");
     config
 }
@@ -45,7 +48,9 @@ async fn start_test_server(
 ) -> (reqwest::Client, String, tokio::task::JoinHandle<()>) {
     let config = create_temp_config(temp_dir);
     let db = Db::init(&config).expect("Failed to init Db");
-    let queue = AnalyticsQueue::new(db.clone(), 100);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 100, rx);
 
     let state = AppState {
         admin_db: db.admin.clone(),

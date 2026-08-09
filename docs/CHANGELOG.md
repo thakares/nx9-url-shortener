@@ -6,6 +6,77 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ---
 
+# v0.6.0 — Legacy Restore Compatibility & Version Reporting
+
+- **Legacy Backup Restore**: Full backward-compatible restore support for `legacy_flat_backup` archives into the current multi-tenant database architecture
+- **CLI Version Reporting**: Added `--version` / `-V` flags derived from Cargo package metadata
+- **Deploy Script**: Removed obsolete `init-db` command; database creation and migration now handled by `bzod serve`
+- **Version Verification**: Deploy script now verifies installed binary version matches requested version
+
+# v0.5.3 — Architecture Refinement & Redirect Hardening
+
+---
+
+## Changed
+
+### Architecture
+
+* Eliminated the monolithic `admin.rs` handler file
+* Reorganized admin functionality into focused feature modules under `src/web/admin/`
+* Separated authentication, dashboard, URLs, pages, analytics, settings, users, sessions, quotas, health, backups, API keys, audit, and moderation into dedicated modules
+* Extracted shared authentication and authorization helpers
+* Extracted common export and helper functionality
+
+### Redirect Handling
+
+* Removed panic-prone `HeaderValue::from_str(...).unwrap()` pattern from the redirect path
+* Added destination URL validation (scheme validation, control character rejection)
+* Added safe HTTP Location header construction
+* Improved database error logging with structured fields
+* Reduced unnecessary database mutex lock acquisitions on the redirect hot path
+* Removed synchronous expiration writes from the redirect hot path
+
+---
+
+## Improved
+
+* Database lock scoping across admin handlers
+* Error handling consistency and observability
+* Handler decomposition for oversized functions
+* Reduced duplicated handler logic across admin operations
+
+---
+
+## Verified
+
+* Root landing page (GET /) confirmed as intentional route serving www/index.html
+* Release binary built successfully
+* Runtime smoke tests passed (GET /, GET /login, GET /admin/login all return HTTP 200)
+* SQLite WAL mode and foreign-key enforcement initialized successfully
+* All existing migrations reported as up to date
+* Comprehensive automated test suite passed, including:
+  * Authentication and migration tests
+  * Redirect security tests
+  * Root landing page test
+  * Backup and restore tests
+  * Business workflow tests
+  * Security tests
+  * Slug namespace, registry, and transfer tests
+  * User management and isolation tests
+  * WAL recovery tests
+  * HTTP end-to-end tests
+
+---
+
+## Notes
+
+* This release is an internal architecture and quality improvement
+* No new user-facing features were introduced
+* Existing API and route behavior was preserved
+* Existing redirect security and tenant isolation behavior was preserved
+
+---
+
 # v0.5.1 - General Availability (GA)
 
 Release Date: 2026-06-20

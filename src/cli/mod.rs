@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 
 pub mod admin_migrate;
+pub mod audit_destinations;
 pub mod backup;
 pub mod backup_user;
 pub mod create_admin;
@@ -23,6 +24,7 @@ pub mod validate;
 
 #[derive(Parser)]
 #[command(name = "bzod")]
+#[command(version)]
 #[command(about = "BZOD - Personal Redirector & Landing Page Platform")]
 pub struct Cli {
     #[command(subcommand)]
@@ -69,6 +71,11 @@ pub enum Commands {
     },
     /// Perform a one-shot validation of all registered short link destinations
     Validate {
+        #[arg(long)]
+        data_dir: Option<String>,
+    },
+    /// Read-only audit of stored redirect destinations (schemes, control chars, malformed)
+    AuditDestinations {
         #[arg(long)]
         data_dir: Option<String>,
     },

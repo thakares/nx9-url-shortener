@@ -2,10 +2,20 @@ use crate::db::Db;
 use std::time::Duration;
 use tracing::{error, info};
 
-pub async fn run_quota_reconciliation(db: Db, interval_hours: u64) {
+pub async fn run_quota_reconciliation(
+    db: Db,
+    interval_hours: u64,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     loop {
         // Sleep first
-        tokio::time::sleep(Duration::from_secs(interval_hours * 3600)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(interval_hours * 3600)) => {}
+            _ = shutdown_rx.changed() => {
+                info!("Quota reconciliation shutting down...");
+                break;
+            }
+        }
         info!("Running background quota reconciliation...");
 
         let user_ids: Vec<i64> = {

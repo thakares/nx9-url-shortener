@@ -29,7 +29,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn get_user_dbs(&self, user_id: i64) -> Result<UserDbs, crate::error::AppError> {
-        let mut pool = self.user_dbs.lock().unwrap();
+        let mut pool = crate::utils::lock_db(&self.user_dbs, "user_dbs")?;
         if let Some(dbs) = pool.get(&user_id) {
             return Ok(dbs.clone());
         }
@@ -87,12 +87,12 @@ impl AppState {
         Ok(dbs)
     }
 
-    pub fn db_compact(&self) -> Result<(), rusqlite::Error> {
-        self.admin_db.lock().unwrap().execute("VACUUM;", [])?;
-        self.content_db.lock().unwrap().execute("VACUUM;", [])?;
-        self.analytics_db.lock().unwrap().execute("VACUUM;", [])?;
-        self.system_db.lock().unwrap().execute("VACUUM;", [])?;
-        self.users_db.lock().unwrap().execute("VACUUM;", [])?;
+    pub fn db_compact(&self) -> Result<(), crate::error::AppError> {
+        crate::utils::lock_db(&self.admin_db, "admin_db")?.execute("VACUUM;", [])?;
+        crate::utils::lock_db(&self.content_db, "content_db")?.execute("VACUUM;", [])?;
+        crate::utils::lock_db(&self.analytics_db, "analytics_db")?.execute("VACUUM;", [])?;
+        crate::utils::lock_db(&self.system_db, "system_db")?.execute("VACUUM;", [])?;
+        crate::utils::lock_db(&self.users_db, "users_db")?.execute("VACUUM;", [])?;
         Ok(())
     }
 }

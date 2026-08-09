@@ -4,7 +4,11 @@ use crate::db::Db;
 use std::time::Duration;
 use tracing::{error, info};
 
-pub async fn run_backup_scheduler(db: Db, config: Config) {
+pub async fn run_backup_scheduler(
+    db: Db,
+    config: Config,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     if !config.backup_enabled {
         info!("Background backup scheduler is disabled.");
         return;
@@ -16,7 +20,13 @@ pub async fn run_backup_scheduler(db: Db, config: Config) {
     );
     loop {
         // Run backup every configured interval
-        tokio::time::sleep(Duration::from_secs(config.backup_interval_mins * 60)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(config.backup_interval_mins * 60)) => {}
+            _ = shutdown_rx.changed() => {
+                info!("Backup scheduler shutting down...");
+                break;
+            }
+        }
         info!("Running background database backup...");
 
         let job_id = log_job_start(&db.system, "database_backup");

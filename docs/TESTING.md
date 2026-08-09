@@ -325,6 +325,38 @@ and:
 
 for final landing page render.
 
+Root landing page:
+
+```text
+GET /
+```
+
+must serve the static landing page.
+
+Expected:
+
+```http
+200 OK
+Content-Type: text/html
+```
+
+Redirect security:
+
+Redirect destinations are validated against:
+
+* Invalid URL schemes
+* CRLF injection attempts
+* Control character injection
+* Malformed HTTP Location header values
+
+Invalid destinations must return:
+
+```http
+500 Internal Server Error
+```
+
+and must not panic or produce malformed HTTP responses.
+
 ---
 
 # 12. Backup Validation

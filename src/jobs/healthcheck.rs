@@ -8,7 +8,11 @@ use uuid::Uuid;
 use super::{log_job_end, log_job_start};
 use crate::db::Db;
 
-pub async fn run_link_checker(db: Db, interval_mins: u64) {
+pub async fn run_link_checker(
+    db: Db,
+    interval_mins: u64,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let client = Client::builder()
         .timeout(Duration::from_secs(10))
         .user_agent("bzod-link-checker/0.1")
@@ -18,7 +22,14 @@ pub async fn run_link_checker(db: Db, interval_mins: u64) {
 
     loop {
         // Sleep first to give server time to start up
-        tokio::time::sleep(Duration::from_secs(interval_mins * 60)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(interval_mins * 60)) => {}
+            _ = shutdown_rx.changed() => {
+                info!("Link checker shutting down...");
+                break;
+            }
+        }
+
         info!("Running background link health check...");
 
         let job_id = log_job_start(&db.system, "link_checker");

@@ -1,6 +1,6 @@
 # BZOD Administrator Guide
 
-Version: v0.5.3
+Version: v0.6.0
 
 ---
 

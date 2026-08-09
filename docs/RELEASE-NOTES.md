@@ -1,3 +1,132 @@
+# BZOD v0.6.0 — Legacy Restore Compatibility & Version Reporting
+
+Release Date: 2026-08-09
+
+## Highlights
+
+- **Legacy Backup Restore Compatibility**: Backups created with the web admin "Download Backup" feature (`legacy_flat_backup` format) can now be correctly restored into the current multi-tenant database architecture. Previously, these restores failed with "no such table: users" because the restore validator ran against the empty legacy `users.db` before layout normalization.
+
+- **CLI Version Reporting**: `bzod --version` and `bzod -V` now report the application version derived from Cargo.toml package metadata, ensuring the reported version cannot diverge from the build.
+
+- **Deploy Script Modernization**: Removed the obsolete `init-db` command from the deployment script. Database creation and schema migration are now handled automatically by `bzod serve`. The deploy script now verifies the installed binary version using `--version`.
+
+## Breaking Changes
+
+None.
+
+# BZOD v0.5.3 — Architecture Refinement & Redirect Hardening
+
+BZOD v0.5.3 is an internal quality and maintainability release focused on architectural refinement, redirect handler hardening, and comprehensive verification.
+
+No new user-facing features are introduced. Existing API contracts, route behavior, authentication, and tenant isolation are fully preserved.
+
+---
+
+# Highlights
+
+## Modular Admin Architecture
+
+The former monolithic admin handler file was eliminated and replaced with a focused module directory at `src/web/admin/`.
+
+Feature modules:
+
+* `auth.rs` — authentication and session handling
+* `dashboard.rs` — dashboard rendering
+* `urls.rs` — URL management handlers
+* `pages.rs` — landing page management handlers
+* `analytics.rs` — analytics and export handlers
+* `settings.rs` — settings and configuration handlers
+* `users.rs` — user management handlers
+* `sessions.rs` — session administration
+* `quotas.rs` — quota management
+* `health.rs` — health diagnostics
+* `backups.rs` — backup and restore handlers
+* `api_keys.rs` — API key management
+* `audit.rs` — audit log handlers
+* `moderation.rs` — content moderation handlers
+
+Benefits:
+
+* Improved code organization and navigability
+* Reduced coupling between feature areas
+* Improved database lock scoping
+* Reduced duplicated handler logic
+* Better error handling consistency and observability
+* Simplified future extension
+
+---
+
+## Redirect Handler Hardening
+
+The public redirect path (`GET /:code`) was hardened against invalid HTTP Location header values.
+
+Changes:
+
+* Removed the panic-prone `HeaderValue::from_str(...).unwrap()` pattern
+* Added destination URL validation (scheme enforcement, control character rejection)
+* Added safe Location header construction that handles malformed values gracefully
+* Improved database error logging with structured fields
+* Reduced unnecessary database mutex lock acquisitions
+* Removed synchronous expiration writes from the redirect hot path
+
+Existing redirect security and tenant isolation behavior was preserved.
+
+---
+
+## Root Landing Page Verification
+
+* Confirmed `GET /` as an intentional application route serving `www/index.html`
+* Resolved a runtime path-resolution issue affecting static landing-page resolution
+* Verified `GET /` returns HTTP 200
+* Verified `GET /login` returns HTTP 200
+* Verified `GET /admin/login` returns HTTP 200
+
+---
+
+# Testing & Validation
+
+BZOD v0.5.3 passed:
+
+* Release build (`cargo build --release`)
+* Comprehensive automated test suite, including:
+  * Authentication and migration tests
+  * Redirect security tests
+  * Root landing page test
+  * Backup and restore tests
+  * Business workflow tests
+  * Security tests
+  * Slug namespace, registry, and transfer tests
+  * User management and isolation tests
+  * WAL recovery tests
+  * HTTP end-to-end tests
+* Runtime smoke tests against the release binary
+* SQLite WAL mode and foreign-key enforcement initialization
+* Database migration verification (all migrations up to date)
+
+---
+
+# Compatibility
+
+* No breaking changes
+* No API changes
+* No route changes
+* No database schema changes
+* No configuration changes
+* Direct upgrade from v0.5.1 with no migration required
+
+---
+
+# Repository
+
+* Clean source tree established
+* Build artifacts, temporary reports, and IDE metadata removed
+* Existing BZOD Git history preserved
+* Refactoring baseline merged with existing history
+
+---
+
+---
+
 # BZOD v0.5.1 — Namespace Integrity & Platform Hardening
 
 **Release Date:** 2026-06-20

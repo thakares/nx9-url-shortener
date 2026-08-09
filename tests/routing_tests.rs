@@ -25,7 +25,9 @@ async fn test_global_slug_lookup_and_redirection() {
     let config = create_temp_config(temp_dir.clone());
 
     let db = Db::init(&config).expect("Failed to init Db");
-    let queue = AnalyticsQueue::new(db.clone(), 1000);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 1000, rx);
 
     let state = AppState {
         admin_db: db.admin.clone(),
@@ -120,7 +122,9 @@ async fn test_disabled_slug_returns_410() {
     let config = create_temp_config(temp_dir.clone());
 
     let db = Db::init(&config).expect("Failed to init Db");
-    let queue = AnalyticsQueue::new(db.clone(), 1000);
+    let (tx, rx) = tokio::sync::watch::channel(false);
+    Box::leak(Box::new(tx));
+    let (queue, _) = AnalyticsQueue::new(db.clone(), 1000, rx);
 
     let state = AppState {
         admin_db: db.admin.clone(),

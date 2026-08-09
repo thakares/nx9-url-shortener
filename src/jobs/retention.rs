@@ -4,7 +4,11 @@ use tracing::{error, info};
 use super::{log_job_end, log_job_start};
 use crate::db::Db;
 
-pub async fn run_retention_cleaner(db: Db, retention_days_opt: Option<i64>) {
+pub async fn run_retention_cleaner(
+    db: Db,
+    retention_days_opt: Option<i64>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     let retention_days = match retention_days_opt {
         Some(days) => days,
         None => return,
@@ -12,7 +16,13 @@ pub async fn run_retention_cleaner(db: Db, retention_days_opt: Option<i64>) {
 
     loop {
         // Check once every 24 hours
-        tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(24 * 3600)) => {}
+            _ = shutdown_rx.changed() => {
+                info!("Retention cleaner shutting down...");
+                break;
+            }
+        }
         info!("Running background data retention cleanup...");
 
         let user_ids: Vec<i64> = {

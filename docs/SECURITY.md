@@ -1,6 +1,6 @@
 # BZOD Security Guide
 
-Version: v0.5.1
+Version: v0.6.0
 
 ---
 
@@ -16,7 +16,7 @@ BZOD is designed as a self-hosted URL shortener and landing page platform with a
 * Disaster recovery
 * Operational simplicity
 
-This document describes the security architecture, threat model, authentication mechanisms, authorization controls, and operational security recommendations for BZOD v0.5.0.
+This document describes the security architecture, threat model, authentication mechanisms, authorization controls, and operational security recommendations for BZOD v0.6.0.
 
 ---
 
@@ -432,6 +432,27 @@ for:
 
 ---
 
+# Redirect Security
+
+The redirect handler validates destination URLs before constructing HTTP Location headers.
+
+Protections include:
+
+* URL scheme validation (only http and https destinations are permitted)
+* Control character rejection
+* CRLF injection prevention
+* Safe Location header construction (no panics on malformed values)
+
+Invalid redirect destinations return:
+
+```http
+500 Internal Server Error
+```
+
+with structured server-side logging. Full destination values are not exposed to clients.
+
+---
+
 # Audit Logging
 
 Security-sensitive actions are logged.
@@ -599,7 +620,7 @@ If compromise is suspected:
 
 # Security Testing
 
-BZOD v0.5.0 includes tests covering:
+BZOD v0.6.0 includes tests covering:
 
 * Authentication
 * Authorization
@@ -610,6 +631,8 @@ BZOD v0.5.0 includes tests covering:
 * Upgrade migrations
 * Backup integrity
 * Disaster recovery
+* Redirect destination validation
+* HTTP Location header safety
 
 These tests are executed during CI and release validation.
 
@@ -642,7 +665,7 @@ These may be addressed in future releases.
 
 # Summary
 
-BZOD v0.5.0 provides:
+BZOD v0.6.0 provides:
 
 * Centralized authentication
 * Secure session management

@@ -5,9 +5,19 @@ use super::{log_job_end, log_job_start};
 use crate::analytics::aggregate_day;
 use crate::db::Db;
 
-pub async fn run_aggregator(db: Db, interval_mins: u64) {
+pub async fn run_aggregator(
+    db: Db,
+    interval_mins: u64,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
     loop {
-        tokio::time::sleep(Duration::from_secs(interval_mins * 60)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(interval_mins * 60)) => {}
+            _ = shutdown_rx.changed() => {
+                info!("Analytics aggregator shutting down...");
+                break;
+            }
+        }
         info!("Running background analytics aggregator...");
 
         let user_ids: Vec<i64> = {

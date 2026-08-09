@@ -1,8 +1,9 @@
-use crate::auth::generate_token;
-use crate::auth::password::hash_password;
 use crate::auth::ApiUser;
+use crate::services::bulk_urls::{
+    create_urls_bulk, ensure_url_quota, BulkUrlCreateItem, BulkUrlError,
+};
 use crate::state::AppState;
-use crate::utils::get_client_ip;
+use crate::utils::{get_client_ip, lock_db};
 use axum::{
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode},
@@ -68,7 +69,18 @@ pub async fn api_bulk_qr(
     // Retrieve URLs from database
     let mut urls = Vec::new();
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = match lock_db(&state.content_db, "content_db") {
+            Ok(c) => c,
+            Err(e) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(BulkErrorResponse {
+                        error: e.to_string(),
+                    }),
+                )
+                    .into_response();
+            }
+        };
         for id in &payload.ids {
             match crate::db::content::get_url_by_id(&conn, id) {
                 Ok(Some(url)) => urls.push(url),
@@ -115,9 +127,8 @@ pub async fn api_bulk_qr(
     // Generate ZIP
     match crate::services::bulk::export_qr_zip(&urls, &format, &base_url) {
         Ok(zip_data) => {
-            // Write Audit Log
-            {
-                let system_conn = state.db.system.lock().unwrap();
+            // Write Audit Log (best-effort; do not fail the download on audit lock poison)
+            if let Ok(system_conn) = lock_db(&state.db.system, "system_db") {
                 let _ = crate::db::audit_events::write_audit_event(
                     &system_conn,
                     user.0.username(),
@@ -145,6 +156,16 @@ pub async fn api_bulk_qr(
         )
             .into_response(),
     }
+}
+
+fn bulk_url_error_response(err: BulkUrlError) -> Response {
+    let (status, msg) = match &err {
+        BulkUrlError::BadRequest(m) => (StatusCode::BAD_REQUEST, m.clone()),
+        BulkUrlError::Conflict(m) => (StatusCode::CONFLICT, m.clone()),
+        BulkUrlError::Forbidden(m) => (StatusCode::FORBIDDEN, m.clone()),
+        BulkUrlError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m.clone()),
+    };
+    (status, Json(BulkErrorResponse { error: msg })).into_response()
 }
 
 // POST /api/v1/bulk/url
@@ -185,214 +206,39 @@ pub async fn api_bulk_url(
         }
     };
 
-    // Check quota
-    {
-        let users_conn = state.users_db.lock().unwrap();
-        if let Some(quotas) =
-            crate::db::users::get_user_quotas(&users_conn, target_user_id).unwrap_or(None)
-        {
-            if quotas.current_urls + (payload.len() as i64) > quotas.max_urls {
-                return (
-                    StatusCode::FORBIDDEN,
-                    Json(BulkErrorResponse {
-                        error: "Quota limit exceeded".to_string(),
-                    }),
-                )
-                    .into_response();
-            }
-        } else {
-            return (
-                StatusCode::FORBIDDEN,
-                Json(BulkErrorResponse {
-                    error: "User quota not found".to_string(),
-                }),
-            )
-                .into_response();
-        }
+    if let Err(e) = ensure_url_quota(&state.users_db, target_user_id, payload.len() as i64) {
+        return bulk_url_error_response(e);
     }
 
-    let mut conn = content_db.lock().unwrap();
-    let tx = match conn.transaction() {
-        Ok(t) => t,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(BulkErrorResponse {
-                    error: format!("Failed to start database transaction: {}", e),
-                }),
-            )
-                .into_response()
-        }
+    let items: Vec<BulkUrlCreateItem> = payload
+        .into_iter()
+        .map(|item| BulkUrlCreateItem {
+            destination: item.destination,
+            code: item.code,
+            title: item.title,
+            description: item.description,
+            tags: item.tags,
+            expires_at: item.expires_at,
+            password: item.password,
+            max_access_count: item.max_access_count,
+        })
+        .collect();
+
+    let created_urls = match create_urls_bulk(
+        &content_db,
+        &state.system_db,
+        &state.users_db,
+        target_user_id,
+        items,
+    ) {
+        Ok(urls) => urls,
+        Err(e) => return bulk_url_error_response(e),
     };
-
-    let mut created_urls = Vec::new();
-    let mut reserved_slugs: Vec<String> = Vec::new();
-
-    for item in payload {
-        let mut code = item.code.unwrap_or_default().trim().to_lowercase();
-        if code.is_empty() {
-            code = generate_token(3); // 6 hex
-        } else {
-            if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-                let _ = tx.rollback();
-                // Release reserving slugs
-                let system_conn = state.system_db.lock().unwrap();
-                for slug in &reserved_slugs {
-                    let _ =
-                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
-                }
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(BulkErrorResponse {
-                        error: format!("Short code '{}' must be 6 hex characters", code),
-                    }),
-                )
-                    .into_response();
-            }
-        }
-
-        // Reserve slug
-        {
-            let system_conn = state.system_db.lock().unwrap();
-            // Check availability in system.db and also check in our currently reserved slugs in this batch
-            let available = crate::db::users::is_slug_available(&system_conn, &code)
-                .unwrap_or(false)
-                && !reserved_slugs.contains(&code);
-
-            if !available {
-                let _ = tx.rollback();
-                for slug in &reserved_slugs {
-                    let _ =
-                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
-                }
-                return (
-                    StatusCode::CONFLICT,
-                    Json(BulkErrorResponse {
-                        error: format!("Short code '{}' already exists", code),
-                    }),
-                )
-                    .into_response();
-            }
-
-            if let Err(e) = crate::db::users::register_global_slug(
-                &system_conn,
-                &code,
-                target_user_id,
-                "url",
-                "",
-                "reserving",
-            ) {
-                let _ = tx.rollback();
-                for slug in &reserved_slugs {
-                    let _ =
-                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
-                }
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(BulkErrorResponse {
-                        error: format!("Failed to reserve slug '{}': {}", code, e),
-                    }),
-                )
-                    .into_response();
-            }
-            reserved_slugs.push(code.clone());
-        }
-
-        let password_hash = if let Some(ref pwd) = item.password {
-            match hash_password(pwd) {
-                Ok(h) => Some(h),
-                Err(e) => {
-                    let _ = tx.rollback();
-                    let system_conn = state.system_db.lock().unwrap();
-                    for slug in &reserved_slugs {
-                        let _ = crate::db::users::release_global_slug(
-                            &system_conn,
-                            slug,
-                            target_user_id,
-                        );
-                    }
-                    return (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(BulkErrorResponse {
-                            error: format!("Password hashing error: {}", e),
-                        }),
-                    )
-                        .into_response();
-                }
-            }
-        } else {
-            None
-        };
-
-        let tags = item.tags.unwrap_or_default();
-        match crate::db::content::create_url_extended(
-            &tx,
-            &code,
-            &item.destination,
-            item.title.as_deref(),
-            item.description.as_deref(),
-            &tags,
-            item.expires_at.as_deref(),
-            password_hash.as_deref(),
-            item.max_access_count,
-        ) {
-            Ok(url) => created_urls.push(url),
-            Err(e) => {
-                let _ = tx.rollback();
-                let system_conn = state.system_db.lock().unwrap();
-                for slug in &reserved_slugs {
-                    let _ =
-                        crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
-                }
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(BulkErrorResponse {
-                        error: format!("Database insert error: {}", e),
-                    }),
-                )
-                    .into_response();
-            }
-        }
-    }
-
-    if let Err(e) = tx.commit() {
-        let system_conn = state.system_db.lock().unwrap();
-        for slug in &reserved_slugs {
-            let _ = crate::db::users::release_global_slug(&system_conn, slug, target_user_id);
-        }
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(BulkErrorResponse {
-                error: format!("Failed to commit transaction: {}", e),
-            }),
-        )
-            .into_response();
-    }
-
-    // Activate slugs
-    {
-        let system_conn = state.system_db.lock().unwrap();
-        for url in &created_urls {
-            let _ = system_conn.execute(
-                "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
-                rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), url.code],
-            );
-        }
-    }
-
-    // Increment quota counters
-    {
-        let users_conn = state.users_db.lock().unwrap();
-        for _ in 0..created_urls.len() {
-            let _ = crate::db::users::increment_quota_counter(&users_conn, target_user_id, "urls");
-        }
-    }
 
     // Write Audit Log for the entire batch
     let ip = get_client_ip(&headers, connect_info);
     let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
-    {
-        let system_conn = state.db.system.lock().unwrap();
+    if let Ok(system_conn) = lock_db(&state.db.system, "system_db") {
         let _ = crate::db::audit_events::write_audit_event(
             &system_conn,
             user.0.username(),

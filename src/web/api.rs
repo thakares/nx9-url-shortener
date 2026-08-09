@@ -99,34 +99,23 @@ pub async fn api_create_url(
         }
     }
 
-    let mut dest = payload.destination.trim().to_string();
-    if let Ok(mut parsed) = reqwest::Url::parse(&dest) {
-        let mut has_utm = false;
-        {
-            let mut query = parsed.query_pairs_mut();
-            if let Some(ref src) = payload.utm_source {
-                if !src.trim().is_empty() {
-                    query.append_pair("utm_source", src.trim());
-                    has_utm = true;
-                }
-            }
-            if let Some(ref med) = payload.utm_medium {
-                if !med.trim().is_empty() {
-                    query.append_pair("utm_medium", med.trim());
-                    has_utm = true;
-                }
-            }
-            if let Some(ref camp) = payload.utm_campaign {
-                if !camp.trim().is_empty() {
-                    query.append_pair("utm_campaign", camp.trim());
-                    has_utm = true;
-                }
-            }
+    let dest = match crate::services::urls::prepare_destination(
+        &payload.destination,
+        crate::services::urls::UtmParams {
+            source: payload.utm_source.as_deref(),
+            medium: payload.utm_medium.as_deref(),
+            campaign: payload.utm_campaign.as_deref(),
+        },
+    ) {
+        Ok(d) => d,
+        Err(msg) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": msg })),
+            )
+                .into_response();
         }
-        if has_utm {
-            dest = parsed.to_string();
-        }
-    }
+    };
 
     let password_hash = if let Some(ref pwd) = payload.password {
         if pwd.is_empty() {
@@ -353,6 +342,15 @@ pub async fn api_update_url(
     Json(payload): Json<UpdateUrlRequest>,
 ) -> Response {
     let tags = payload.tags.unwrap_or_default();
+    if !crate::utils::validation::validate_redirect_destination(&payload.destination) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": "Destination must be a valid http(s) URL without control characters"
+            })),
+        )
+            .into_response();
+    }
     let conn = state.content_db.lock().unwrap();
     match update_url(
         &conn,

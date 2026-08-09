@@ -8,15 +8,19 @@ pub struct AnalyticsQueue {
 }
 
 impl AnalyticsQueue {
-    pub fn new(db: Db, capacity: usize) -> Self {
+    pub fn new(
+        db: Db,
+        capacity: usize,
+        shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    ) -> (Self, tokio::task::JoinHandle<()>) {
         let (sender, receiver) = mpsc::channel(capacity);
 
         // Spawn background worker to batch-write records
-        tokio::spawn(async move {
-            super::worker::run_worker(db, receiver).await;
+        let handle = tokio::spawn(async move {
+            super::worker::run_worker(db, receiver, shutdown_rx).await;
         });
 
-        Self { sender }
+        (Self { sender }, handle)
     }
 
     // Attempt to queue a visit. Non-blocking.
