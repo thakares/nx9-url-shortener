@@ -773,8 +773,8 @@ pub async fn status_get(State(state): State<AppState>, jar: CookieJar) -> Respon
         queue_size,
         memory_usage,
         uptime,
-        version: "0.1.0",
-        git_commit: "unknown",
+        version: crate::build_info::APP_VERSION,
+        git_commit: crate::build_info::GIT_COMMIT,
         urls,
     };
 
@@ -825,8 +825,8 @@ pub async fn user_status_get(State(state): State<AppState>, jar: CookieJar) -> R
         queue_size,
         memory_usage,
         uptime,
-        version: "0.1.0",
-        git_commit: "unknown",
+        version: crate::build_info::APP_VERSION,
+        git_commit: crate::build_info::GIT_COMMIT,
         urls,
     };
 

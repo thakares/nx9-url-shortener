@@ -4,6 +4,14 @@
 
 {% block active_urls %}active{% endblock %}
 
+{% block extra_css %}
+@media (max-width: 720px) {
+    #utm_fields > div {
+        grid-template-columns: 1fr !important;
+    }
+}
+{% endblock %}
+
 {% block header_title %}Short URL Registry{% endblock %}
 
 {% block content %}
@@ -13,9 +21,8 @@
     </div>
 {% endif %}
 
-<div style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; align-items: start;">
-    <!-- Create Link Form -->
-    <div class="card">
+<div class="urls-dashboard">
+    <div class="card url-form-card">
         <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             Shorten a New URL
@@ -97,9 +104,8 @@
         </form>
     </div>
 
-    <!-- Links Table -->
-    <div class="card" style="padding: 0; overflow: hidden;">
-        <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+    <div class="card registered-links-shell" style="padding: 0; overflow: hidden;">
+        <div class="registered-links-header">
             <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 Registered Links
@@ -113,7 +119,15 @@
         </div>
         
         <div class="table-container">
-            <table>
+            <table class="registered-links-table">
+                <colgroup>
+                    <col class="col-short">
+                    <col class="col-destination">
+                    <col class="col-qr">
+                    <col class="col-health">
+                    <col class="col-tags">
+                    <col class="col-actions">
+                </colgroup>
                 <thead>
                     <tr>
                         <th>Short Link</th>
@@ -121,107 +135,111 @@
                         <th>QR Code</th>
                         <th>Health</th>
                         <th>Tags</th>
-                        <th>Analytics</th>
-                        <th>Created</th>
-                        <th>Action</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% if urls.is_empty() %}
                         <tr>
-                            <td colspan="8" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
                                 No shortened URLs registered. Create one to get started!
                             </td>
                         </tr>
                     {% else %}
                         {% for url in urls %}
                             <tr>
-                                <td>
-                                    <div style="display: flex; align-items: center; gap: 0.25rem;">
-                                        <a href="/{{ url.code }}" target="_blank" style="color: var(--accent-color); font-weight: 700; text-decoration: none; font-family: monospace; font-size: 1rem;">
-                                            {{ base_url.replace("https://", "").replace("http://", "") }}/{{ url.code }}
-                                        </a>
-                                        {% if url.is_password_protected() %}
-                                            <span title="Password Protected" style="color: #fbbf24; display: inline-flex; align-items: center;">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-                                            </span>
-                                        {% endif %}
-                                    </div>
-                                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.25rem; font-weight: 500;">
-                                        {{ url.title.as_deref().unwrap_or("") }}
-                                    </div>
-                                </td>
-                                <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                                    <a href="{{ url.destination }}" target="_blank" style="color: var(--text-secondary); text-decoration: none; font-size: 0.85rem;" title="{{ url.destination }}">
-                                        {{ url.destination }}
-                                    </a>
-                                    {% if let Some(desc) = url.description.as_deref() %}
-                                        {% if !desc.is_empty() %}
-                                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
-                                                {{ desc }}
-                                            </div>
-                                        {% endif %}
-                                    {% endif %}
-                                    
-                                    {% if let Some(expires_at) = url.expires_at.as_deref() %}
-                                        {% if !expires_at.is_empty() %}
-                                            <div style="font-size: 0.75rem; color: #fca5a5; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.25rem;">
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                                                Expires: {{ expires_at[0..10] }} {{ expires_at[11..16] }}
-                                                {% if url.expired %}
-                                                    <span class="badge badge-dead" style="font-size: 0.6rem; padding: 0.1rem 0.25rem; margin-left: 0.25rem;">Expired</span>
-                                                {% endif %}
-                                            </div>
-                                        {% endif %}
-                                    {% endif %}
-                                    
-                                    {% if let Some(max) = url.max_access_count %}
-                                        <div style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.25rem;">
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                                            Clicks: {{ url.access_count }} / {{ max }}
-                                            {% if url.is_access_exhausted() %}
-                                                <span class="badge badge-dead" style="font-size: 0.6rem; padding: 0.1rem 0.25rem; margin-left: 0.25rem;">Limit Reached</span>
+                                <td data-label="Short Link">
+                                    <div class="short-link-wrap">
+                                        <div class="short-link-primary">
+                                            <a href="/{{ url.code }}" target="_blank" class="short-link-anchor">
+                                                {{ base_url.replace("https://", "").replace("http://", "") }}/{{ url.code }}
+                                            </a>
+                                            {% if url.is_password_protected() %}
+                                                <span title="Password Protected" aria-label="Password protected link" style="color: var(--warning-color); display: inline-flex; align-items: center;">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                                                </span>
                                             {% endif %}
                                         </div>
-                                    {% else %}
-                                        {% if url.access_count > 0 %}
-                                            <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem;">
-                                                Clicks: {{ url.access_count }}
-                                            </div>
+                                        {% if let Some(title) = url.title.as_deref() %}
+                                            {% if !title.is_empty() %}
+                                                <div class="short-link-title">{{ title }}</div>
+                                            {% endif %}
                                         {% endif %}
-                                    {% endif %}
+                                        <div class="short-link-meta">Created {{ url.created_at[0..10] }}</div>
+                                    </div>
+                                </td>
+                                <td data-label="Destination">
+                                    <div class="destination-block">
+                                        <a href="{{ url.destination }}" target="_blank" class="destination-link" title="{{ url.destination }}" aria-label="Destination URL: {{ url.destination }}">
+                                            {{ url.destination }}
+                                        </a>
+                                        {% if let Some(desc) = url.description.as_deref() %}
+                                            {% if !desc.is_empty() %}
+                                                <div class="destination-description" title="{{ desc }}">{{ desc }}</div>
+                                            {% endif %}
+                                        {% endif %}
+
+                                        {% if let Some(expires_at) = url.expires_at.as_deref() %}
+                                            {% if !expires_at.is_empty() %}
+                                                <div class="destination-meta expiry">
+                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                                    Expires: {{ expires_at[0..10] }} {{ expires_at[11..16] }}
+                                                    {% if url.expired %}
+                                                        <span class="badge badge-dead" style="font-size: 0.6rem; padding: 0.1rem 0.25rem; margin-left: 0.25rem;">Expired</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                        {% endif %}
+
+                                        {% if let Some(max) = url.max_access_count %}
+                                            <div class="destination-meta access">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                                Clicks: {{ url.access_count }} / {{ max }}
+                                                {% if url.is_access_exhausted() %}
+                                                    <span class="badge badge-dead" style="font-size: 0.6rem; padding: 0.1rem 0.25rem; margin-left: 0.25rem;">Limit Reached</span>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            {% if url.access_count > 0 %}
+                                                <div class="destination-meta neutral">
+                                                    Clicks: {{ url.access_count }}
+                                                </div>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
                                 </td>
                                 {% let code = url.code.as_str() %}
                                 {% include "components/qr_preview.html" %}
-                                <td>
+                                <td data-label="Health" class="status-cell">
                                     <span class="badge badge-{{ url.status }}">
                                         {{ url.status }}
                                     </span>
                                 </td>
-                                <td>
-                                    <div style="display: flex; gap: 0.25rem; flex-wrap: wrap; max-width: 150px;">
-                                        {% for t in url.tags %}
-                                            <a href="/admin/urls?tag={{ t }}" class="badge" style="background-color: rgba(255,255,255,0.05); color: var(--text-secondary); text-decoration: none; font-size: 0.7rem; border: 1px solid var(--border-color);">
-                                                {{ t }}
-                                            </a>
-                                        {% endfor %}
+                                <td data-label="Tags">
+                                    {% if url.tags.is_empty() %}
+                                        <span class="tags-empty">—</span>
+                                    {% else %}
+                                        <div class="tags-wrap">
+                                            {% for t in url.tags %}
+                                                <a href="/admin/urls?tag={{ t }}" class="badge tag-badge">
+                                                    {{ t }}
+                                                </a>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                <td data-label="Actions" class="actions-cell">
+                                    <div class="action-stack">
+                                        <a href="/admin/analytics/url/{{ url.id }}" class="btn btn-secondary" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
+                                            📊 Analytics
+                                        </a>
+                                        <form action="/admin/urls/delete/{{ url.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this link?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">
+                                                Delete
+                                            </button>
+                                        </form>
                                     </div>
-                                </td>
-                                <td>
-                                    <a href="/admin/analytics/url/{{ url.id }}" class="btn btn-secondary" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                        📊 Analytics
-                                    </a>
-                                </td>
-                                <td style="font-size: 0.8rem; color: var(--text-secondary);">
-                                    {{ url.created_at[0..10] }}
-                                </td>
-                                <td>
-                                    <form action="/admin/urls/delete/{{ url.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this link?');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">
-                                            Delete
-                                        </button>
-                                    </form>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -230,8 +248,7 @@
             </table>
         </div>
         
-        <!-- Pagination Controls -->
-        <div class="pagination" style="display: flex; justify-content: center; align-items: center; gap: 0.5rem; margin-top: 1rem; padding: 1rem; border-top: 1px solid var(--border-color);">
+        <div class="pagination">
             {% if current_page > 1 %}
                 <a href="/admin/urls?page=1{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
                 <a href="/admin/urls?page={{ current_page - 1 }}{% if let Some(t) = tag_filter %}&tag={{ t }}{% endif %}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>

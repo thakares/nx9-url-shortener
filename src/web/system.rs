@@ -79,8 +79,8 @@ pub async fn status_endpoint(
         queue_size: 0,
         memory_usage: get_memory_usage(),
         uptime_seconds: uptime,
-        version: "0.1.0",
-        git_commit: "unknown",
+        version: crate::build_info::APP_VERSION,
+        git_commit: crate::build_info::GIT_COMMIT,
     })
     .into_response()
 }

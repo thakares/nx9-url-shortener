@@ -1,5 +1,6 @@
 pub mod analytics;
 pub mod auth;
+pub mod build_info;
 pub mod charts;
 pub mod cli;
 pub mod config;
