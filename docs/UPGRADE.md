@@ -1,8 +1,8 @@
 # Upgrade Guide
 
-Version: v0.6.0
+Version: v0.7.0
 
-This document describes the upgrade process for existing BZOD deployments upgrading to BZOD v0.5.1.
+This document describes the upgrade process for existing BZOD deployments upgrading to BZOD v0.7.0.
 
 ---
 

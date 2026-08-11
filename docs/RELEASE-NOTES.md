@@ -1,3 +1,49 @@
+# BZOD v0.7.0 — Responsive UI, Theme Support & Build Metadata
+
+Release Date: 2026-08-11
+
+## Highlights
+
+- **Responsive UI**: Admin and user registry panels (URLs and landing pages) now adapt across desktop, laptop, tablet, and mobile viewports. Tables switch to card layouts on smaller screens, and horizontal scrolling issues in registry panels have been resolved.
+
+- **Dark/Light Theme Support**: A dark/light theme toggle has been implemented with theme persistence across sessions and responsive behavior across device sizes.
+
+- **Build Metadata**: The application now exposes its actual Cargo package version and, when available, the Git commit hash. This is powered by `build.rs` (compile-time Git commit extraction) and `src/build_info.rs` (exposing `APP_VERSION` and `GIT_COMMIT` constants). The version is derived from `Cargo.toml` via `env!("CARGO_PKG_VERSION")`, and the Git commit hash falls back gracefully to `"unknown"` when unavailable.
+
+- **Public Landing Page Serving**: Root `/` now serves the public `www/index.html` with runtime file detection and embedded fallback behavior. Public/runtime www assets are supported by the deployment layout.
+
+## User-Visible Changes
+
+- Admin URL registry panel is responsive across all device sizes
+- Admin landing page registry panel is responsive across all device sizes
+- User URL registry panel is responsive across all device sizes
+- User landing page registry panel is responsive across all device sizes
+- Dark/light theme toggle available in the UI
+- Theme preference persists across sessions
+- Registry tables switch to card layouts on tablet and mobile viewports
+- Horizontal scrolling eliminated from registry panels
+
+## Technical Changes
+
+- Introduced `build.rs` build script for compile-time metadata extraction
+- Introduced `src/build_info.rs` module with `APP_VERSION` and `GIT_COMMIT` constants
+- Version and Git commit now available to system status and admin settings endpoints
+- Root `/` serves `www/index.html` with runtime/embedded fallback
+
+## Breaking Changes
+
+None.
+
+## Upgrade Notes
+
+- Direct upgrade from v0.6.0 with no migration required
+- No database schema changes
+- No API changes
+- No configuration changes
+- No breaking changes to existing functionality
+
+---
+
 # BZOD v0.6.0 — Legacy Restore Compatibility & Version Reporting
 
 Release Date: 2026-08-09

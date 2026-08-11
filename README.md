@@ -6,7 +6,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-Embedded-blue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-green)
-![Version](https://img.shields.io/badge/Version-v0.6.0-purple)
+![Version](https://img.shields.io/badge/Version-v0.7.0-purple)
 
 [![GitHub](https://img.shields.io/badge/GitHub-thakares%2Fbzod-181717?logo=github)](https://github.com/thakares/bzod)
 [![Codeberg](https://img.shields.io/badge/Codeberg-thakares%2Fbzod-2185D0?logo=codeberg)](https://codeberg.org/thakares/bzod)
@@ -35,6 +35,8 @@ Core capabilities include:
 - Multi-User Platform
 - REST API
 - Role-Based Access Control (RBAC)
+- Responsive UI (Desktop, Tablet, Mobile)
+- Dark/Light Theme Support
 - Global Namespace Registry
 - Registry Validation
 - Transaction-safe Registry Repair
@@ -44,6 +46,7 @@ Core capabilities include:
 - User Backup & Restore
 - Disaster Recovery
 - Upgrade Validation
+- Build Metadata (Version & Git Commit)
 - Single Binary Deployment
 
 The result is a platform that is easy to deploy, lightweight to operate, and entirely controlled by its owner.
@@ -90,7 +93,7 @@ No recurring subscription fees.
 
 ---
 
-## Runtime Efficiency (v0.6.0)
+## Runtime Efficiency (v0.7.0)
 
 | Metric | Value |
 |---------|------:|
@@ -1135,16 +1138,37 @@ Highlights include:
 - Upgrade Validation
 - Backup Manifest
 - Transaction-safe Maintenance
-- Modular Admin Architecture (v0.6.0)
-- Redirect Handler Hardening (v0.6.0)
+- Modular Admin Architecture (v0.5.3)
+- Redirect Handler Hardening (v0.5.3)
+
+---
+
+### v0.6
+
+- Legacy Backup Restore Compatibility
+- CLI Version Reporting (`--version` / `-V`)
+- Deploy Script Modernization
+
+---
+
+### v0.7
+
+Responsive UI and theme refactor.
+
+Highlights include:
+
+- Responsive Admin & User Registry Panels
+- Desktop, Laptop, Tablet, and Mobile Layouts
+- Dark/Light Theme Support with Persistence
+- Table-to-Card Responsive Behavior
+- Build Metadata (Version & Git Commit)
+- Root Landing Page Runtime/Embedded Fallback
 
 ---
 
 # Future Roadmap
 
-## v0.6
-
-Planned features include:
+Planned features and improvements:
 
 - Webhooks
 - OpenAPI Documentation
@@ -1155,13 +1179,6 @@ Planned features include:
 - Bulk Export
 - Custom Domains
 - Better QR Styling
-
----
-
-## v0.7
-
-Planned improvements:
-
 - Email Notifications
 - Team Workspaces
 - Shared Projects
@@ -1320,7 +1337,7 @@ Community feedback helps guide future development.
 
 **Current Version**
 
-**v0.5.3**
+**v0.7.0**
 
 Production Ready
 
@@ -1336,12 +1353,15 @@ Production Ready
 - ✅ Analytics
 - ✅ REST API
 - ✅ Role-Based Access Control
+- ✅ Responsive UI (Desktop, Tablet, Mobile)
+- ✅ Dark/Light Theme Support
 - ✅ Registry Validator
 - ✅ Registry Repair Framework
 - ✅ Health Diagnostics
 - ✅ Backup & Restore
 - ✅ Disaster Recovery
 - ✅ Upgrade Validation
+- ✅ Build Metadata (Version & Git Commit)
 - ✅ Extensive Automated Test Suite
 
 ---

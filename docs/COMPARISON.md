@@ -1,4 +1,4 @@
-# BZOD v0.6.0 vs Self-Hosted URL Management Platforms
+# BZOD v0.7.0 vs Self-Hosted URL Management Platforms
 
 BZOD is a modern, privacy-focused, self-hosted URL Management Platform written in Rust and developed as part of the NX9 Platform.
 

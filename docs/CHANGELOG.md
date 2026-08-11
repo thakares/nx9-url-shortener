@@ -6,6 +6,51 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ---
 
+# v0.7.0 — Responsive UI, Theme Support & Build Metadata
+
+## Added
+
+### Responsive UI
+
+* Responsive layouts for admin and user URL registry panels
+* Responsive layouts for admin and user landing page registry panels
+* Desktop, laptop, tablet, and mobile layout support
+* Table-to-card responsive behavior for registry panels
+* Resolved horizontal scrolling issues in registry panels
+
+### Theme Support
+
+* Dark/light theme toggle
+* Theme persistence across sessions
+* Responsive theme behavior across device sizes
+
+### Build Metadata
+
+* Introduced `build.rs` build script for compile-time metadata
+* Introduced `src/build_info.rs` module exposing `APP_VERSION` and `GIT_COMMIT`
+* Application version derived from `Cargo.toml` via `env!("CARGO_PKG_VERSION")`
+* Git commit hash (12-char short) embedded at build time via `BZOD_GIT_COMMIT`
+* Graceful fallback to `"unknown"` when Git metadata is unavailable
+
+### Public Landing Page
+
+* Root `/` serves `www/index.html` with runtime file and embedded fallback behavior
+* Public/runtime www assets supported by the deployment layout
+
+## Changed
+
+* Documentation updated to reflect v0.7.0 current state
+* Version metadata updated across Cargo.toml, deploy.sh, and docker-compose.yml
+
+## Notes
+
+* No API behavior changes
+* No database schema changes
+* No authentication or security behavior changes
+* Existing redirect, routing, and tenant isolation behavior preserved
+
+---
+
 # v0.6.0 — Legacy Restore Compatibility & Version Reporting
 
 - **Legacy Backup Restore**: Full backward-compatible restore support for `legacy_flat_backup` archives into the current multi-tenant database architecture

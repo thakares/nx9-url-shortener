@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-BZOD_VERSION="0.6.0"
+BZOD_VERSION="0.7.0"
 
 SERVICE_USER="bzod"
 INSTALL_PATH="/usr/local/bin/bzod"
