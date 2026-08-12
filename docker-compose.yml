@@ -1,57 +1,87 @@
 name: app-bzod
+
 services:
   bzod:
     build:
-      context: /DATA/AppData/bzod
+      context: /DATA/AppData/nx9-url-shortener
       dockerfile: Dockerfile
-    cpu_shares: 90
-    command: []
+
     container_name: bzod
+
     deploy:
       resources:
         limits:
           memory: 31940M
+
     environment:
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - CONFIG_DIR=/app/config
       - COOKIE_SECURE=false
       - DATA_DIR=/app/data
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - HOST=0.0.0.0
+      - IMAGES_DIR=/app/images
       - PORT=8654
       - RUST_LOG=info
+      - BASE_URL=${BASE_URL}
+
     hostname: bzod
+
     image: nx9-url-shortener:v0.7.0
+
     ports:
       - mode: ingress
         target: 8654
         published: "8654"
         protocol: tcp
+
     restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
     volumes:
       - type: bind
-        source: /DATA/AppData/bzod/data
+        source: /DATA/AppData/nx9-url-shortener/data
         target: /app/data
         bind:
           create_host_path: true
+
       - type: bind
-        source: /DATA/AppData/bzod/config
+        source: /DATA/AppData/nx9-url-shortener/config
         target: /app/config
         bind:
           create_host_path: true
+
       - type: bind
-        source: /DATA/AppData/bzod/www
+        source: /DATA/AppData/nx9-url-shortener/www
         target: /app/www
+        bind:
+          create_host_path: true
+
       - type: bind
-        source: /DATA/AppData/bzod/images
+        source: /DATA/AppData/nx9-url-shortener/images
         target: /app/images
+        bind:
+          create_host_path: true
+
     devices: []
+
     cap_add: []
+
+    command: []
+
     networks:
       - default
+
     privileged: false
+
+    cpu_shares: 90
+
 networks:
   default:
     name: app_default
+
 x-casaos:
   author: self
   category: self

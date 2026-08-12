@@ -12,8 +12,8 @@
 #
 # Environment overrides:
 #   BZOD_VERSION=0.7.0
-#   BZOD_IMAGE=ghcr.io/thakares/nx9-url-shortener
-#   BZOD_ROOT=/DATA/AppData/bzod
+#   BZOD_IMAGE=nx9-url-shortener
+#   BZOD_ROOT=/DATA/AppData/nx9-url-shortener
 #   BZOD_PORT=8654
 #
 
@@ -24,8 +24,8 @@ set -euo pipefail
 # ============================================================
 
 BZOD_VERSION="${BZOD_VERSION:-0.7.0}"
-BZOD_IMAGE="${BZOD_IMAGE:-ghcr.io/thakares/nx9-url-shortener}"
-BZOD_ROOT="${BZOD_ROOT:-/DATA/AppData/bzod}"
+BZOD_IMAGE="${BZOD_IMAGE:-nx9-url-shortener}"
+BZOD_ROOT="${BZOD_ROOT:-/DATA/AppData/nx9-url-shortener}"
 BZOD_PORT="${BZOD_PORT:-8654}"
 
 CONTAINER_NAME="${CONTAINER_NAME:-bzod}"
@@ -310,13 +310,18 @@ echo "  ${BACKUP_DIR}"
 # 6. Pull new image
 # ============================================================
 
-info "[6/8] Pulling BZOD ${BZOD_VERSION} image..."
+info "[6/8] Building BZOD ${BZOD_VERSION} image..."
 
-if ! docker pull "${IMAGE}"; then
-    die "Unable to pull ${IMAGE}"
+# Build locally from the current deployment tree.  The package/repository is
+# nx9-url-shortener; the application binary and container remain named bzod.
+if ! docker build \
+    --tag "${IMAGE}" \
+    --file "${BZOD_ROOT}/Dockerfile" \
+    "${BZOD_ROOT}"; then
+    die "Unable to build ${IMAGE}"
 fi
 
-success "✓ Docker image downloaded"
+success "✓ Docker image built locally"
 
 # ============================================================
 # 7. Deploy
