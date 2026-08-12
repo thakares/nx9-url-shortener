@@ -51,6 +51,7 @@ RUN groupadd --gid 1000 bzod && \
 
 # Application binary
 COPY --from=builder /app/target/release/bzod /usr/local/bin/bzod
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
 # Application-owned immutable assets
 COPY --from=builder /app/templates /app/templates
@@ -68,7 +69,8 @@ RUN mkdir -p \
         /app/images \
         /app/templates \
         /app/www \
-        /usr/local/bin/bzod
+        /usr/local/bin/bzod \
+        /usr/local/bin/docker-entrypoint.sh
 
 # Runtime configuration
 ENV DATA_DIR=/app/data \
@@ -89,5 +91,5 @@ HEALTHCHECK \
 
 USER bzod
 
-ENTRYPOINT ["/usr/local/bin/bzod"]
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["serve"]

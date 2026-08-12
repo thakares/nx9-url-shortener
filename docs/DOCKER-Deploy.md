@@ -45,7 +45,21 @@ cd nx9-url-shortener
 docker compose up -d --build
 ```
 
-## Create Administrator
+## Automated Administrator Bootstrap (First Start Only)
+
+For fresh deployments, you can supply administrator credentials via environment variables so the container initializes the admin automatically:
+
+```yaml
+    environment:
+      ADMIN_USERNAME: "admin"
+      ADMIN_PASSWORD: "<your-secure-password>"
+```
+
+These credentials are used **only** when no administrator exists. If an administrator is already present, this step is safely skipped and existing accounts are preserved.
+
+## Manual Administrator Creation
+
+Alternatively, if you prefer not to use environment variables, you can create the admin manually:
 
 ```bash
 docker exec -it bzod bzod create-admin

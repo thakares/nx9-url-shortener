@@ -14,6 +14,8 @@ services:
     environment:
       - COOKIE_SECURE=false
       - DATA_DIR=/app/data
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - HOST=0.0.0.0
       - PORT=8654
       - RUST_LOG=info

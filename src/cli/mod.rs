@@ -11,6 +11,7 @@ pub mod disable_user;
 pub mod doctor;
 pub mod enable_user;
 pub mod expand;
+pub mod init_admin;
 pub mod list_users;
 pub mod migrate;
 pub mod repair;
@@ -83,6 +84,11 @@ pub enum Commands {
     CreateAdmin {
         #[arg(long)]
         username: Option<String>,
+        #[arg(long)]
+        data_dir: Option<String>,
+    },
+    /// Initialize the first administrator for automated/container deployments
+    InitAdmin {
         #[arg(long)]
         data_dir: Option<String>,
     },
