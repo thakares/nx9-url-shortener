@@ -1,73 +1,93 @@
 # ==========================================
-# Stage 1: Builder (with optimized caching)
+# Stage 1: Builder
 # ==========================================
 FROM rust:1.89-bookworm AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
+# Build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy only Cargo files first (best caching)
+# Dependency metadata first for Docker layer caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy source for dependency caching
+# Dummy build to cache Rust dependencies
 RUN mkdir -p src && \
-    echo "fn main() { println!(\"dummy\"); }" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/bzod*
+    printf 'fn main() {}\n' > src/main.rs && \
+    cargo build --release --locked && \
+    rm -rf src
 
-# Copy real source code + assets
+# Actual application source and runtime assets
 COPY src ./src
 COPY templates ./templates
 COPY www ./www
 
-# Build the real application
-RUN cargo build --release
+# Reproducible production build
+RUN cargo build --release --locked
+
 
 # ==========================================
-# Stage 2: Runtime (slim)
+# Stage 2: Runtime
 # ==========================================
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
-# Runtime dependencies
-RUN apt-get update && apt-get install -y \
-    openssl \
+# Runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy binary from builder
+# Create unprivileged runtime user
+RUN groupadd --gid 1000 bzod && \
+    useradd --uid 1000 --gid 1000 \
+    --create-home \
+    --shell /usr/sbin/nologin \
+    bzod
+
+# Application binary
 COPY --from=builder /app/target/release/bzod /usr/local/bin/bzod
 
-# Copy assets
-COPY --from=builder /app/templates ./templates
-COPY --from=builder /app/www ./www
+# Application-owned immutable assets
+COPY --from=builder /app/templates /app/templates
+COPY --from=builder /app/www /app/www
 
-# Create non-root user
-RUN groupadd -g 1000 bzod && \
-    useradd -u 1000 -g bzod -m -s /bin/bash bzod
+# Persistent runtime directories.
+# /app/images is intentionally external/persistent in Compose.
+RUN mkdir -p \
+        /app/data \
+        /app/config \
+        /app/images && \
+    chown -R bzod:bzod \
+        /app/data \
+        /app/config \
+        /app/images \
+        /app/templates \
+        /app/www \
+        /usr/local/bin/bzod
 
-# Create data directory
-RUN mkdir -p /app/data && \
-    chown -R bzod:bzod /app
-
-USER bzod
-
+# Runtime configuration
 ENV DATA_DIR=/app/data \
+    CONFIG_DIR=/app/config \
+    IMAGES_DIR=/app/images \
     PORT=8654 \
     HOST=0.0.0.0 \
     COOKIE_SECURE=true
 
 EXPOSE 8654
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:${PORT}/status || exit 1
+HEALTHCHECK \
+    --interval=30s \
+    --timeout=5s \
+    --start-period=10s \
+    --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/status" || exit 1
 
-ENTRYPOINT ["bzod"]
+USER bzod
+
+ENTRYPOINT ["/usr/local/bin/bzod"]
 CMD ["serve"]

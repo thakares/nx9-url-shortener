@@ -1,251 +1,458 @@
 #!/usr/bin/env bash
-# BZOD Production Deployment Script
-# curl -fsSL https://bzo.in/deploy.sh | sudo bash
+#
+# BZOD Production Docker Deployment
+#
+# Privacy-First URL Shortener & Landing Page Platform
+#
+# Usage:
+#   curl -fsSL https://bzo.in/deploy.sh | sudo bash
+#
+# Or:
+#   sudo bash deploy.sh
+#
+# Environment overrides:
+#   BZOD_VERSION=0.7.0
+#   BZOD_IMAGE=ghcr.io/thakares/nx9-url-shortener
+#   BZOD_ROOT=/DATA/AppData/bzod
+#   BZOD_PORT=8654
+#
 
 set -euo pipefail
 
-BZOD_VERSION="0.7.0"
+# ============================================================
+# Configuration
+# ============================================================
 
-SERVICE_USER="bzod"
-INSTALL_PATH="/usr/local/bin/bzod"
-CONFIG_DIR="/etc/bzod"
-DATA_DIR="/var/lib/bzod/data"
-ENV_FILE="${CONFIG_DIR}/bzod.env"
-SYSTEMD_UNIT="/etc/systemd/system/bzod.service"
+BZOD_VERSION="${BZOD_VERSION:-0.7.0}"
+BZOD_IMAGE="${BZOD_IMAGE:-ghcr.io/thakares/nx9-url-shortener}"
+BZOD_ROOT="${BZOD_ROOT:-/DATA/AppData/bzod}"
+BZOD_PORT="${BZOD_PORT:-8654}"
+
+CONTAINER_NAME="${CONTAINER_NAME:-bzod}"
+
+DATA_DIR="${BZOD_ROOT}/data"
+CONFIG_DIR="${BZOD_ROOT}/config"
+IMAGES_DIR="${BZOD_ROOT}/images"
+COMPOSE_DIR="${BZOD_ROOT}/compose"
+
+COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
+ENV_FILE="${COMPOSE_DIR}/bzod.env"
+BACKUP_ROOT="${BZOD_ROOT}/backups"
+
+IMAGE="${BZOD_IMAGE}:${BZOD_VERSION}"
+
+# ============================================================
+# Output
+# ============================================================
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Temporary file cleanup
-TMP_BINARY=""
-cleanup() {
-    rm -f "${TMP_BINARY:-}" "${TMP_GHCR:-}"
+info() {
+    echo -e "${BLUE}$*${NC}"
 }
-trap cleanup EXIT
 
-echo -e "${BLUE}=== BZOD - Privacy-First URL Shortener & Landing Page Platform ===${NC}"
-echo -e "Production deployment started...\n"
+success() {
+    echo -e "${GREEN}$*${NC}"
+}
 
-if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}Error: This script must be run as root (use sudo).${NC}"
+warning() {
+    echo -e "${YELLOW}$*${NC}"
+}
+
+error() {
+    echo -e "${RED}$*${NC}" >&2
+}
+
+die() {
+    error "$*"
     exit 1
+}
+
+# ============================================================
+# Root check
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+    die "This script must be run as root. Use: sudo bash deploy.sh"
 fi
 
-# 1. Install Base Dependencies
-echo -e "${BLUE}[1/8] Installing base system dependencies...${NC}"
-apt-get update -qq
-apt-get install -y openssl sqlite3 ca-certificates curl tar gzip
+echo
+echo -e "${BLUE}============================================================${NC}"
+echo -e "${BLUE} BZOD — Production Docker Deployment${NC}"
+echo -e "${BLUE}============================================================${NC}"
+echo
+echo "Version:       ${BZOD_VERSION}"
+echo "Image:         ${IMAGE}"
+echo "Application:   ${BZOD_ROOT}"
+echo "Data:          ${DATA_DIR}"
+echo "Config:        ${CONFIG_DIR}"
+echo "Images:        ${IMAGES_DIR}"
+echo "Port:          ${BZOD_PORT}"
+echo
 
-# 2. Install Binary (safe atomic download)
-echo -e "\n${BLUE}[2/8] Installing BZOD binary...${NC}"
+# ============================================================
+# 1. Install Docker
+# ============================================================
 
-ARCH="$(uname -m)"
-case $ARCH in
-    x86_64)  BINARY_NAME="bzod-x86_64-unknown-linux-gnu" ;;
-    aarch64|arm64) BINARY_NAME="bzod-aarch64-unknown-linux-gnu" ;;
-    armv7l)  BINARY_NAME="bzod-armv7-unknown-linux-gnueabihf" ;;
-    *) echo -e "${RED}Unsupported architecture: $ARCH${NC}"; exit 1 ;;
-esac
+info "[1/8] Checking Docker..."
 
-REPO="thakares/nx9-url-shortener"
-RELEASE_URL="https://github.com/${REPO}/releases/download/v${BZOD_VERSION}/${BINARY_NAME}"
+if ! command -v docker >/dev/null 2>&1; then
+    info "Docker is not installed. Installing Docker..."
 
-TMP_BINARY=$(mktemp)
+    apt-get update -qq
+    apt-get install -y \
+        ca-certificates \
+        curl
 
-echo "Trying GitHub Releases..."
-if curl --retry 5 --retry-delay 2 --retry-connrefused \
-    -L -f -o "${TMP_BINARY}" "${RELEASE_URL}" 2>/dev/null; then
-    echo -e "${GREEN}✓ Downloaded from GitHub Releases${NC}"
-else
-    echo -e "${BLUE}GitHub Releases not available. Trying GHCR...${NC}"
-    if command -v docker >/dev/null 2>&1; then
-        TMP_GHCR=$(mktemp)
-        docker pull ghcr.io/${REPO}:latest >/dev/null 2>&1 || true
-        if docker run --rm --entrypoint cat ghcr.io/${REPO}:latest /usr/local/bin/bzod > "${TMP_GHCR}" 2>/dev/null && [ -s "${TMP_GHCR}" ]; then
-            mv "${TMP_GHCR}" "${TMP_BINARY}"
-            echo -e "${GREEN}✓ Extracted from GHCR${NC}"
-        fi
+    install -m 0755 -d /etc/apt/keyrings
+
+    if [[ ! -f /etc/apt/keyrings/docker.asc ]]; then
+        curl -fsSL \
+            https://download.docker.com/linux/debian/gpg \
+            -o /etc/apt/keyrings/docker.asc
+
+        chmod a+r /etc/apt/keyrings/docker.asc
     fi
 
-    if [ ! -s "${TMP_BINARY}" ]; then
-        echo -e "${BLUE}Falling back to local build...${NC}"
-        if ! command -v cargo >/dev/null 2>&1; then
-            echo -e "${RED}Neither pre-built binary nor cargo available.${NC}"
-            exit 1
-        fi
-        apt-get install -y pkg-config build-essential
-        cargo build --release
-        cp target/release/bzod "${TMP_BINARY}"
-        echo -e "${GREEN}✓ Built from source${NC}"
-    fi
+    . /etc/os-release
+
+    echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/debian \
+        ${VERSION_CODENAME} stable" \
+        > /etc/apt/sources.list.d/docker.list
+
+    apt-get update -qq
+
+    apt-get install -y \
+        docker-ce \
+        docker-ce-cli \
+        containerd.io \
+        docker-buildx-plugin \
+        docker-compose-plugin
 fi
 
-# Atomic replace with backup
-if [ -f "${INSTALL_PATH}" ]; then
-    cp "${INSTALL_PATH}" "${INSTALL_PATH}.bak" 2>/dev/null || true
+if ! docker info >/dev/null 2>&1; then
+    systemctl enable --now docker
 fi
 
-install -m 755 "${TMP_BINARY}" "${INSTALL_PATH}"
-
-# Verify
-if [ ! -x "${INSTALL_PATH}" ]; then
-    echo -e "${RED}Binary installation failed${NC}"
-    exit 1
+if ! docker compose version >/dev/null 2>&1; then
+    die "Docker Compose plugin is unavailable."
 fi
 
-"${INSTALL_PATH}" --version >/dev/null && echo -e "${GREEN}✓ Binary verified (--version)${NC}" || {
-    echo -e "${RED}Binary verification failed${NC}"
-    exit 1
-}
+success "✓ Docker and Docker Compose available"
 
-# Verify -V also works
-"${INSTALL_PATH}" -V >/dev/null && echo -e "${GREEN}✓ Binary verified (-V)${NC}" || {
-    echo -e "${RED}Binary -V verification failed${NC}"
-    exit 1
-}
+# ============================================================
+# 2. Create persistent directories
+# ============================================================
 
-# Show installed version and verify it matches requested version
-VERSION=$("${INSTALL_PATH}" --version 2>/dev/null | head -n1 || echo "unknown")
-EXPECTED_VERSION="bzod ${BZOD_VERSION}"
-if [ "${VERSION}" != "${EXPECTED_VERSION}" ]; then
-    echo -e "${RED}Version mismatch: expected '${EXPECTED_VERSION}', got '${VERSION}'${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✓ Installed ${VERSION} (${ARCH})${NC}"
+info "[2/8] Creating persistent application directories..."
 
-# 3. Create System User
-echo -e "\n${BLUE}[3/8] Creating system user '${SERVICE_USER}'...${NC}"
-if ! id -u "${SERVICE_USER}" &>/dev/null; then
-    useradd -r -s /usr/sbin/nologin -m -d /var/lib/bzod "${SERVICE_USER}"
-fi
+mkdir -p \
+    "${DATA_DIR}" \
+    "${CONFIG_DIR}" \
+    "${IMAGES_DIR}" \
+    "${COMPOSE_DIR}" \
+    "${BACKUP_ROOT}"
 
-# 4. Setup Directories
-echo -e "\n${BLUE}[4/8] Setting up directories...${NC}"
-mkdir -p "${CONFIG_DIR}" "${DATA_DIR}"
-chown -R "${SERVICE_USER}:${SERVICE_USER}" "/var/lib/bzod"
 chmod 700 "${CONFIG_DIR}"
+chmod 755 "${IMAGES_DIR}"
 
-# 5. Configuration (preserve on upgrades)
-echo -e "\n${BLUE}[5/8] Configuration...${NC}"
-if [ ! -f "${ENV_FILE}" ]; then
-    echo -e "${BLUE}Generating new secure configuration...${NC}"
-    cat <<EOF > "${ENV_FILE}"
+success "✓ Persistent directories ready"
+
+# ============================================================
+# 3. Configuration
+# ============================================================
+
+info "[3/8] Preparing configuration..."
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+
+    cat > "${ENV_FILE}" <<EOF
+BZOD_VERSION=${BZOD_VERSION}
+BZOD_IMAGE=${BZOD_IMAGE}
+
 HOST=0.0.0.0
 PORT=8654
-DATA_DIR=${DATA_DIR}
+
+DATA_DIR=/app/data
+CONFIG_DIR=/app/config
+IMAGES_DIR=/app/images
+
 COOKIE_SECURE=true
 RUST_LOG=info
-SESSION_SECRET=$(openssl rand -hex 32)
 EOF
+
     chmod 600 "${ENV_FILE}"
-    chown root:"${SERVICE_USER}" "${ENV_FILE}"
+
+    success "✓ New Docker configuration created"
+
 else
-    echo -e "${GREEN}Existing configuration preserved${NC}"
+
+    warning "Existing Docker configuration preserved"
+
+    # Update image/version while preserving all other settings.
+    sed -i \
+        -E "s#^BZOD_VERSION=.*#BZOD_VERSION=${BZOD_VERSION}#" \
+        "${ENV_FILE}" || true
+
+    sed -i \
+        -E "s#^BZOD_IMAGE=.*#BZOD_IMAGE=${BZOD_IMAGE}#" \
+        "${ENV_FILE}" || true
 fi
 
-# 6. Systemd Service
-echo -e "\n${BLUE}[6/8] Installing hardened systemd service...${NC}"
-cat <<EOF > "${SYSTEMD_UNIT}"
-[Unit]
-Description=BZOD - Privacy-First URL Shortener & Landing Page Platform
-After=network-online.target
-Wants=network-online.target
+# ============================================================
+# 4. Create Compose definition
+# ============================================================
 
-[Service]
-Type=simple
-User=${SERVICE_USER}
-Group=${SERVICE_USER}
-WorkingDirectory=/var/lib/bzod
-EnvironmentFile=${ENV_FILE}
-ExecStart=${INSTALL_PATH} serve
+info "[4/8] Writing Docker Compose configuration..."
 
-Restart=on-failure
-RestartSec=5s
+cat > "${COMPOSE_FILE}" <<'EOF'
+services:
 
-# Security Hardening
-ProtectSystem=strict
-ProtectHome=yes
-PrivateTmp=yes
-PrivateDevices=yes
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectControlGroups=yes
-ProtectHostname=yes
-RestrictSUIDSGID=yes
-LockPersonality=yes
-NoNewPrivileges=yes
-ReadWritePaths=/var/lib/bzod
+  bzod:
+    image: ${BZOD_IMAGE}:${BZOD_VERSION}
+    container_name: bzod
 
-[Install]
-WantedBy=multi-user.target
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-8654}:8654"
+
+    environment:
+      HOST: "${HOST:-0.0.0.0}"
+      PORT: "${PORT:-8654}"
+
+      DATA_DIR: "/app/data"
+      CONFIG_DIR: "/app/config"
+      IMAGES_DIR: "/app/images"
+
+      COOKIE_SECURE: "${COOKIE_SECURE:-true}"
+      RUST_LOG: "${RUST_LOG:-info}"
+
+    volumes:
+
+      # Persistent application databases.
+      - ${BZOD_ROOT}/data:/app/data
+
+      # Persistent application configuration.
+      - ${BZOD_ROOT}/config:/app/config
+
+      # User-uploaded / application images.
+      #
+      # IMPORTANT:
+      # /app/images is required by the image router.
+      - ${BZOD_ROOT}/images:/app/images
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-fsS",
+          "http://127.0.0.1:8654/status"
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    security_opt:
+      - no-new-privileges:true
 EOF
 
-chmod 644 "${SYSTEMD_UNIT}"
-systemctl daemon-reload
-
-# 7. Initialize & Start
-echo -e "\n${BLUE}[7/8] Initializing and starting service...${NC}"
-
-# Database creation and migration is handled automatically by 'bzod serve'
-if [ -f "${DATA_DIR}/admin/admin.db" ] || [ -f "${DATA_DIR}/admin.db" ]; then
-    echo -e "${GREEN}✓ Existing database detected (upgrade mode)${NC}"
-
-    # Pre-upgrade: stop service and backup databases
-    if systemctl is-active --quiet bzod 2>/dev/null; then
-        echo -e "${BLUE}  Stopping BZOD for safe database backup...${NC}"
-        systemctl stop bzod
-    fi
-
-    BACKUP_DIR="/var/lib/bzod/pre-upgrade-backup-v${BZOD_VERSION}"
-    mkdir -p "${BACKUP_DIR}"
-    cp -a "${DATA_DIR}" "${BACKUP_DIR}/data" 2>/dev/null || true
-    cp "${ENV_FILE}" "${BACKUP_DIR}/bzod.env" 2>/dev/null || true
-    echo -e "${GREEN}  ✓ Pre-upgrade backup created at ${BACKUP_DIR}${NC}"
-else
-    echo -e "${GREEN}✓ Fresh installation (databases will be created on first start)${NC}"
+# Append BZOD_ROOT because compose needs it.
+if ! grep -q '^BZOD_ROOT=' "${ENV_FILE}"; then
+    echo "BZOD_ROOT=${BZOD_ROOT}" >> "${ENV_FILE}"
 fi
 
-systemctl enable --now bzod
+# Port variable expected by compose.
+if ! grep -q '^PORT=' "${ENV_FILE}"; then
+    echo "PORT=${BZOD_PORT}" >> "${ENV_FILE}"
+fi
 
-# 8. Validation + Rollback
-sleep 3
+success "✓ Docker Compose configuration written"
 
-if ! systemctl is-active --quiet bzod; then
-    echo -e "${RED}Service failed to start! Rolling back...${NC}"
-    if [ -f "${INSTALL_PATH}.bak" ]; then
-        install -m 755 "${INSTALL_PATH}.bak" "${INSTALL_PATH}"
-        systemctl restart bzod || true
-    fi
-    journalctl -u bzod -n 50 --no-pager
+# ============================================================
+# 5. Backup existing installation
+# ============================================================
+
+info "[5/8] Creating pre-upgrade backup..."
+
+TIMESTAMP="$(date '+%Y%m%d-%H%M%S')"
+BACKUP_DIR="${BACKUP_ROOT}/pre-upgrade-${TIMESTAMP}-v${BZOD_VERSION}"
+
+mkdir -p "${BACKUP_DIR}"
+
+if [[ -d "${DATA_DIR}" ]]; then
+    cp -a "${DATA_DIR}" "${BACKUP_DIR}/data"
+fi
+
+if [[ -d "${CONFIG_DIR}" ]]; then
+    cp -a "${CONFIG_DIR}" "${BACKUP_DIR}/config"
+fi
+
+if [[ -d "${IMAGES_DIR}" ]]; then
+    cp -a "${IMAGES_DIR}" "${BACKUP_DIR}/images"
+fi
+
+cp -a "${COMPOSE_FILE}" "${BACKUP_DIR}/docker-compose.yml"
+cp -a "${ENV_FILE}" "${BACKUP_DIR}/bzod.env"
+
+success "✓ Backup created:"
+echo "  ${BACKUP_DIR}"
+
+# ============================================================
+# 6. Pull new image
+# ============================================================
+
+info "[6/8] Pulling BZOD ${BZOD_VERSION} image..."
+
+if ! docker pull "${IMAGE}"; then
+    die "Unable to pull ${IMAGE}"
+fi
+
+success "✓ Docker image downloaded"
+
+# ============================================================
+# 7. Deploy
+# ============================================================
+
+info "[7/8] Deploying BZOD..."
+
+cd "${COMPOSE_DIR}"
+
+# Stop/remove the existing container through Compose.
+docker compose \
+    --env-file "${ENV_FILE}" \
+    -f "${COMPOSE_FILE}" \
+    down \
+    --remove-orphans
+
+# Start the requested image.
+docker compose \
+    --env-file "${ENV_FILE}" \
+    -f "${COMPOSE_FILE}" \
+    up -d
+
+success "✓ BZOD container started"
+
+# ============================================================
+# 8. Validation
+# ============================================================
+
+info "[8/8] Validating deployment..."
+
+sleep 5
+
+if ! docker inspect \
+    --format '{{.State.Running}}' \
+    "${CONTAINER_NAME}" 2>/dev/null | grep -q '^true$'; then
+
+    error "BZOD container failed to start."
+    echo
+
+    docker compose \
+        --env-file "${ENV_FILE}" \
+        -f "${COMPOSE_FILE}" \
+        logs --tail=100
+
+    error
+    error "Deployment failed. Existing data was not removed."
+    error "Backup: ${BACKUP_DIR}"
+
     exit 1
 fi
 
-# Clean up backup on success
-rm -f "${INSTALL_PATH}.bak" 2>/dev/null || true
+success "✓ Container is running"
 
-# Soft health check
-if command -v curl >/dev/null 2>&1; then
-    if curl -fsS http://127.0.0.1:8654/status >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ HTTP health check passed${NC}"
-    else
-        echo -e "${BLUE}✓ Service is running (systemd healthy)${NC}"
+# ------------------------------------------------------------
+# Health check
+# ------------------------------------------------------------
+
+HEALTH_OK=0
+
+for _ in {1..12}; do
+    if curl -fsS \
+        "http://127.0.0.1:${BZOD_PORT}/status" \
+        >/dev/null 2>&1; then
+
+        HEALTH_OK=1
+        break
     fi
+
+    sleep 2
+done
+
+if [[ "${HEALTH_OK}" -eq 1 ]]; then
+    success "✓ HTTP health check passed"
+else
+    warning "⚠ HTTP health check did not respond yet"
+    warning "The container is running; inspect logs if necessary:"
+    echo
+    echo "  docker compose -f ${COMPOSE_FILE} logs --tail=100"
 fi
 
-# Final Message
-IP=$(hostname -I | awk '{print $1}' | head -n1)
-echo -e "\n${GREEN}=== BZOD Deployed Successfully! ===${NC}"
-echo -e "🌐 Web UI:     http://${IP}:8654"
-echo -e "🔑 Admin:      http://${IP}:8654/admin"
-echo -e "🖥 Architecture: ${ARCH}"
-echo -e "📦 Version: ${VERSION}"
-echo -e "\nNext step (first install):"
-echo -e "   sudo -u bzod bzod create-admin"
-echo -e "\nCommands:"
-echo -e "   journalctl -u bzod -f"
-echo -e "   bzod doctor"
-echo -e "   systemctl status bzod"
+# ============================================================
+# Verify image and binary
+# ============================================================
 
-echo -e "\n${GREEN}Enjoy your lightweight, privacy-first, self-hosted URL shortener!${NC}"
+echo
+info "Installed image:"
+docker image inspect "${IMAGE}" \
+    --format '  {{.RepoTags}}  ({{.Id}})' \
+    2>/dev/null || true
+
+echo
+info "Container:"
+docker inspect "${CONTAINER_NAME}" \
+    --format '  {{.Name}}  {{.Config.Image}}' \
+    2>/dev/null || true
+
+echo
+info "Persistent mounts:"
+docker inspect "${CONTAINER_NAME}" \
+    --format '{{range .Mounts}}  {{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' \
+    2>/dev/null || true
+
+# ============================================================
+# Final status
+# ============================================================
+
+echo
+echo -e "${GREEN}============================================================${NC}"
+echo -e "${GREEN} BZOD ${BZOD_VERSION} deployed successfully${NC}"
+echo -e "${GREEN}============================================================${NC}"
+echo
+
+echo "Web UI:"
+echo "  http://<server-ip>:${BZOD_PORT}"
+
+echo
+echo "Persistent data:"
+echo "  ${DATA_DIR}"
+
+echo
+echo "Persistent images:"
+echo "  ${IMAGES_DIR}"
+
+echo
+echo "Docker Compose:"
+echo "  ${COMPOSE_FILE}"
+
+echo
+echo "Backup:"
+echo "  ${BACKUP_DIR}"
+
+echo
+echo "Useful commands:"
+echo "  docker compose -f ${COMPOSE_FILE} ps"
+echo "  docker compose -f ${COMPOSE_FILE} logs -f bzod"
+echo "  docker compose -f ${COMPOSE_FILE} restart bzod"
+
+echo
+success "Deployment complete."

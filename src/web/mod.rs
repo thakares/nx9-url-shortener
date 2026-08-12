@@ -11,3 +11,4 @@ pub mod routes;
 pub mod system;
 
 pub use routes::create_router;
+pub mod images;

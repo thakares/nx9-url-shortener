@@ -1,5 +1,7 @@
 use crate::state::AppState;
-use crate::web::{admin, api, bulk, multi_user, pages, password_gate, qr, redirect, system};
+use crate::web::{
+    admin, api, bulk, images, multi_user, pages, password_gate, qr, redirect, system,
+};
 use axum::{
     routing::{delete, get, post, put},
     Router,
@@ -95,7 +97,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/admin/pages/delete/:id", post(admin::pages_delete))
         .route("/admin/analytics/url/:id", get(admin::url_analytics_get))
         .route("/deploy.sh", get(pages::deploy_script))
-        .route("/images/preview.png", get(pages::social_preview))
+        .route("/images/*path", get(images::image_handler))
         .route(
             "/admin/analytics/url/:id/export/csv",
             get(admin::url_analytics_csv_export),
