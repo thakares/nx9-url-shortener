@@ -11,7 +11,7 @@
 #   sudo bash deploy.sh
 #
 # Environment overrides:
-#   BZOD_VERSION=0.7.0
+#   BZOD_VERSION=0.7.1
 #   BZOD_IMAGE=nx9-url-shortener
 #   BZOD_ROOT=/DATA/AppData/nx9-url-shortener
 #   BZOD_PORT=8654
@@ -23,10 +23,11 @@ set -euo pipefail
 # Configuration
 # ============================================================
 
-BZOD_VERSION="${BZOD_VERSION:-0.7.0}"
+BZOD_VERSION="${BZOD_VERSION:-0.7.1}"
 BZOD_IMAGE="${BZOD_IMAGE:-nx9-url-shortener}"
 BZOD_ROOT="${BZOD_ROOT:-/DATA/AppData/nx9-url-shortener}"
 BZOD_PORT="${BZOD_PORT:-8654}"
+BASE_URL="${BASE_URL:-https://bzo.in}"
 
 CONTAINER_NAME="${CONTAINER_NAME:-bzod}"
 
@@ -185,6 +186,7 @@ IMAGES_DIR=/app/images
 
 COOKIE_SECURE=true
 RUST_LOG=info
+BASE_URL=${BASE_URL}
 EOF
 
     chmod 600 "${ENV_FILE}"
@@ -203,6 +205,15 @@ else
     sed -i \
         -E "s#^BZOD_IMAGE=.*#BZOD_IMAGE=${BZOD_IMAGE}#" \
         "${ENV_FILE}" || true
+
+    if grep -q '^BASE_URL=' "${ENV_FILE}"; then
+        sed -i \
+            -E "s#^BASE_URL=.*#BASE_URL=${BASE_URL}#" \
+            "${ENV_FILE}" || true
+    else
+        echo "BASE_URL=${BASE_URL}" >> "${ENV_FILE}"
+    fi
+
 fi
 
 # ============================================================
@@ -233,6 +244,7 @@ services:
 
       COOKIE_SECURE: "${COOKIE_SECURE:-true}"
       RUST_LOG: "${RUST_LOG:-info}"
+      BASE_URL: "${BASE_URL:-https://bzo.in}"
 
     volumes:
 
