@@ -46,11 +46,12 @@ pub fn open_user_content_conn(
     db: &Db,
     user_id: i64,
 ) -> Result<rusqlite::Connection, rusqlite::Error> {
-    let db_path = db
-        .data_dir
-        .join("users")
-        .join(user_id.to_string())
-        .join("content.db");
+    let db_path = {
+        let users = db.users.lock().map_err(|_| {
+            rusqlite::Error::InvalidPath(std::path::PathBuf::from("users-db-poisoned"))
+        })?;
+        crate::db::tenant::existing_content_path(&users, &db.topology, user_id)?
+    };
     let conn = rusqlite::Connection::open(db_path)?;
     crate::db::sqlite::enable_wal(&conn, "content")?;
     crate::db::sqlite::enable_foreign_keys(&conn, "content")?;
@@ -61,11 +62,12 @@ pub fn open_user_analytics_conn(
     db: &Db,
     user_id: i64,
 ) -> Result<rusqlite::Connection, rusqlite::Error> {
-    let db_path = db
-        .data_dir
-        .join("users")
-        .join(user_id.to_string())
-        .join("analytics.db");
+    let db_path = {
+        let users = db.users.lock().map_err(|_| {
+            rusqlite::Error::InvalidPath(std::path::PathBuf::from("users-db-poisoned"))
+        })?;
+        crate::db::tenant::existing_analytics_path(&users, &db.topology, user_id)?
+    };
     let conn = rusqlite::Connection::open(db_path)?;
     crate::db::sqlite::enable_wal(&conn, "analytics")?;
     crate::db::sqlite::enable_foreign_keys(&conn, "analytics")?;

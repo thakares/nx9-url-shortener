@@ -7,7 +7,7 @@ use axum_extra::extract::{cookie::Cookie, CookieJar};
 use serde::Deserialize;
 
 use crate::auth::password::verify_password;
-use crate::services::shortener::get_url_by_code;
+use crate::db::tenant::TenantOpenMode;
 use crate::state::AppState;
 use crate::templates::GateTemplate;
 
@@ -21,6 +21,43 @@ pub async fn gate_get(Path(code): Path<String>) -> impl IntoResponse {
     GateTemplate { code, error: None }
 }
 
+enum GateLookup {
+    Missing,
+    Gone,
+    Unprotected,
+    Protected(String),
+}
+
+fn lookup_gate(state: &AppState, code: &str) -> Result<GateLookup, axum::http::StatusCode> {
+    let info = match state
+        .lookup_slug(code)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        Some(info) if info.status == "active" => info,
+        Some(_) => return Ok(GateLookup::Gone),
+        None => return Ok(GateLookup::Missing),
+    };
+
+    let user_dbs = match state.open_slug_owner(&info.owner_tenant_id, TenantOpenMode::PublicContent)
+    {
+        Ok(dbs) => dbs,
+        Err(_) => return Ok(GateLookup::Missing),
+    };
+    let conn = user_dbs
+        .content
+        .lock()
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    match crate::db::content::get_url_by_code(&conn, code)
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+    {
+        Some(u) => match u.password_hash {
+            Some(h) => Ok(GateLookup::Protected(h)),
+            None => Ok(GateLookup::Unprotected),
+        },
+        None => Ok(GateLookup::Missing),
+    }
+}
+
 // POST /gate/:code
 pub async fn gate_post(
     State(state): State<AppState>,
@@ -29,32 +66,25 @@ pub async fn gate_post(
     headers: axum::http::HeaderMap,
     Form(form): Form<PasswordGateForm>,
 ) -> Response {
-    let url_opt = match get_url_by_code(&state.db, &code) {
-        Ok(url) => url,
-        Err(_) => {
-            return (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                "Database error",
-            )
-                .into_response()
-        }
-    };
-
-    let url = match url_opt {
-        Some(u) => u,
-        None => return (axum::http::StatusCode::NOT_FOUND, "Url not found").into_response(),
-    };
-
-    let password_hash = match url.password_hash {
-        Some(ref h) => h,
-        None => {
-            // Not password protected, redirect to resolution
+    let password_hash = match lookup_gate(&state, &code) {
+        Ok(GateLookup::Protected(h)) => h,
+        Ok(GateLookup::Unprotected) => {
             return Redirect::temporary(&format!("/{}", code)).into_response();
         }
+        Ok(GateLookup::Missing) => {
+            return (axum::http::StatusCode::NOT_FOUND, "Url not found").into_response();
+        }
+        Ok(GateLookup::Gone) => {
+            return (
+                axum::http::StatusCode::GONE,
+                "This content has been disabled or moderated",
+            )
+                .into_response();
+        }
+        Err(status) => return (status, "Database error").into_response(),
     };
 
-    if verify_password(&form.password, password_hash) {
-        // Correct password - set 15 min temporary cookie
+    if verify_password(&form.password, &password_hash) {
         let cookie_name = format!("bzod_gate_{}", code);
         let secure_flag = crate::utils::resolve_cookie_secure(state.config.cookie_secure, &headers);
         let cookie = Cookie::build((cookie_name, "authorized"))
@@ -67,7 +97,6 @@ pub async fn gate_post(
         let updated_jar = jar.add(cookie);
         (updated_jar, Redirect::temporary(&format!("/{}", code))).into_response()
     } else {
-        // Invalid password
         GateTemplate {
             code,
             error: Some("Invalid password".to_string()),

@@ -22,16 +22,22 @@ async fn test_content_flagging_and_disabling() {
 
     let db = Db::init(&config).expect("Failed to init Db");
 
-    let system_conn = db.system.lock().unwrap();
+    let urls_conn = db.global_urls.lock().unwrap();
 
     // Register slug
-    bzod::db::users::register_global_slug(&system_conn, "!badslug", 10, "url", "url_abc", "active")
+    let now = Utc::now().to_rfc3339();
+    urls_conn
+        .execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!badslug', 't-tenant10', 'url_abc', ?1, ?2, 'active', NULL);",
+            rusqlite::params![now, now],
+        )
         .unwrap();
 
     // Verify it is active initially
-    let status: String = system_conn
+    let status: String = urls_conn
         .query_row(
-            "SELECT status FROM global_slugs WHERE slug = ?1;",
+            "SELECT status FROM global_urls WHERE slug = ?1;",
             ["!badslug"],
             |row| row.get(0),
         )
@@ -39,17 +45,17 @@ async fn test_content_flagging_and_disabling() {
     assert_eq!(status, "active");
 
     // Moderate/disable slug
-    system_conn
+    urls_conn
         .execute(
-            "UPDATE global_slugs SET status = 'disabled' WHERE slug = ?1;",
+            "UPDATE global_urls SET status = 'disabled' WHERE slug = ?1;",
             ["!badslug"],
         )
         .unwrap();
 
     // Verify it is disabled
-    let status2: String = system_conn
+    let status2: String = urls_conn
         .query_row(
-            "SELECT status FROM global_slugs WHERE slug = ?1;",
+            "SELECT status FROM global_urls WHERE slug = ?1;",
             ["!badslug"],
             |row| row.get(0),
         )
@@ -57,16 +63,16 @@ async fn test_content_flagging_and_disabling() {
     assert_eq!(status2, "disabled");
 
     // Moderate/re-enable slug
-    system_conn
+    urls_conn
         .execute(
-            "UPDATE global_slugs SET status = 'active' WHERE slug = ?1;",
+            "UPDATE global_urls SET status = 'active' WHERE slug = ?1;",
             ["!badslug"],
         )
         .unwrap();
 
-    let status3: String = system_conn
+    let status3: String = urls_conn
         .query_row(
-            "SELECT status FROM global_slugs WHERE slug = ?1;",
+            "SELECT status FROM global_urls WHERE slug = ?1;",
             ["!badslug"],
             |row| row.get(0),
         )

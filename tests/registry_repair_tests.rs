@@ -20,18 +20,21 @@ async fn test_registry_repair_dry_run() {
     let config = create_temp_config(temp_dir.clone());
     let db = Db::init(&config).expect("Failed to init Db");
 
+    let tid = {
+        let conn = db.users.lock().unwrap();
+        let u = bzod::db::users::create_user(&conn, "repairdry", "pass", "user", None).unwrap();
+        u.tenant_id.unwrap()
+    };
+    db.init_user_databases(1).unwrap();
+
     {
-        let system_conn = db.system.lock().unwrap();
-        // Insert orphaned slug (owner exists, but no target db/record)
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "orphan1",
-            1,
-            "url",
-            "target1",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!orphan1', ?1, 'target1', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid.as_str(), now, now],
+        ).unwrap();
     }
 
     let command = RepairCommands::Registry {
@@ -47,10 +50,10 @@ async fn test_registry_repair_dry_run() {
 
     // Verify it was NOT deleted
     {
-        let system_conn = db.system.lock().unwrap();
-        let exists: bool = system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let exists: bool = urls_conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = 'orphan1')",
+                "SELECT EXISTS(SELECT 1 FROM global_urls WHERE slug = '!orphan1')",
                 [],
                 |r| r.get(0),
             )
@@ -69,18 +72,21 @@ async fn test_registry_repair_force() {
     let config = create_temp_config(temp_dir.clone());
     let db = Db::init(&config).expect("Failed to init Db");
 
+    let tid = {
+        let conn = db.users.lock().unwrap();
+        let u = bzod::db::users::create_user(&conn, "repairforce", "pass", "user", None).unwrap();
+        u.tenant_id.unwrap()
+    };
+    db.init_user_databases(1).unwrap();
+
     {
-        let system_conn = db.system.lock().unwrap();
-        // Insert orphaned slug
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "orphan2",
-            1,
-            "url",
-            "target2",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!orphan2', ?1, 'target2', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid.as_str(), now, now],
+        ).unwrap();
     }
 
     let command = RepairCommands::Registry {
@@ -96,10 +102,10 @@ async fn test_registry_repair_force() {
 
     // Verify it WAS deleted
     {
-        let system_conn = db.system.lock().unwrap();
-        let exists: bool = system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let exists: bool = urls_conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = 'orphan2')",
+                "SELECT EXISTS(SELECT 1 FROM global_urls WHERE slug = '!orphan2')",
                 [],
                 |r| r.get(0),
             )
@@ -118,33 +124,32 @@ async fn test_registry_repair_single_slug() {
     let config = create_temp_config(temp_dir.clone());
     let db = Db::init(&config).expect("Failed to init Db");
 
+    let tid = {
+        let conn = db.users.lock().unwrap();
+        let u = bzod::db::users::create_user(&conn, "repairsingle", "pass", "user", None).unwrap();
+        u.tenant_id.unwrap()
+    };
+    db.init_user_databases(1).unwrap();
+
     {
-        let system_conn = db.system.lock().unwrap();
-        // Insert two orphaned slugs
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "orphan3",
-            1,
-            "url",
-            "target3",
-            "active",
-        )
-        .unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "orphan4",
-            1,
-            "url",
-            "target4",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!orphan3', ?1, 'target3', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid.as_str(), now, now],
+        ).unwrap();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!orphan4', ?1, 'target4', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid.as_str(), now, now],
+        ).unwrap();
     }
 
     let command = RepairCommands::Registry {
         dry_run: false,
         force: true,
-        slug: Some("orphan3".to_string()),
+        slug: Some("!orphan3".to_string()),
         data_dir: Some(temp_dir.to_string_lossy().to_string()),
     };
 
@@ -154,19 +159,19 @@ async fn test_registry_repair_single_slug() {
 
     // Verify targeted slug was deleted
     {
-        let system_conn = db.system.lock().unwrap();
-        let exists3: bool = system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let exists3: bool = urls_conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = 'orphan3')",
+                "SELECT EXISTS(SELECT 1 FROM global_urls WHERE slug = '!orphan3')",
                 [],
                 |r| r.get(0),
             )
             .unwrap();
         assert!(!exists3, "Targeted slug should be deleted");
 
-        let exists4: bool = system_conn
+        let exists4: bool = urls_conn
             .query_row(
-                "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = 'orphan4')",
+                "SELECT EXISTS(SELECT 1 FROM global_urls WHERE slug = '!orphan4')",
                 [],
                 |r| r.get(0),
             )

@@ -29,12 +29,12 @@ async fn test_global_slug_index_consistency() {
     .await
     .unwrap();
 
-    let user_id = {
+    let (user_id, tid) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
+        let u = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     // Add a URL for the user
@@ -57,46 +57,47 @@ async fn test_global_slug_index_consistency() {
 
     // Register globally
     {
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!integ-slug",
-            user_id,
-            "url",
-            &url_id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!integ-slug', ?1, ?2, ?3, ?4, 'active', NULL);",
+                rusqlite::params![tid.as_str(), &url_id, now, now],
+            )
+            .unwrap();
     }
 
     // Consistency Check:
-    // 1. Every active slug in user databases exists in global_slugs
+    // 1. Every active slug in user databases exists in global_urls
     {
-        let user_ids: Vec<i64> = {
+        let users = {
             let conn = db.users.lock().unwrap();
-            let mut stmt = conn.prepare("SELECT id FROM users;").unwrap();
-            let rows = stmt.query_map([], |row| row.get(0)).unwrap();
-            rows.filter_map(|r| r.ok()).collect()
+            bzod::db::users::list_users(&conn).unwrap()
         };
 
-        let system_conn = db.system.lock().unwrap();
-        for id in user_ids {
-            let conn = bzod::jobs::open_user_content_conn(&db, id).unwrap();
-            let mut stmt = conn.prepare("SELECT code FROM urls;").unwrap();
-            let rows = stmt.query_map([], |row| row.get::<_, String>(0)).unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        for u in users {
+            if let Some(tenant_id) = u.tenant_id {
+                let conn = bzod::jobs::open_user_content_conn(&db, u.id).unwrap();
+                let mut stmt = conn.prepare("SELECT code FROM urls;").unwrap();
+                let rows = stmt.query_map([], |row| row.get::<_, String>(0)).unwrap();
 
-            for code_res in rows {
-                let code = code_res.unwrap();
-                let exists: bool = system_conn.query_row(
-                    "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = ?1 AND owner_user_id = ?2);",
-                    rusqlite::params![code, id],
-                    |row| row.get(0),
-                ).unwrap();
-                assert!(
-                    exists,
-                    "Active user slug '{}' missing from global_slugs",
-                    code
-                );
+                for code_res in rows {
+                    let code = code_res.unwrap();
+                    let exists: bool = urls_conn
+                        .query_row(
+                            "SELECT EXISTS(SELECT 1 FROM global_urls WHERE slug = ?1 AND owner_tenant_id = ?2);",
+                            rusqlite::params![code, tenant_id.as_str()],
+                            |row| row.get(0),
+                        )
+                        .unwrap();
+                    assert!(
+                        exists,
+                        "Active user slug '{}' missing from global_urls",
+                        code
+                    );
+                }
             }
         }
     }

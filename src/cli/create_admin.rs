@@ -7,6 +7,7 @@ use tracing::{error, info};
 
 pub async fn run(
     username: Option<String>,
+    password: Option<String>,
     data_dir: Option<String>,
     mut config: Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -25,16 +26,18 @@ pub async fn run(
         return Ok(());
     }
 
-    let password = read_input("Enter password: ");
-    if password.trim().is_empty() {
+    let final_password = match password {
+        Some(p) => p,
+        None => read_input("Enter password: "),
+    };
+    if final_password.trim().is_empty() {
         error!("Password cannot be empty");
         return Ok(());
     }
 
-    let hash = hash_password(&password).map_err(|e| e.to_string())?;
+    let hash = hash_password(&final_password).map_err(|e| e.to_string())?;
     let conn = db.users.lock().unwrap();
     let u = crate::db::users::create_admin_user(&conn, &final_username, &hash)?;
-    db.init_user_databases(u.id)?;
     info!(
         "Successfully created admin user: {} (ID: {})",
         u.username, u.id

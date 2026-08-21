@@ -12,12 +12,10 @@ use crate::auth::ApiUser;
 use crate::db::admin::write_audit_log;
 use crate::db::analytics::{
     get_clicks_trend, get_clicks_trend_raw, get_metric_rankings, get_metric_rankings_raw,
-    get_total_clicks, get_total_page_views,
 };
 use crate::db::content::{
-    create_landing_page, delete_landing_page, delete_url, get_landing_page_by_id,
-    get_landing_page_count, get_url_by_id, get_url_counts, list_landing_pages, list_urls,
-    update_landing_page, update_url,
+    create_landing_page, delete_landing_page, delete_url, get_landing_page_by_id, get_url_by_id,
+    list_landing_pages, list_urls, update_landing_page, update_url,
 };
 use crate::state::AppState;
 use crate::utils::get_client_ip;
@@ -71,6 +69,30 @@ pub struct UpdatePageRequest {
 #[derive(Serialize)]
 pub struct ApiError {
     pub error: String,
+}
+
+#[allow(clippy::result_large_err)]
+fn get_api_tenant_dbs(state: &AppState, user: &ApiUser) -> Result<crate::state::UserDbs, Response> {
+    match user.0 {
+        crate::models::ApiActor::User(ref u) => {
+            state.get_user_dbs(u.id).map_err(|_| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ApiError {
+                        error: "Database error".to_string(),
+                    }),
+                )
+                    .into_response()
+            })
+        }
+        crate::models::ApiActor::Admin(_) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ApiError {
+                error: "Admin is a platform operator and cannot access application content directly without tenant context".to_string(),
+            }),
+        )
+            .into_response()),
+    }
 }
 
 // --- URL Endpoints ---
@@ -138,9 +160,17 @@ pub async fn api_create_url(
         None
     };
 
-    // Dynamically resolve target user ID and content DB
-    let (target_user_id, content_db) = match user.0 {
-        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+    // Dynamically resolve target user ID, tenant ID, and content DB
+    let (target_user_id, target_tenant_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError {
+                    error: "Admin is a platform operator and cannot create application URLs directly without tenant context".to_string(),
+                }),
+            )
+                .into_response();
+        }
         crate::models::ApiActor::User(ref u) => {
             let user_dbs = match state.get_user_dbs(u.id) {
                 Ok(dbs) => dbs,
@@ -154,7 +184,10 @@ pub async fn api_create_url(
                         .into_response()
                 }
             };
-            (u.id, user_dbs.content.clone())
+            let tid = u
+                .tenant_id
+                .unwrap_or_else(crate::identity::TenantId::generate);
+            (u.id, tid, user_dbs.content.clone())
         }
     };
 
@@ -174,30 +207,22 @@ pub async fn api_create_url(
         }
     }
 
-    // Check availability
+    // Check availability and reserve in v0.8 slug registry
     {
-        let system_conn = state.system_db.lock().unwrap();
-        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+        let reserved_conn = state.db.reserved.lock().unwrap();
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        if let Err(e) = crate::db::slugs::reserve_url_slug(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
+            &code,
+            &target_tenant_id,
+        ) {
             return (
                 StatusCode::CONFLICT,
                 Json(ApiError {
-                    error: "Short code already exists".to_string(),
-                }),
-            )
-                .into_response();
-        }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
-            &code,
-            target_user_id,
-            "url",
-            "",
-            "reserving",
-        ) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    error: format!("Failed to reserve slug: {}", e),
+                    error: format!("Short code unavailable: {}", e),
                 }),
             )
                 .into_response();
@@ -222,13 +247,10 @@ pub async fn api_create_url(
 
     match res {
         Ok(url) => {
-            // Activate slug
+            // Activate slug in v0.8 global_urls.db
             {
-                let system_conn = state.system_db.lock().unwrap();
-                let _ = system_conn.execute(
-                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
-                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
-                );
+                let urls_conn = state.db.global_urls.lock().unwrap();
+                let _ = crate::db::slugs::activate_url_slug(&urls_conn, &code, &url.id);
             }
             // Increment quota
             {
@@ -264,8 +286,8 @@ pub async fn api_create_url(
             (StatusCode::CREATED, Json(url)).into_response()
         }
         Err(e) => {
-            let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, target_user_id);
+            let urls_conn = state.db.global_urls.lock().unwrap();
+            let _ = crate::db::slugs::release_url_slug(&urls_conn, &code, &target_tenant_id);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError {
@@ -287,13 +309,17 @@ pub struct ListQuery {
 
 pub async fn api_list_urls(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Query(query): Query<ListQuery>,
 ) -> Response {
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
 
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match list_urls(&conn, limit, offset, query.tag.as_deref()) {
         Ok(urls) => Json(urls).into_response(),
         Err(e) => (
@@ -309,10 +335,14 @@ pub async fn api_list_urls(
 // GET /api/v1/urls/:uuid
 pub async fn api_get_url(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match get_url_by_id(&conn, &uuid) {
         Ok(Some(url)) => Json(url).into_response(),
         Ok(None) => (
@@ -351,7 +381,11 @@ pub async fn api_update_url(
         )
             .into_response();
     }
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match update_url(
         &conn,
         &uuid,
@@ -438,9 +472,21 @@ pub async fn api_delete_url(
     user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
+    let code_opt = match get_url_by_id(&conn, &uuid) {
+        Ok(Some(u)) => Some(u.code),
+        _ => None,
+    };
     match delete_url(&conn, &uuid) {
         Ok(true) => {
+            if let Some(code) = code_opt {
+                let urls_conn = state.db.global_urls.lock().unwrap();
+                let _ = urls_conn.execute("DELETE FROM global_urls WHERE slug = ?1;", [&code]);
+            }
             let ip = get_client_ip(&headers, connect_info);
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
@@ -510,9 +556,17 @@ pub async fn api_create_page(
         }
     }
 
-    // Dynamically resolve target user ID and content DB
-    let (target_user_id, content_db) = match user.0 {
-        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+    // Dynamically resolve target user ID, tenant ID, and content DB
+    let (target_user_id, target_tenant_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiError {
+                    error: "Admin is a platform operator and cannot create application landing pages directly without tenant context".to_string(),
+                }),
+            )
+                .into_response();
+        }
         crate::models::ApiActor::User(ref u) => {
             let user_dbs = match state.get_user_dbs(u.id) {
                 Ok(dbs) => dbs,
@@ -526,7 +580,10 @@ pub async fn api_create_page(
                         .into_response()
                 }
             };
-            (u.id, user_dbs.content.clone())
+            let tid = u
+                .tenant_id
+                .unwrap_or_else(crate::identity::TenantId::generate);
+            (u.id, tid, user_dbs.content.clone())
         }
     };
 
@@ -546,30 +603,22 @@ pub async fn api_create_page(
         }
     }
 
-    // Check availability
+    // Check availability and reserve in v0.8 slug registry
     {
-        let system_conn = state.system_db.lock().unwrap();
-        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
+        let reserved_conn = state.db.reserved.lock().unwrap();
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        if let Err(e) = crate::db::slugs::reserve_landing_page_slug(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
+            &code,
+            &target_tenant_id,
+        ) {
             return (
                 StatusCode::CONFLICT,
                 Json(ApiError {
-                    error: "Short code already exists".to_string(),
-                }),
-            )
-                .into_response();
-        }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
-            &code,
-            target_user_id,
-            "page",
-            "",
-            "reserving",
-        ) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    error: format!("Failed to reserve slug: {}", e),
+                    error: format!("Short code unavailable: {}", e),
                 }),
             )
                 .into_response();
@@ -590,18 +639,10 @@ pub async fn api_create_page(
 
     match res {
         Ok(page) => {
-            // Activate slug
+            // Activate slug in v0.8 global_landing_pages.db
             {
-                let system_conn = state.system_db.lock().unwrap();
-                let global_status = if payload.state == "published" {
-                    "active"
-                } else {
-                    "disabled"
-                };
-                let _ = system_conn.execute(
-                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
-                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
-                );
+                let pages_conn = state.db.global_landing_pages.lock().unwrap();
+                let _ = crate::db::slugs::activate_landing_page_slug(&pages_conn, &code, &page.id);
             }
             // Increment quota
             {
@@ -627,8 +668,9 @@ pub async fn api_create_page(
             (StatusCode::CREATED, Json(page)).into_response()
         }
         Err(e) => {
-            let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, target_user_id);
+            let pages_conn = state.db.global_landing_pages.lock().unwrap();
+            let _ =
+                crate::db::slugs::release_landing_page_slug(&pages_conn, &code, &target_tenant_id);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ApiError {
@@ -643,13 +685,17 @@ pub async fn api_create_page(
 // GET /api/v1/pages
 pub async fn api_list_pages(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Query(query): Query<ListQuery>,
 ) -> Response {
     let limit = query.limit.unwrap_or(100);
     let offset = query.offset.unwrap_or(0);
 
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match list_landing_pages(&conn, limit, offset) {
         Ok(pages) => Json(pages).into_response(),
         Err(e) => (
@@ -665,10 +711,14 @@ pub async fn api_list_pages(
 // GET /api/v1/pages/:uuid
 pub async fn api_get_page(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match get_landing_page_by_id(&conn, &uuid) {
         Ok(Some(page)) => Json(page).into_response(),
         Ok(None) => (
@@ -697,7 +747,11 @@ pub async fn api_update_page(
     Path(uuid): Path<String>,
     Json(payload): Json<UpdatePageRequest>,
 ) -> Response {
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
     match update_landing_page(
         &conn,
         &uuid,
@@ -745,9 +799,22 @@ pub async fn api_delete_page(
     user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
-    let conn = state.content_db.lock().unwrap();
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let conn = dbs.content.lock().unwrap();
+    let code_opt = match get_landing_page_by_id(&conn, &uuid) {
+        Ok(Some(p)) => Some(p.code),
+        _ => None,
+    };
     match delete_landing_page(&conn, &uuid) {
         Ok(true) => {
+            if let Some(code) = code_opt {
+                let pages_conn = state.db.global_landing_pages.lock().unwrap();
+                let _ = pages_conn
+                    .execute("DELETE FROM global_landing_pages WHERE slug = ?1;", [&code]);
+            }
             let ip = get_client_ip(&headers, connect_info);
             let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
             let _ = write_audit_log(
@@ -797,20 +864,44 @@ pub async fn api_overall_stats(State(state): State<AppState>, user: ApiUser) -> 
     }
 
     let (total_urls, active_links, dead_links) = {
-        let conn = state.content_db.lock().unwrap();
-        get_url_counts(&conn).unwrap_or((0, 0, 0))
+        let conn = state.db.global_urls.lock().unwrap();
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status != 'retired';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'active';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let dead: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'disabled';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        (total, active, dead)
     };
     let total_pages = {
-        let conn = state.content_db.lock().unwrap();
-        get_landing_page_count(&conn).unwrap_or(0)
-    };
-    let (total_clicks, total_page_views) = {
-        let conn = state.analytics_db.lock().unwrap();
-        (
-            get_total_clicks(&conn).unwrap_or(0),
-            get_total_page_views(&conn).unwrap_or(0),
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM global_landing_pages WHERE status != 'retired';",
+            [],
+            |r| r.get(0),
         )
+        .unwrap_or(0)
     };
+    let total_clicks = {
+        let users_conn = state.users_db.lock().unwrap();
+        crate::db::users::get_platform_total_clicks(&state.db.topology, &users_conn).unwrap_or(0)
+    };
+    let total_page_views = 0i64;
 
     Json(OverallStatsResponse {
         total_urls,
@@ -835,12 +926,17 @@ pub struct DetailStatsResponse {
 // GET /api/v1/stats/url/:uuid
 pub async fn api_url_stats(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -852,7 +948,7 @@ pub async fn api_url_stats(
         }
     }
 
-    let conn = state.analytics_db.lock().unwrap();
+    let conn = dbs.analytics.lock().unwrap();
     let clicks = get_clicks_trend(&conn, "url", &uuid, 30)
         .or_else(|_| get_clicks_trend_raw(&conn, "url", &uuid, 30))
         .unwrap_or_default();
@@ -879,12 +975,17 @@ pub async fn api_url_stats(
 // GET /api/v1/stats/page/:uuid
 pub async fn api_page_stats(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify Page exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_landing_page_by_id(&conn, &uuid)
             .unwrap_or(None)
             .is_none()
@@ -899,7 +1000,7 @@ pub async fn api_page_stats(
         }
     }
 
-    let conn = state.analytics_db.lock().unwrap();
+    let conn = dbs.analytics.lock().unwrap();
     let clicks = get_clicks_trend(&conn, "page", &uuid, 30)
         .or_else(|_| get_clicks_trend_raw(&conn, "page", &uuid, 30))
         .unwrap_or_default();
@@ -935,11 +1036,16 @@ pub struct QrStatsResponse {
 // GET /api/v1/qr/:code
 pub async fn api_get_qr_stats(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(code): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     let url_opt = {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         crate::db::content::get_url_by_code(&conn, &code).unwrap_or(None)
     };
 
@@ -957,7 +1063,7 @@ pub async fn api_get_qr_stats(
     };
 
     let (scan_count, scans) = {
-        let conn = state.analytics_db.lock().unwrap();
+        let conn = dbs.analytics.lock().unwrap();
         let count = crate::db::qr::get_qr_scan_count(&conn, &url.id).unwrap_or(0);
         let scans_list = crate::db::qr::get_qr_stats_for_url(&conn, &url.id).unwrap_or_default();
         (count, scans_list)
@@ -1030,9 +1136,14 @@ pub async fn api_set_preview(
     Path(uuid): Path<String>,
     Json(payload): Json<SetPreviewRequest>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -1044,7 +1155,7 @@ pub async fn api_set_preview(
         }
     }
 
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::preview::upsert_preview(
         &conn,
         &uuid,
@@ -1081,12 +1192,17 @@ pub async fn api_set_preview(
 // GET /api/v1/urls/:uuid/preview
 pub async fn api_get_preview(
     State(state): State<AppState>,
-    _user: ApiUser,
+    user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -1098,7 +1214,7 @@ pub async fn api_get_preview(
         }
     }
 
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::preview::get_preview(&conn, &uuid) {
         Ok(Some(preview)) => Json(preview).into_response(),
         Ok(None) => (
@@ -1124,9 +1240,14 @@ pub async fn api_delete_preview(
     user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -1138,7 +1259,7 @@ pub async fn api_delete_preview(
         }
     }
 
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::preview::delete_preview(&conn, &uuid) {
         Ok(true) => {
             // Audit Log
@@ -1186,9 +1307,14 @@ pub async fn api_set_password(
     Path(uuid): Path<String>,
     Json(payload): Json<SetPasswordRequest>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -1213,7 +1339,7 @@ pub async fn api_set_password(
         }
     };
 
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::content::set_url_password(&conn, &uuid, &hash) {
         Ok(true) => {
             // Audit Log
@@ -1257,9 +1383,14 @@ pub async fn api_remove_password(
     user: ApiUser,
     Path(uuid): Path<String>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &uuid).unwrap_or(None).is_none() {
             return (
                 StatusCode::NOT_FOUND,
@@ -1271,7 +1402,7 @@ pub async fn api_remove_password(
         }
     }
 
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::content::remove_url_password(&conn, &uuid) {
         Ok(true) => {
             // Audit Log
@@ -1321,9 +1452,14 @@ pub async fn api_create_qr(
     user: ApiUser,
     Json(payload): Json<CreateQrRequest>,
 ) -> Response {
+    let dbs = match get_api_tenant_dbs(&state, &user) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+
     // Verify URL exists in content.db
     {
-        let conn = state.content_db.lock().unwrap();
+        let conn = dbs.content.lock().unwrap();
         if get_url_by_id(&conn, &payload.url_id)
             .unwrap_or(None)
             .is_none()
@@ -1339,7 +1475,7 @@ pub async fn api_create_qr(
     }
 
     let style = payload.style.unwrap_or_else(|| "default".to_string());
-    let conn = state.content_db.lock().unwrap();
+    let conn = dbs.content.lock().unwrap();
     match crate::db::qr::upsert_qr_code(&conn, &payload.url_id, &style) {
         Ok(_) => {
             // Write Audit Event

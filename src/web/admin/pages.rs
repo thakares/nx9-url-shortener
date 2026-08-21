@@ -118,22 +118,26 @@ pub async fn user_pages_create(
         }
     }
 
+    let owner_tid = user
+        .tenant_id
+        .unwrap_or_else(crate::identity::TenantId::generate);
+
     {
-        let system_conn = state.system_db.lock().unwrap();
-        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
-            return Redirect::to("/user/pages?error=Short code/slug already exists")
-                .into_response();
-        }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
+        let reserved_conn = state.db.reserved.lock().unwrap();
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        if let Err(e) = crate::db::slugs::reserve_landing_page_slug(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
             &code,
-            user.id,
-            "page",
-            "",
-            "reserving",
+            &owner_tid,
         ) {
-            return Redirect::to(&format!("/user/pages?error=Failed to reserve slug: {}", e))
-                .into_response();
+            return Redirect::to(&format!(
+                "/user/pages?error=Short code/slug unavailable: {}",
+                e
+            ))
+            .into_response();
         }
     }
 
@@ -152,16 +156,8 @@ pub async fn user_pages_create(
     match res {
         Ok(page) => {
             {
-                let system_conn = state.system_db.lock().unwrap();
-                let global_status = if form.state == "published" {
-                    "active"
-                } else {
-                    "disabled"
-                };
-                let _ = system_conn.execute(
-                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
-                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
-                );
+                let pages_conn = state.db.global_landing_pages.lock().unwrap();
+                let _ = crate::db::slugs::activate_landing_page_slug(&pages_conn, &code, &page.id);
             }
             {
                 let users_conn = state.users_db.lock().unwrap();
@@ -181,8 +177,8 @@ pub async fn user_pages_create(
             Redirect::to("/user/pages").into_response()
         }
         Err(e) => {
-            let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, user.id);
+            let pages_conn = state.db.global_landing_pages.lock().unwrap();
+            let _ = crate::db::slugs::release_landing_page_slug(&pages_conn, &code, &owner_tid);
             Redirect::to(&format!("/user/pages?error=Database error: {}", e)).into_response()
         }
     }
@@ -221,11 +217,13 @@ pub async fn user_pages_delete(
             );
             match delete_landing_page(&conn, &id) {
                 Ok(_) => {
-                    let _ = crate::db::users::release_global_slug(
-                        &state.system_db.lock().unwrap(),
-                        &page.code,
-                        user.id,
-                    );
+                    {
+                        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+                        let _ = pages_conn.execute(
+                            "DELETE FROM global_landing_pages WHERE slug = ?1;",
+                            [&page.code],
+                        );
+                    }
                     let ip = get_client_ip(&headers, connect_info);
                     let _ = write_audit_log(
                         &state.admin_db.lock().unwrap(),
@@ -265,8 +263,14 @@ pub async fn pages_get(
     };
 
     let (pages, total_pages, page, visible_pages) = {
-        let conn = state.content_db.lock().unwrap();
-        let total_records = get_landing_page_count(&conn).unwrap_or(0);
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        let total_records: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_landing_pages WHERE status != 'retired';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
         let calculated_total_pages = (total_records as usize).div_ceil(PAGE_SIZE);
         let total_pages = std::cmp::max(1, calculated_total_pages);
         let requested_page = query.page.unwrap_or(1);
@@ -278,7 +282,58 @@ pub async fn pages_get(
         .clamp(1, total_pages);
         let offset = (current_page - 1) * PAGE_SIZE;
 
-        let pages = list_landing_pages(&conn, PAGE_SIZE as i64, offset as i64).unwrap_or_default();
+        let mut stmt = conn.prepare(
+            "SELECT slug, owner_tenant_id, target_id, created_at, updated_at, status FROM global_landing_pages WHERE status != 'retired' ORDER BY created_at DESC LIMIT ?1 OFFSET ?2;"
+        ).unwrap();
+        let rows = stmt
+            .query_map(rusqlite::params![PAGE_SIZE as i64, offset as i64], |row| {
+                let slug: String = row.get(0)?;
+                let owner_tid_str: String = row.get(1)?;
+                let target_id: String = row.get(2)?;
+                let created_at: String = row.get(3)?;
+                let updated_at: String = row.get(4)?;
+                let status: String = row.get(5)?;
+                Ok((
+                    slug,
+                    owner_tid_str,
+                    target_id,
+                    created_at,
+                    updated_at,
+                    status,
+                ))
+            })
+            .unwrap();
+
+        let mut pages = Vec::new();
+        for item in rows.flatten() {
+            let (slug, owner_tid_str, target_id, created_at, updated_at, status) = item;
+            let mut resolved_page = None;
+            if let Ok(tid) = owner_tid_str.parse::<crate::identity::TenantId>() {
+                if let Ok(user_dbs) = state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob)
+                {
+                    let u_conn = user_dbs.content.lock().unwrap();
+                    if let Ok(Some(p)) =
+                        crate::db::content::get_landing_page_by_id(&u_conn, &target_id)
+                    {
+                        resolved_page = Some(p);
+                    }
+                }
+            }
+            if let Some(p) = resolved_page {
+                pages.push(p);
+            } else {
+                pages.push(crate::models::LandingPage {
+                    id: target_id,
+                    code: slug.clone(),
+                    slug,
+                    title: String::new(),
+                    html_content: String::new(),
+                    state: status,
+                    created_at,
+                    updated_at,
+                });
+            }
+        }
 
         let start_page = current_page.saturating_sub(3).max(1);
         let end_page = std::cmp::min(total_pages, current_page + 3);
@@ -302,7 +357,8 @@ pub async fn pages_get(
     template.into_response()
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
+#[serde(default)]
 pub struct CreatePageForm {
     pub title: String,
     pub slug: String,
@@ -317,126 +373,16 @@ pub struct CreatePageForm {
 pub async fn pages_create(
     State(state): State<AppState>,
     jar: CookieJar,
-    headers: HeaderMap,
-    connect_info: Option<ConnectInfo<SocketAddr>>,
-    Form(form): Form<CreatePageForm>,
+    _headers: HeaderMap,
+    _connect_info: Option<ConnectInfo<SocketAddr>>,
+    Form(_form): Form<CreatePageForm>,
 ) -> Response {
-    let (user, session_id) = match require_auth(&state, &jar).await {
+    let (_user, _session_id) = match require_auth(&state, &jar).await {
         Ok(u) => u,
         Err(redir) => return redir.into_response(),
     };
 
-    if !verify_csrf(&session_id, &form.csrf_token) {
-        return Redirect::to("/admin/pages?error=Invalid CSRF token").into_response();
-    }
-
-    let ip = get_client_ip(&headers, connect_info);
-    let admin_user_id = user.id.parse::<i64>().unwrap_or(1);
-
-    // Custom Slug takes priority if provided
-    let mut code = form.custom_slug.trim().to_lowercase();
-    if code.is_empty() {
-        code = form.code.trim().to_lowercase();
-        if code.is_empty() {
-            code = generate_token(2);
-        } else {
-            if code.len() != 4 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Redirect::to(
-                    "/admin/pages?error=Custom code must be exactly 4 hex characters",
-                )
-                .into_response();
-            }
-        }
-    } else {
-        if !crate::utils::validation::validate_custom_slug(&code) {
-            return Redirect::to("/admin/pages?error=Custom slug must start with ! followed by 1-24 characters of a-z, 0-9, -, _")
-                .into_response();
-        }
-    }
-
-    let clean_slug = form.slug.trim().to_lowercase();
-    if clean_slug.is_empty() {
-        return Redirect::to("/admin/pages?error=Slug is required").into_response();
-    }
-
-    {
-        let users_conn = state.users_db.lock().unwrap();
-        if !crate::db::users::check_quota_limit(&users_conn, admin_user_id, "landings")
-            .unwrap_or(false)
-        {
-            return Redirect::to("/admin/pages?error=Quota limit exceeded").into_response();
-        }
-    }
-
-    {
-        let system_conn = state.system_db.lock().unwrap();
-        if !crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false) {
-            return Redirect::to("/admin/pages?error=Short code already exists").into_response();
-        }
-        // Always use owner_user_id = 1 for admin content so it resolves via state.content_db
-        if let Err(e) =
-            crate::db::users::register_global_slug(&system_conn, &code, 1, "page", "", "reserving")
-        {
-            return Redirect::to(&format!("/admin/pages?error=Failed to reserve slug: {}", e))
-                .into_response();
-        }
-    }
-
-    let res = {
-        let conn = state.content_db.lock().unwrap();
-        create_landing_page(
-            &conn,
-            &code,
-            &clean_slug,
-            &form.title,
-            &form.html_content,
-            &form.state,
-        )
-    };
-
-    match res {
-        Ok(page) => {
-            {
-                let system_conn = state.system_db.lock().unwrap();
-                let global_status = if form.state == "published" {
-                    "active"
-                } else {
-                    "disabled"
-                };
-                let _ = system_conn.execute(
-                    "UPDATE global_slugs SET target_id = ?1, status = ?2, updated_at = ?3 WHERE slug = ?4;",
-                    rusqlite::params![page.id, global_status, chrono::Utc::now().to_rfc3339(), code],
-                );
-            }
-            {
-                let users_conn = state.users_db.lock().unwrap();
-                let _ = crate::db::users::increment_quota_counter(
-                    &users_conn,
-                    admin_user_id,
-                    "landings",
-                );
-            }
-            {
-                let conn_admin = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(
-                    &conn_admin,
-                    &state,
-                    &user.username,
-                    "PAGE_CREATION",
-                    Some("page"),
-                    Some(&page.id),
-                    Some(&ip),
-                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
-                );
-            }
-            Redirect::to("/admin/pages").into_response()
-        }
-        Err(e) => {
-            let system_conn = state.system_db.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, 1);
-            Redirect::to(&format!("/admin/pages?error=Database error: {}", e)).into_response()
-        }
-    }
+    Redirect::to("/admin/pages?error=Admin is a platform operator and cannot create unowned application pages; create landing pages via a tenant user account").into_response()
 }
 
 // POST /admin/pages/delete/:id
@@ -460,25 +406,42 @@ pub async fn pages_delete(
 
     let ip = get_client_ip(&headers, connect_info);
 
-    let conn = state.content_db.lock().unwrap();
-    match delete_landing_page(&conn, &id) {
-        Ok(_) => {
-            {
-                let conn_admin = state.admin_db.lock().unwrap();
-                let _ = write_audit_log(
-                    &conn_admin,
-                    &state,
-                    &user.username,
-                    "PAGE_DELETION",
-                    Some("page"),
-                    Some(&id),
-                    Some(&ip),
-                    headers.get("user-agent").and_then(|h| h.to_str().ok()),
-                );
+    // Look up owner tenant in global_landing_pages
+    let owner_info = {
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        conn.query_row(
+            "SELECT slug, owner_tenant_id FROM global_landing_pages WHERE target_id = ?1 OR slug = ?1 LIMIT 1;",
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ).ok()
+    };
+
+    if let Some((slug, tid_str)) = owner_info {
+        if let Ok(tid) = tid_str.parse::<crate::identity::TenantId>() {
+            if let Ok(user_dbs) = state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob) {
+                let conn = user_dbs.content.lock().unwrap();
+                let _ = delete_landing_page(&conn, &id);
             }
-            Redirect::to("/admin/pages").into_response()
         }
-        Err(e) => Redirect::to(&format!("/admin/pages?error=Failed to delete page: {}", e))
-            .into_response(),
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        let _ = conn.execute(
+            "UPDATE global_landing_pages SET status = 'retired', updated_at = ?1 WHERE slug = ?2;",
+            rusqlite::params![chrono::Utc::now().to_rfc3339(), slug],
+        );
     }
+
+    {
+        let conn_admin = state.admin_db.lock().unwrap();
+        let _ = write_audit_log(
+            &conn_admin,
+            &state,
+            &user.username,
+            "PAGE_DELETION",
+            Some("page"),
+            Some(&id),
+            Some(&ip),
+            headers.get("user-agent").and_then(|h| h.to_str().ok()),
+        );
+    }
+    Redirect::to("/admin/pages").into_response()
 }

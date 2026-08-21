@@ -4,11 +4,11 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use chrono::Utc;
-use rusqlite::OptionalExtension;
 use std::net::SocketAddr;
 use uuid::Uuid;
 
 use crate::analytics::get_client_country;
+use crate::db::tenant::TenantOpenMode;
 use crate::models::VisitRecord;
 use crate::state::AppState;
 use crate::utils::get_client_ip;
@@ -25,37 +25,15 @@ pub async fn resolve_page(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    // 1. Query global slug namespace in system.db
-    let slug_info = {
-        let system_conn = state.system_db.lock().unwrap();
-        let mut stmt = match system_conn.prepare(
-            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;"
-        ) {
-            Ok(s) => s,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-        };
-        stmt.query_row(rusqlite::params![code], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })
-        .optional()
-    };
-
-    let (owner_user_id, _target_type, _target_id, slug_status) = match slug_info {
+    // 1. Query global slug namespace across v0.8 slug databases (with fallback)
+    let info = match state.lookup_slug(&code) {
         Ok(Some(info)) => info,
-        Ok(None) => {
-            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
-            (1, "page".to_string(), "".to_string(), "active".to_string())
-        }
+        Ok(None) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
         Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
     };
 
     // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
-    if slug_status != "active" {
+    if info.status != "active" {
         return (
             StatusCode::GONE,
             "This content has been disabled or moderated",
@@ -64,10 +42,11 @@ pub async fn resolve_page(
     }
 
     // 2. Get content database connection via tenant DB resolution
-    let content_conn = match state.get_user_dbs(owner_user_id) {
-        Ok(dbs) => dbs.content,
-        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-    };
+    let content_conn =
+        match state.open_slug_owner(&info.owner_tenant_id, TenantOpenMode::PublicContent) {
+            Ok(dbs) => dbs.content,
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+        };
 
     let page_opt = {
         let conn = content_conn.lock().unwrap();
@@ -103,6 +82,9 @@ pub async fn resolve_page(
                 .unwrap_or("Unknown")
                 .to_string();
 
+            let owner_tenant_id = crate::identity::TenantId::parse(&info.owner_tenant_id).ok();
+            let owner_user_id = info.owner_tenant_id.parse::<i64>().ok();
+
             let record = VisitRecord {
                 id: Uuid::new_v4().to_string(),
                 target_type: "page".to_string(),
@@ -114,7 +96,8 @@ pub async fn resolve_page(
                 accept_language,
                 country,
                 status_code: 200,
-                owner_user_id: Some(owner_user_id),
+                owner_tenant_id,
+                owner_user_id,
             };
 
             state.analytics_queue.push(record);

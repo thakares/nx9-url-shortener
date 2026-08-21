@@ -31,8 +31,6 @@ async fn test_global_slug_lookup_and_redirection() {
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -52,17 +50,17 @@ async fn test_global_slug_lookup_and_redirection() {
     .await
     .unwrap();
 
-    let user_id = {
+    let (user_id, tid) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
+        let u = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     {
         let conn = bzod::jobs::open_user_content_conn(&db, user_id).unwrap();
-        bzod::db::content::create_url_extended(
+        let url = bzod::db::content::create_url_extended(
             &conn,
             "!my-routing-slug",
             "https://example.com/target",
@@ -75,16 +73,15 @@ async fn test_global_slug_lookup_and_redirection() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!my-routing-slug",
-            user_id,
-            "url",
-            "xyz",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!my-routing-slug', ?1, ?2, ?3, ?4, 'active', NULL);",
+                rusqlite::params![tid.as_str(), &url.id, now, now],
+            )
+            .unwrap();
     }
 
     // Call resolve_redirect directly
@@ -128,8 +125,6 @@ async fn test_disabled_slug_returns_410() {
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
@@ -148,17 +143,17 @@ async fn test_disabled_slug_returns_410() {
     .await
     .unwrap();
 
-    let user_id = {
+    let (user_id, tid) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
+        let u = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     {
         let conn = bzod::jobs::open_user_content_conn(&db, user_id).unwrap();
-        bzod::db::content::create_url_extended(
+        let url = bzod::db::content::create_url_extended(
             &conn,
             "!disabled-slug",
             "https://example.com/target",
@@ -171,22 +166,13 @@ async fn test_disabled_slug_returns_410() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!disabled-slug",
-            user_id,
-            "url",
-            "xyz",
-            "active",
-        )
-        .unwrap();
-
-        // Disable slug
-        system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
             .execute(
-                "UPDATE global_slugs SET status = 'disabled' WHERE slug = '!disabled-slug';",
-                [],
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!disabled-slug', ?1, ?2, ?3, ?4, 'disabled', NULL);",
+                rusqlite::params![tid.as_str(), &url.id, now, now],
             )
             .unwrap();
     }

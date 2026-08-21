@@ -1,3 +1,4 @@
+use crate::identity::TenantId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -12,6 +13,9 @@ pub struct VisitRecord {
     pub accept_language: String,
     pub country: String,
     pub status_code: u16,
+    #[serde(default)]
+    pub owner_tenant_id: Option<TenantId>,
+    #[serde(default)]
     pub owner_user_id: Option<i64>,
 }
 

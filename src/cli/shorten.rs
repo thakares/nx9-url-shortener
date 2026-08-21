@@ -18,6 +18,24 @@ pub async fn run(
     }
     let db = Db::init(&config)?;
 
+    // Resolve active standard user tenant
+    let (user_id, tid) = {
+        let users_conn = db.users.lock().unwrap();
+        let users = crate::db::users::list_users(&users_conn)?;
+        let active_user = users.into_iter().find(|u| {
+            u.account_type == "standard" && u.status == "active" && u.tenant_id.is_some()
+        });
+        match active_user {
+            Some(u) => (u.id, u.tenant_id.unwrap()),
+            None => {
+                return Err(
+                    "Cannot shorten URL: No active standard user tenant found. Create a standard user first with `bzod user create`."
+                        .into(),
+                )
+            }
+        }
+    };
+
     // 2. Validate/normalize slug/code
     let code = match slug {
         Some(s) => {
@@ -33,17 +51,24 @@ pub async fn run(
         None => crate::utils::random::generate_token(3),
     };
 
-    // 3. Register slug in system.db with status 'reserving' and check availability
+    // 3. Register slug in global_urls with status 'reserving'
     {
-        let system_conn = db.system.lock().unwrap();
-        if !crate::db::users::is_slug_available(&system_conn, &code)? {
-            return Err("Short code/slug already exists".into());
+        let urls_conn = db.global_urls.lock().unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let reserved_conn = db.reserved.lock().unwrap();
+        if let Err(e) =
+            crate::db::slugs::reserve_url_slug(&reserved_conn, &urls_conn, &pages_conn, &code, &tid)
+        {
+            return Err(format!("Slug '{}' already exists or is unavailable: {}", code, e).into());
         }
-        crate::db::users::register_global_slug(&system_conn, &code, 1, "url", "", "reserving")?;
     }
 
-    // 4. Persist URL
-    let conn = db.content.lock().unwrap();
+    // 4. Persist URL in tenant content DB
+    let content_path = db.topology.tenant_content_db(tid);
+    let conn = rusqlite::Connection::open(&content_path)?;
+    let _ = crate::db::sqlite::enable_wal(&conn, "content");
+    let _ = crate::db::sqlite::enable_foreign_keys(&conn, "content");
+
     let res = crate::db::content::create_url_extended(
         &conn,
         &code,
@@ -58,18 +83,15 @@ pub async fn run(
 
     match res {
         Ok(url) => {
-            // Activate slug in system.db
+            // Activate slug in global_urls
             {
-                let system_conn = db.system.lock().unwrap();
-                system_conn.execute(
-                    "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
-                    rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), code],
-                )?;
+                let urls_conn = db.global_urls.lock().unwrap();
+                crate::db::slugs::activate_url_slug(&urls_conn, &code, &url.id)?;
             }
-            // Increment quota for user ID 1
+            // Increment quota
             {
                 let users_conn = db.users.lock().unwrap();
-                crate::db::users::increment_quota_counter(&users_conn, 1, "urls")?;
+                crate::db::users::increment_quota_counter(&users_conn, user_id, "urls")?;
             }
 
             let proto = if config.cookie_secure {
@@ -87,8 +109,8 @@ pub async fn run(
             Ok(())
         }
         Err(e) => {
-            let system_conn = db.system.lock().unwrap();
-            let _ = crate::db::users::release_global_slug(&system_conn, &code, 1);
+            let urls_conn = db.global_urls.lock().unwrap();
+            let _ = crate::db::slugs::release_url_slug(&urls_conn, &code, &tid);
             Err(e.into())
         }
     }

@@ -12,8 +12,36 @@ pub async fn url_analytics_get(
         Err(redir) => return redir.into_response(),
     };
 
+    let (_slug, owner_tid) = {
+        let conn = state.db.global_urls.lock().unwrap();
+        match conn.query_row(
+            "SELECT slug, owner_tenant_id FROM global_urls WHERE target_id = ?1 OR slug = ?1 LIMIT 1;",
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok((s, t)) => (s, t),
+            Err(_) => return (StatusCode::NOT_FOUND, "URL not found").into_response(),
+        }
+    };
+    let tid = match owner_tid.parse::<crate::identity::TenantId>() {
+        Ok(t) => t,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid tenant identity").into_response()
+        }
+    };
+    let user_dbs = match state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to open tenant database",
+            )
+                .into_response()
+        }
+    };
+
     let url = {
-        let conn = state.content_db.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         match get_url_by_id(&conn, &id) {
             Ok(Some(u)) => u,
             Ok(None) => return (StatusCode::NOT_FOUND, "URL not found").into_response(),
@@ -21,7 +49,7 @@ pub async fn url_analytics_get(
         }
     };
 
-    let conn = state.analytics_db.lock().unwrap();
+    let conn = user_dbs.analytics.lock().unwrap();
 
     let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
     let has_utm_source = schema_cols.contains("utm_source");
@@ -184,8 +212,36 @@ pub async fn page_analytics_get(
         Err(redir) => return redir.into_response(),
     };
 
+    let (_slug, owner_tid) = {
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        match conn.query_row(
+            "SELECT slug, owner_tenant_id FROM global_landing_pages WHERE target_id = ?1 OR slug = ?1 LIMIT 1;",
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok((s, t)) => (s, t),
+            Err(_) => return (StatusCode::NOT_FOUND, "Landing page not found").into_response(),
+        }
+    };
+    let tid = match owner_tid.parse::<crate::identity::TenantId>() {
+        Ok(t) => t,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid tenant identity").into_response()
+        }
+    };
+    let user_dbs = match state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to open tenant database",
+            )
+                .into_response()
+        }
+    };
+
     let page = {
-        let conn = state.content_db.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         match get_landing_page_by_id(&conn, &id) {
             Ok(Some(p)) => p,
             Ok(None) => return (StatusCode::NOT_FOUND, "Landing page not found").into_response(),
@@ -193,7 +249,7 @@ pub async fn page_analytics_get(
         }
     };
 
-    let conn = state.analytics_db.lock().unwrap();
+    let conn = user_dbs.analytics.lock().unwrap();
 
     let schema_cols = get_visits_schema_columns(&conn).unwrap_or_default();
     let has_utm_source = schema_cols.contains("utm_source");
@@ -439,6 +495,7 @@ pub async fn user_analytics_get(
                     accept_language: row.get(7)?,
                     country: row.get(8)?,
                     status_code: row.get(9)?,
+                    owner_tenant_id: user.tenant_id,
                     owner_user_id: Some(user.id),
                 })
             })
@@ -478,12 +535,12 @@ pub async fn user_url_analytics_get(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_urls.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_urls WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -493,7 +550,12 @@ pub async fn user_url_analytics_get(
         }
     };
 
-    if owner_user_id != user.id || target_type != "url" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -674,12 +736,12 @@ pub async fn user_page_analytics_get(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_landing_pages.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_landing_pages WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -689,7 +751,12 @@ pub async fn user_page_analytics_get(
         }
     };
 
-    if owner_user_id != user.id || target_type != "page" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -862,12 +929,12 @@ pub async fn user_url_analytics_csv_export(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_urls.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_urls WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -877,7 +944,12 @@ pub async fn user_url_analytics_csv_export(
         }
     };
 
-    if owner_user_id != user.id || target_type != "url" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -901,12 +973,12 @@ pub async fn user_url_analytics_json_export(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_urls.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_urls WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -916,7 +988,12 @@ pub async fn user_url_analytics_json_export(
         }
     };
 
-    if owner_user_id != user.id || target_type != "url" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -940,12 +1017,12 @@ pub async fn user_page_analytics_csv_export(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_landing_pages.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_landing_pages WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -955,7 +1032,12 @@ pub async fn user_page_analytics_csv_export(
         }
     };
 
-    if owner_user_id != user.id || target_type != "page" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 
@@ -979,12 +1061,12 @@ pub async fn user_page_analytics_json_export(
     };
 
     // Ownership check
-    let (owner_user_id, target_type) = {
-        let conn = state.system_db.lock().unwrap();
+    let owner_tid_str = {
+        let conn = state.db.global_landing_pages.lock().unwrap();
         match conn.query_row(
-            "SELECT owner_user_id, target_type FROM global_slugs WHERE target_id = ?1",
+            "SELECT owner_tenant_id FROM global_landing_pages WHERE target_id = ?1",
             [&id],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| row.get::<_, String>(0),
         ) {
             Ok(val) => val,
             Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -994,7 +1076,12 @@ pub async fn user_page_analytics_json_export(
         }
     };
 
-    if owner_user_id != user.id || target_type != "page" {
+    let user_tid = match user.tenant_id {
+        Some(t) => t.to_string(),
+        None => return StatusCode::FORBIDDEN.into_response(),
+    };
+
+    if owner_tid_str != user_tid && owner_tid_str != format!("{}", user.id) {
         return StatusCode::FORBIDDEN.into_response();
     }
 

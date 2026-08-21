@@ -133,8 +133,6 @@ pub async fn run(
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),

@@ -56,26 +56,33 @@ fn flush_batch(db: &Db, batch: &mut Vec<VisitRecord>) {
     }
 
     info!(
-        "Flushing {} visits to user analytics databases",
+        "Flushing {} visits to tenant analytics databases",
         batch.len()
     );
 
-    // Group visits by owner_user_id
-    let mut groups: std::collections::HashMap<i64, Vec<VisitRecord>> =
+    // Group visits by owner_tenant_id (or legacy user 1 fallback)
+    let mut groups: std::collections::HashMap<crate::identity::TenantId, Vec<VisitRecord>> =
         std::collections::HashMap::new();
+    let mut legacy_user1_visits: Vec<VisitRecord> = Vec::new();
+
     for record in batch.drain(..) {
-        let user_id = record.owner_user_id.unwrap_or(1); // fallback to legacy_admin (user 1)
-        groups.entry(user_id).or_default().push(record);
+        if let Some(tenant_id) = record.owner_tenant_id {
+            groups.entry(tenant_id).or_default().push(record);
+        } else if record.owner_user_id == Some(1) {
+            legacy_user1_visits.push(record);
+        } else {
+            error!("Dropping analytics visit with no owner_tenant_id");
+        }
     }
 
-    for (user_id, user_visits) in groups {
-        let db_path = db
-            .data_dir
-            .join("users")
-            .join(user_id.to_string())
-            .join("analytics.db");
-        if let Some(parent) = db_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+    for (tenant_id, tenant_visits) in groups {
+        let db_path = db.topology.tenant_analytics_db(tenant_id);
+        if !db_path.exists() {
+            error!(
+                "Refusing to write analytics for non-existent tenant analytics path: {:?}",
+                db_path
+            );
+            continue;
         }
 
         match rusqlite::Connection::open(&db_path) {
@@ -83,18 +90,30 @@ fn flush_batch(db: &Db, batch: &mut Vec<VisitRecord>) {
                 let _ = crate::db::sqlite::enable_wal(&conn, "analytics");
                 let _ = crate::db::sqlite::enable_foreign_keys(&conn, "analytics");
 
-                if let Err(e) = insert_visits_batch(&mut conn, &user_visits) {
+                if let Err(e) = insert_visits_batch(&mut conn, &tenant_visits) {
                     error!(
-                        "Failed to write analytics batch to user {} database: {:?}",
-                        user_id, e
+                        "Failed to write analytics batch to tenant {} database: {:?}",
+                        tenant_id, e
                     );
                 }
             }
             Err(e) => {
                 error!(
-                    "Failed to open analytics database for user {}: {:?}",
-                    user_id, e
+                    "Failed to open analytics database for tenant {}: {:?}",
+                    tenant_id, e
                 );
+            }
+        }
+    }
+
+    if !legacy_user1_visits.is_empty() {
+        if let Ok(legacy_db_path) = db.topology.analytics_db("1") {
+            if legacy_db_path.exists() {
+                if let Ok(mut conn) = rusqlite::Connection::open(&legacy_db_path) {
+                    let _ = crate::db::sqlite::enable_wal(&conn, "analytics");
+                    let _ = crate::db::sqlite::enable_foreign_keys(&conn, "analytics");
+                    let _ = insert_visits_batch(&mut conn, &legacy_user1_visits);
+                }
             }
         }
     }

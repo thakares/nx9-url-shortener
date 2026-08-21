@@ -67,9 +67,36 @@ pub async fn api_bulk_qr(
     }
 
     // Retrieve URLs from database
+    let content_db = match user.0 {
+        crate::models::ApiActor::User(ref u) => {
+            let user_dbs = match state.get_user_dbs(u.id) {
+                Ok(dbs) => dbs,
+                Err(_) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(BulkErrorResponse {
+                            error: "Database error".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
+            user_dbs.content.clone()
+        }
+        crate::models::ApiActor::Admin(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(BulkErrorResponse {
+                    error: "Admin is a platform operator and cannot export application URLs without tenant context".to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+
     let mut urls = Vec::new();
     {
-        let conn = match lock_db(&state.content_db, "content_db") {
+        let conn = match lock_db(&content_db, "content_db") {
             Ok(c) => c,
             Err(e) => {
                 return (
@@ -186,10 +213,30 @@ pub async fn api_bulk_url(
             .into_response();
     }
 
-    // Dynamically resolve target user ID and content DB
-    let (target_user_id, content_db) = match user.0 {
-        crate::models::ApiActor::Admin(_) => (1, state.content_db.clone()),
+    // Dynamically resolve target user ID, TenantId, and content DB
+    let (target_user_id, target_tenant_id, content_db) = match user.0 {
+        crate::models::ApiActor::Admin(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(BulkErrorResponse {
+                    error: "Admin is a platform operator and cannot create application URLs directly without tenant context".to_string(),
+                }),
+            )
+                .into_response();
+        }
         crate::models::ApiActor::User(ref u) => {
+            let tenant_id = match u.tenant_id {
+                Some(tid) => tid,
+                None => {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(BulkErrorResponse {
+                            error: "User has no tenant context".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             let user_dbs = match state.get_user_dbs(u.id) {
                 Ok(dbs) => dbs,
                 Err(_) => {
@@ -202,7 +249,7 @@ pub async fn api_bulk_url(
                         .into_response()
                 }
             };
-            (u.id, user_dbs.content.clone())
+            (u.id, tenant_id, user_dbs.content.clone())
         }
     };
 
@@ -226,9 +273,12 @@ pub async fn api_bulk_url(
 
     let created_urls = match create_urls_bulk(
         &content_db,
-        &state.system_db,
+        &state.db.reserved,
+        &state.db.global_urls,
+        &state.db.global_landing_pages,
         &state.users_db,
         target_user_id,
+        target_tenant_id,
         items,
     ) {
         Ok(urls) => urls,

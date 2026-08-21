@@ -20,14 +20,24 @@ async fn test_global_slug_uniqueness() {
 
     let db = Db::init(&config).expect("Failed to init Db");
 
-    let system_conn = db.system.lock().unwrap();
+    let urls_conn = db.global_urls.lock().unwrap();
+    let reserved_conn = db.reserved.lock().unwrap();
+    let pages_conn = db.global_landing_pages.lock().unwrap();
 
     // Register a slug
-    bzod::db::users::register_global_slug(&system_conn, "!myslug", 1, "url", "url1", "active")
+    let now = chrono::Utc::now().to_rfc3339();
+    urls_conn
+        .execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!myslug', 't-tenant1234', 'url1', ?1, ?2, 'active', NULL);",
+            rusqlite::params![now, now],
+        )
         .unwrap();
 
     // Verify it is not available
-    let avail = bzod::db::users::is_slug_available(&system_conn, "!myslug").unwrap();
+    let avail =
+        bzod::db::slugs::is_slug_available(&reserved_conn, &urls_conn, &pages_conn, "!myslug")
+            .unwrap();
     assert!(!avail);
 
     let _ = fs::remove_dir_all(&temp_dir);
@@ -41,7 +51,9 @@ async fn test_reserved_slug_rejection() {
     let config = create_temp_config(temp_dir.clone());
 
     let db = Db::init(&config).expect("Failed to init Db");
-    let system_conn = db.system.lock().unwrap();
+    let urls_conn = db.global_urls.lock().unwrap();
+    let reserved_conn = db.reserved.lock().unwrap();
+    let pages_conn = db.global_landing_pages.lock().unwrap();
 
     let reserved = vec![
         "admin",
@@ -72,7 +84,9 @@ async fn test_reserved_slug_rejection() {
     ];
 
     for slug in reserved {
-        let avail = bzod::db::users::is_slug_available(&system_conn, slug).unwrap();
+        let avail =
+            bzod::db::slugs::is_slug_available(&reserved_conn, &urls_conn, &pages_conn, slug)
+                .unwrap();
         assert!(!avail, "Reserved slug '{}' should not be available", slug);
     }
 
@@ -97,27 +111,35 @@ async fn test_slug_release_on_user_deletion() {
     .await
     .unwrap();
 
-    let user_id = {
+    let (user_id, tid) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
+        let u = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     // Register slug for this user
     {
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
+        let urls_conn = db.global_urls.lock().unwrap();
+        let reserved_conn = db.reserved.lock().unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!user-slug', ?1, 'url_xyz', ?2, ?3, 'active', NULL);",
+                rusqlite::params![tid.as_str(), now, now],
+            )
+            .unwrap();
+
+        let avail = bzod::db::slugs::is_slug_available(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
             "!user-slug",
-            user_id,
-            "url",
-            "url_xyz",
-            "active",
         )
         .unwrap();
-        let avail = bzod::db::users::is_slug_available(&system_conn, "!user-slug").unwrap();
         assert!(!avail);
     }
 
@@ -128,11 +150,20 @@ async fn test_slug_release_on_user_deletion() {
 
     // Slug should now be released and available
     {
-        let system_conn = db.system.lock().unwrap();
-        let avail = bzod::db::users::is_slug_available(&system_conn, "!user-slug").unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let reserved_conn = db.reserved.lock().unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let avail = bzod::db::slugs::is_slug_available(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
+            "!user-slug",
+        )
+        .unwrap();
         assert!(avail);
 
         // Verify history populated
+        let system_conn = db.system.lock().unwrap();
         let count: i64 = system_conn
             .query_row(
                 "SELECT COUNT(*) FROM slug_history WHERE slug = ?1 AND action = 'deleted';",

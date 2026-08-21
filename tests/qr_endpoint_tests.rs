@@ -39,8 +39,6 @@ async fn start_test_server(
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -85,12 +83,12 @@ async fn test_qr_endpoints_and_redirection_hardening() {
     .await
     .unwrap();
 
-    let id_a = {
+    let (id_a, tid_a) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "usera")
+        let u = bzod::db::users::get_user_by_username(&conn, "usera")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     // User A adds an active URL
@@ -109,16 +107,15 @@ async fn test_qr_endpoints_and_redirection_hardening() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "a1b2c3",
-            id_a,
-            "url",
-            &url.id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('a1b2c3', ?1, ?2, ?3, ?4, 'active', NULL);",
+                rusqlite::params![tid_a.as_str(), &url.id, now, now],
+            )
+            .unwrap();
     }
 
     // User A adds a disabled URL
@@ -137,16 +134,15 @@ async fn test_qr_endpoints_and_redirection_hardening() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "d4e5f6",
-            id_a,
-            "url",
-            &url.id,
-            "disabled",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('d4e5f6', ?1, ?2, ?3, ?4, 'disabled', NULL);",
+                rusqlite::params![tid_a.as_str(), &url.id, now, now],
+            )
+            .unwrap();
     }
 
     // User A adds an active Page
@@ -162,16 +158,15 @@ async fn test_qr_endpoints_and_redirection_hardening() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "a1b2",
-            id_a,
-            "page",
-            &page.id,
-            "active",
-        )
-        .unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        pages_conn
+            .execute(
+                "INSERT INTO global_landing_pages (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('a1b2', ?1, ?2, ?3, ?4, 'active', NULL);",
+                rusqlite::params![tid_a.as_str(), &page.id, now, now],
+            )
+            .unwrap();
     }
 
     // User A adds a disabled Page
@@ -187,16 +182,15 @@ async fn test_qr_endpoints_and_redirection_hardening() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "c3d4",
-            id_a,
-            "page",
-            &page.id,
-            "disabled",
-        )
-        .unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        pages_conn
+            .execute(
+                "INSERT INTO global_landing_pages (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('c3d4', ?1, ?2, ?3, ?4, 'disabled', NULL);",
+                rusqlite::params![tid_a.as_str(), &page.id, now, now],
+            )
+            .unwrap();
     }
 
     // 1. Verify Active URL QR endpoints return 200 with correct content types

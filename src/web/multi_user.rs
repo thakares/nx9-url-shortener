@@ -4,11 +4,11 @@ use axum::{
     response::{IntoResponse, Json, Response},
 };
 use chrono::Utc;
-use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::ApiUser;
+use crate::identity::TenantId;
 use crate::models::ApiActor;
 use crate::state::AppState;
 
@@ -354,40 +354,68 @@ pub fn delete_user_resources(
         }
     };
 
-    // 1. Transactional clean up on system.db (deleting their global slug mappings)
-    {
-        let mut system_conn = state.system_db.lock().unwrap();
-        let tx = system_conn.transaction().map_err(|e| e.to_string())?;
+    // 1. Transactional clean up on v0.8 slug databases
+    let now = Utc::now().to_rfc3339();
+    if let Some(ref tid) = user_details.tenant_id {
+        let tid_str = tid.to_string();
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let system_conn = state.system_db.lock().unwrap();
 
-        let slugs: Vec<String> = {
-            let mut stmt = tx
-                .prepare("SELECT slug FROM global_slugs WHERE owner_user_id = ?1;")
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map([target_id], |row| row.get(0))
-                .map_err(|e| e.to_string())?;
-            rows.filter_map(|r| r.ok()).collect()
+        // Get all URL slugs owned by tenant
+        let url_slugs: Vec<String> = if let Ok(mut stmt) =
+            urls_conn.prepare("SELECT slug FROM global_urls WHERE owner_tenant_id = ?1;")
+        {
+            stmt.query_map([&tid_str], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
         };
 
-        let now = Utc::now().to_rfc3339();
-        for slug in slugs {
-            let _ = tx.execute("DELETE FROM global_slugs WHERE slug = ?1;", [&slug]);
-            let _ = tx.execute(
+        for slug in url_slugs {
+            let _ = urls_conn.execute("DELETE FROM global_urls WHERE slug = ?1;", [&slug]);
+            let _ = system_conn.execute(
                 "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username)
                  VALUES (?1, ?2, NULL, 'deleted', ?3, ?4);",
                 rusqlite::params![slug, target_id, now, admin_username],
             );
         }
 
-        tx.commit()
-            .map_err(|e| format!("Failed to release slugs: {}", e))?;
+        // Get all page slugs owned by tenant
+        let page_slugs: Vec<String> = if let Ok(mut stmt) =
+            pages_conn.prepare("SELECT slug FROM global_landing_pages WHERE owner_tenant_id = ?1;")
+        {
+            stmt.query_map([&tid_str], |row| row.get::<_, String>(0))
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        for slug in page_slugs {
+            let _ =
+                pages_conn.execute("DELETE FROM global_landing_pages WHERE slug = ?1;", [&slug]);
+            let _ = system_conn.execute(
+                "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username)
+                 VALUES (?1, ?2, NULL, 'deleted', ?3, ?4);",
+                rusqlite::params![slug, target_id, now, admin_username],
+            );
+        }
     }
 
-    let user_dir = state
-        .config
-        .data_dir
-        .join("users")
-        .join(target_id.to_string());
+    let user_dir = {
+        let conn = state.users_db.lock().unwrap();
+        match crate::db::users::get_user_by_id(&conn, target_id) {
+            Ok(Some(u)) => crate::db::tenant::location_for_user(&u)
+                .and_then(|loc| {
+                    loc.dir(&state.db.topology)
+                        .map_err(|e| crate::error::AppError::BadRequest(e.to_string()))
+                })
+                .map_err(|e| e.to_string())?,
+            _ => return Err("User not found".into()),
+        }
+    };
     if user_dir.exists() {
         let _ = std::fs::remove_dir_all(&user_dir);
     }
@@ -444,231 +472,23 @@ pub async fn admin_transfer_slug(
         Err(err_resp) => return err_resp,
     };
 
-    // 1. Check if the slug exists and get details
-    let (old_owner_user_id, target_type, _target_id) = {
-        let system_conn = state.system_db.lock().unwrap();
-        let mut stmt = match system_conn.prepare(
-            "SELECT owner_user_id, target_type, target_id FROM global_slugs WHERE slug = ?1;",
-        ) {
-            Ok(s) => s,
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-        };
-        let row_opt = stmt
-            .query_row([&payload.slug], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                ))
-            })
-            .optional();
-
-        match row_opt {
-            Ok(Some(r)) => r,
-            Ok(None) => return (StatusCode::NOT_FOUND, "Slug not found").into_response(),
-            Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
-        }
+    let req = crate::services::slug_transfer::SlugTransferRequest {
+        slug: payload.slug,
+        new_owner_user_id: payload.new_owner_user_id,
     };
 
-    if old_owner_user_id == payload.new_owner_user_id {
-        return (
-            StatusCode::BAD_REQUEST,
-            "New owner must be different from the current owner",
-        )
-            .into_response();
+    match crate::services::slug_transfer::transfer_slug(&state, &req, &admin.username) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(crate::services::slug_transfer::TransferError::NotFound(m)) => {
+            (StatusCode::NOT_FOUND, m.to_string()).into_response()
+        }
+        Err(crate::services::slug_transfer::TransferError::BadRequest(m)) => {
+            (StatusCode::BAD_REQUEST, m).into_response()
+        }
+        Err(crate::services::slug_transfer::TransferError::Internal(m)) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, m).into_response()
+        }
     }
-
-    // 2. Fetch destination databases
-    let old_dbs = match state.get_user_dbs(old_owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load current owner's database",
-            )
-                .into_response()
-        }
-    };
-    let new_dbs = match state.get_user_dbs(payload.new_owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Failed to load new owner's database",
-            )
-                .into_response()
-        }
-    };
-
-    // 3. Perform transfer: copy record from old owner's content.db to new owner's content.db
-    let mut new_target_id = String::new();
-    let transfer_success = {
-        let old_conn = old_dbs.content.lock().unwrap();
-        let new_conn = new_dbs.content.lock().unwrap();
-
-        if target_type == "url" {
-            // Get URL record
-            let url_opt = match crate::db::content::get_url_by_code(&old_conn, &payload.slug) {
-                Ok(u) => u,
-                Err(e) => {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
-                }
-            };
-
-            if let Some(url) = url_opt {
-                // Check new owner quotas
-                let new_users_conn = state.users_db.lock().unwrap();
-                let quota_opt =
-                    crate::db::users::get_user_quotas(&new_users_conn, payload.new_owner_user_id)
-                        .unwrap_or(None);
-                if let Some(quota) = quota_opt {
-                    if quota.current_urls >= quota.max_urls {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            "New owner has exceeded URL quota limit",
-                        )
-                            .into_response();
-                    }
-                }
-
-                // Insert into new owner database
-                let ins_res = crate::db::content::create_url_extended(
-                    &new_conn,
-                    &url.code,
-                    &url.destination,
-                    url.title.as_deref(),
-                    url.description.as_deref(),
-                    &url.tags,
-                    url.expires_at.as_deref(),
-                    url.password_hash.as_deref(),
-                    url.max_access_count,
-                );
-
-                match ins_res {
-                    Ok(new_url) => {
-                        new_target_id = new_url.id;
-                        // Delete from old owner database
-                        let _ = crate::db::content::delete_url(&old_conn, &url.id);
-                        true
-                    }
-                    Err(e) => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed to copy URL to new owner: {}", e),
-                        )
-                            .into_response();
-                    }
-                }
-            } else {
-                false
-            }
-        } else if target_type == "page" {
-            // Get page record
-            let page_opt =
-                match crate::db::content::get_landing_page_by_code(&old_conn, &payload.slug) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
-                    }
-                };
-
-            if let Some(page) = page_opt {
-                // Check new owner quotas
-                let new_users_conn = state.users_db.lock().unwrap();
-                let quota_opt =
-                    crate::db::users::get_user_quotas(&new_users_conn, payload.new_owner_user_id)
-                        .unwrap_or(None);
-                if let Some(quota) = quota_opt {
-                    if quota.current_landings >= quota.max_landings {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            "New owner has exceeded landing page quota limit",
-                        )
-                            .into_response();
-                    }
-                }
-
-                // Insert into new owner database
-                let ins_res = crate::db::content::create_landing_page(
-                    &new_conn,
-                    &page.code,
-                    &page.slug,
-                    &page.title,
-                    &page.html_content,
-                    &page.state,
-                );
-
-                match ins_res {
-                    Ok(new_page) => {
-                        new_target_id = new_page.id;
-                        // Delete from old owner database
-                        let _ = crate::db::content::delete_landing_page(&old_conn, &page.id);
-                        true
-                    }
-                    Err(e) => {
-                        return (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            format!("Failed to copy Page to new owner: {}", e),
-                        )
-                            .into_response();
-                    }
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        }
-    };
-
-    if !transfer_success {
-        return (StatusCode::NOT_FOUND, "Content not found in owner database").into_response();
-    }
-
-    // 4. Update system global_slugs, slug_history and adjust quotas
-    {
-        let system_conn = state.system_db.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-
-        let _ = system_conn.execute(
-            "UPDATE global_slugs SET owner_user_id = ?1, target_id = ?2, updated_at = ?3 WHERE slug = ?4;",
-            rusqlite::params![payload.new_owner_user_id, new_target_id, now, payload.slug],
-        );
-
-        let _ = system_conn.execute(
-            "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username)
-             VALUES (?1, ?2, ?3, 'transferred', ?4, ?5);",
-            rusqlite::params![payload.slug, old_owner_user_id, payload.new_owner_user_id, now, admin.username],
-        );
-
-        // Adjust quotas
-        let users_conn = state.users_db.lock().unwrap();
-        let field = if target_type == "url" {
-            "urls"
-        } else {
-            "landings"
-        };
-        let _ = crate::db::users::decrement_quota_counter(&users_conn, old_owner_user_id, field);
-        let _ = crate::db::users::increment_quota_counter(
-            &users_conn,
-            payload.new_owner_user_id,
-            field,
-        );
-
-        let _ = crate::db::audit_events::write_audit_event(
-            &system_conn,
-            &admin.username,
-            "SLUG_TRANSFER",
-            "slug",
-            &payload.slug,
-            Some(&format!(
-                "From owner {} to owner {}",
-                old_owner_user_id, payload.new_owner_user_id
-            )),
-        );
-    }
-
-    StatusCode::OK.into_response()
 }
 
 // --- Admin: Content Moderation ---
@@ -689,44 +509,88 @@ pub async fn admin_moderate_slug(
         return (StatusCode::BAD_REQUEST, "Invalid moderation action").into_response();
     }
 
-    // 1. Verify slug and get owner user ID
-    let (owner_user_id, target_type) = {
-        let system_conn = state.system_db.lock().unwrap();
-        let row_opt: Option<(i64, String)> = system_conn
-            .query_row(
-                "SELECT owner_user_id, target_type FROM global_slugs WHERE slug = ?1;",
-                [&payload.slug],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-            .unwrap_or(None);
+    // 1. Verify slug using v0.8 slug lookup
+    let slug_info = match state.lookup_slug(&payload.slug) {
+        Ok(Some(info)) => info,
+        Ok(None) => return (StatusCode::NOT_FOUND, "Slug not found").into_response(),
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    };
 
-        match row_opt {
-            Some(r) => r,
-            None => return (StatusCode::NOT_FOUND, "Slug not found").into_response(),
+    let target_type = slug_info.target_type.as_str().to_string();
+    let owner_tenant_id = match TenantId::parse(&slug_info.owner_tenant_id) {
+        Ok(tid) => tid,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Invalid owner tenant ID on slug",
+            )
+                .into_response();
         }
     };
 
-    // Resolve owner username for log snapshot
-    let owner_username = {
+    // Resolve owner details from users.db for moderation event history
+    let (owner_user_id, owner_username) = {
         let users_conn = state.users_db.lock().unwrap();
-        crate::db::users::get_user_by_id(&users_conn, owner_user_id)
-            .unwrap_or(None)
-            .map(|u| u.username)
+        match crate::db::users::get_user_by_tenant_id(&users_conn, owner_tenant_id) {
+            Ok(Some(u)) => (u.id, Some(u.username)),
+            _ => (0, None),
+        }
     };
 
-    // 2. Perform moderation update in global_slugs
+    // 2. Perform moderation update in authoritative v0.8 slug databases
+    {
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let now = Utc::now().to_rfc3339();
+
+        if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+            let _ = urls_conn.execute(
+                "UPDATE global_urls SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+                rusqlite::params![action, now, payload.slug],
+            );
+        } else {
+            let _ = pages_conn.execute(
+                "UPDATE global_landing_pages SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+                rusqlite::params![action, now, payload.slug],
+            );
+        }
+    }
+
+    // 3. Sync status to owner tenant's content DB if possible
+    if let Ok(tenant_dbs) =
+        state.open_tenant(owner_tenant_id, crate::db::tenant::TenantOpenMode::CoreJob)
+    {
+        if let Ok(conn) = tenant_dbs.content.lock() {
+            if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+                let content_status = if action == "disabled" {
+                    "dead"
+                } else {
+                    "active"
+                };
+                let _ = conn.execute(
+                    "UPDATE urls SET status = ?1 WHERE code = ?2;",
+                    rusqlite::params![content_status, payload.slug],
+                );
+            } else {
+                let content_state = if action == "disabled" {
+                    "archived"
+                } else {
+                    "published"
+                };
+                let _ = conn.execute(
+                    "UPDATE landing_pages SET state = ?1 WHERE code = ?2;",
+                    rusqlite::params![content_state, payload.slug],
+                );
+            }
+        }
+    }
+
+    // 4. Record moderation event in system.db
     {
         let system_conn = state.system_db.lock().unwrap();
         let now = Utc::now().to_rfc3339();
-
-        let _ = system_conn.execute(
-            "UPDATE global_slugs SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
-            rusqlite::params![action, now, payload.slug],
-        );
-
-        // Record moderation event
         let event_id = Uuid::new_v4().to_string();
+
         let _ = system_conn.execute(
             "INSERT INTO moderation_events (id, timestamp, admin_username, target_user_id, target_username, resource_type, resource_identifier, action, severity, reason)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",

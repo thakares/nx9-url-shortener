@@ -44,7 +44,8 @@ pub async fn run(
     }
 
     // 2. Open databases
-    let legacy_content_path = config.data_dir.join("users").join("1").join("content.db");
+    let topology = crate::db::topology::Topology::new(&config.data_dir);
+    let legacy_content_path = topology.content_db(crate::db::topology::LEGACY_ADMIN_USER_KEY)?;
 
     if !legacy_content_path.exists() {
         info!(
@@ -55,11 +56,7 @@ pub async fn run(
     }
 
     db.init_user_databases(target_admin_id)?;
-    let target_content_path = config
-        .data_dir
-        .join("users")
-        .join(target_admin_id.to_string())
-        .join("content.db");
+    let target_content_path = topology.content_db_i64(target_admin_id)?;
 
     let mut legacy_conn = Connection::open(&legacy_content_path)?;
     let mut target_conn = Connection::open(&target_content_path)?;

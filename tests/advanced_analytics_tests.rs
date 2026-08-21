@@ -51,6 +51,7 @@ fn test_advanced_analytics_pagination_and_sorting() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_tenant_id: None,
             owner_user_id: None,
         });
     }
@@ -92,6 +93,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_tenant_id: None,
             owner_user_id: None,
         },
         VisitRecord {
@@ -105,6 +107,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_tenant_id: None,
             owner_user_id: None,
         },
         VisitRecord {
@@ -118,6 +121,7 @@ fn test_advanced_analytics_date_filtering() {
             accept_language: "en".to_string(),
             country: "US".to_string(),
             status_code: 200,
+            owner_tenant_id: None,
             owner_user_id: None,
         },
     ];

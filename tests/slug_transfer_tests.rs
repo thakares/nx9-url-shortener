@@ -41,17 +41,15 @@ async fn test_slug_transfer() {
     .await
     .unwrap();
 
-    let (id_a, id_b) = {
+    let (id_a, tid_a, id_b, tid_b) = {
         let conn = db.users.lock().unwrap();
         let a = bzod::db::users::get_user_by_username(&conn, "usera")
             .unwrap()
-            .unwrap()
-            .id;
+            .unwrap();
         let b = bzod::db::users::get_user_by_username(&conn, "userb")
             .unwrap()
-            .unwrap()
-            .id;
-        (a, b)
+            .unwrap();
+        (a.id, a.tenant_id.unwrap(), b.id, b.tenant_id.unwrap())
     };
 
     // User A creates a URL
@@ -71,16 +69,15 @@ async fn test_slug_transfer() {
 
     // Register globally
     {
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!trans-slug",
-            id_a,
-            "url",
-            &url.id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!trans-slug', ?1, ?2, ?3, ?4, 'active', NULL);",
+                rusqlite::params![tid_a.as_str(), &url.id, now, now],
+            )
+            .unwrap();
 
         let users_conn = db.users.lock().unwrap();
         bzod::db::users::increment_quota_counter(&users_conn, id_a, "urls").unwrap();
@@ -112,12 +109,12 @@ async fn test_slug_transfer() {
         bzod::db::content::delete_url(&old_conn, &url_to_copy.id).unwrap();
 
         // 3. Update global slugs and quotas
-        let system_conn = db.system.lock().unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
         let now = Utc::now().to_rfc3339();
-        system_conn
+        urls_conn
             .execute(
-                "UPDATE global_slugs SET owner_user_id = ?1, updated_at = ?2 WHERE slug = ?3;",
-                rusqlite::params![id_b, now, "!trans-slug"],
+                "UPDATE global_urls SET owner_tenant_id = ?1, updated_at = ?2 WHERE slug = ?3;",
+                rusqlite::params![tid_b.as_str(), now, "!trans-slug"],
             )
             .unwrap();
 

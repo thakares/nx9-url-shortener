@@ -96,22 +96,12 @@ async fn test_backup_restore_roundtrip() {
 
     let db = Db::init(&config).expect("Failed to init Db");
 
-    let _ = bzod::cli::create_user::run(
-        Some("testuser".to_string()),
-        Some("password123".to_string()),
-        None,
-        config.clone(),
-    )
-    .await
-    .unwrap();
-
-    let user_id = {
+    let user = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
-            .unwrap()
-            .unwrap()
-            .id
+        bzod::db::users::create_user(&conn, "testuser", "password123", "standard", None).unwrap()
     };
+    db.init_user_databases(user.id).unwrap();
+    let user_id = user.id;
 
     // Add a link for user
     {
@@ -129,21 +119,25 @@ async fn test_backup_restore_roundtrip() {
         )
         .unwrap();
 
-        // Increment quota counter
-        let users_conn = db.users.lock().unwrap();
-        bzod::db::users::increment_quota_counter(&users_conn, user_id, "urls").unwrap();
+        let tenant_id = {
+            let users_conn = db.users.lock().unwrap();
+            bzod::db::users::increment_quota_counter(&users_conn, user_id, "urls").unwrap();
+            bzod::db::users::get_user_by_id(&users_conn, user_id)
+                .unwrap()
+                .unwrap()
+                .tenant_id
+                .unwrap()
+        };
 
-        // Register global slug
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!rt-slug",
-            user_id,
-            "url",
-            "rt-id",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!rt-slug', ?1, 'rt-id', ?2, ?3, 'active', NULL);",
+                rusqlite::params![tenant_id.as_str(), now, now],
+            )
+            .unwrap();
     }
 
     // Backup user
@@ -172,7 +166,7 @@ async fn test_backup_restore_roundtrip() {
     .unwrap();
 
     // Verify restored user
-    {
+    let restored_id = {
         let conn = db.users.lock().unwrap();
         let user = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
@@ -183,14 +177,14 @@ async fn test_backup_restore_roundtrip() {
             .unwrap()
             .unwrap();
         assert_eq!(quota.current_urls, 1);
+        user.id
+    };
 
-        // Verify content restored
-        let user_content_conn = bzod::jobs::open_user_content_conn(&db, user.id).unwrap();
-        let url = bzod::db::content::get_url_by_code(&user_content_conn, "!rt-slug")
-            .unwrap()
-            .unwrap();
-        assert_eq!(url.destination, "https://example.com/rt");
-    }
+    let user_content_conn = bzod::jobs::open_user_content_conn(&db, restored_id).unwrap();
+    let url = bzod::db::content::get_url_by_code(&user_content_conn, "!rt-slug")
+        .unwrap()
+        .unwrap();
+    assert_eq!(url.destination, "https://example.com/rt");
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
@@ -198,33 +192,30 @@ async fn test_backup_restore_roundtrip() {
 #[tokio::test]
 async fn test_restore_slug_collision_rejection() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "bzod_test_restore_collision_{}",
-        uuid::Uuid::new_v4()
+        "bzod_test_collision_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
     fs::create_dir_all(&temp_dir).unwrap();
-    let config = create_temp_config(temp_dir.clone());
 
-    let db = Db::init(&config).expect("Failed to init Db");
+    let mut config = Config::load();
+    config.data_dir = temp_dir.clone();
+    config.backup_dir = temp_dir.join("backups");
+    fs::create_dir_all(&config.backup_dir).unwrap();
+
+    let db = Db::init(&config).unwrap();
 
     // Create User A
-    let _ = bzod::cli::create_user::run(
-        Some("usera".to_string()),
-        Some("password123".to_string()),
-        None,
-        config.clone(),
-    )
-    .await
-    .unwrap();
-
-    let id_a = {
+    let user_a = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "usera")
-            .unwrap()
-            .unwrap()
-            .id
+        bzod::db::users::create_user(&conn, "usera", "password123", "standard", None).unwrap()
     };
+    db.init_user_databases(user_a.id).unwrap();
+    let (id_a, tid_a) = (user_a.id, user_a.tenant_id.unwrap());
 
-    // Add a link for User A
+    // Add slug for User A
     {
         let conn_a = bzod::jobs::open_user_content_conn(&db, id_a).unwrap();
         bzod::db::content::create_url_extended(
@@ -240,16 +231,13 @@ async fn test_restore_slug_collision_rejection() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!collision-slug",
-            id_a,
-            "url",
-            "a-id",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!collision-slug', ?1, 'a-id', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid_a.as_str(), now, now],
+        ).unwrap();
     }
 
     // Backup User A
@@ -269,22 +257,12 @@ async fn test_restore_slug_collision_rejection() {
         .unwrap();
 
     // Create User B
-    let _ = bzod::cli::create_user::run(
-        Some("userb".to_string()),
-        Some("password123".to_string()),
-        None,
-        config.clone(),
-    )
-    .await
-    .unwrap();
-
-    let id_b = {
+    let user_b = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "userb")
-            .unwrap()
-            .unwrap()
-            .id
+        bzod::db::users::create_user(&conn, "userb", "password123", "standard", None).unwrap()
     };
+    db.init_user_databases(user_b.id).unwrap();
+    let (id_b, tid_b) = (user_b.id, user_b.tenant_id.unwrap());
 
     // Add colliding slug for User B
     {
@@ -302,16 +280,13 @@ async fn test_restore_slug_collision_rejection() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!collision-slug",
-            id_b,
-            "url",
-            "b-id",
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!collision-slug', ?1, 'b-id', ?2, ?3, 'active', NULL);",
+            rusqlite::params![tid_b.as_str(), now, now],
+        ).unwrap();
     }
 
     // Attempt to restore User A from backup - must fail on collision
@@ -323,17 +298,17 @@ async fn test_restore_slug_collision_rejection() {
     .await;
     assert!(res.is_err());
 
-    // Verify that User B still owns the slug in global_slugs and User A's slug registration was skipped/rejected
+    // Verify that User B still owns the slug in global_urls and User A's slug registration was skipped/rejected
     {
-        let system_conn = db.system.lock().unwrap();
-        let owner_id: i64 = system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let owner_tid: String = urls_conn
             .query_row(
-                "SELECT owner_user_id FROM global_slugs WHERE slug = '!collision-slug';",
+                "SELECT owner_tenant_id FROM global_urls WHERE slug = '!collision-slug';",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(owner_id, id_b);
+        assert_eq!(owner_tid, tid_b.as_str());
     }
 
     let _ = fs::remove_dir_all(&temp_dir);

@@ -36,7 +36,10 @@ async fn test_user_creation() {
         .unwrap();
     assert_eq!(user.status, "active");
 
-    let user_dir = temp_dir.join("users").join(user.id.to_string());
+    let user_dir = bzod::db::tenant::location_for_user(&user)
+        .unwrap()
+        .dir(&bzod::db::topology::Topology::new(&temp_dir))
+        .unwrap();
     assert!(user_dir.join("content.db").exists());
     assert!(user_dir.join("analytics.db").exists());
     assert!(user_dir.join("profile.db").exists());

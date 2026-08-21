@@ -49,9 +49,27 @@ pub async fn health_get(
         db_reports.push(r);
     }
 
-    let system_db_path = state.config.data_dir.join("admin").join("system.db");
-    let users_db_path = state.config.data_dir.join("admin").join("users.db");
-    let admin_db_path = state.config.data_dir.join("admin").join("admin.db");
+    if let Ok(r) = crate::db::sqlite::collect_health_report(
+        &state.db.global_urls.lock().unwrap(),
+        "global_urls",
+    ) {
+        db_reports.push(r);
+    }
+    if let Ok(r) = crate::db::sqlite::collect_health_report(
+        &state.db.global_landing_pages.lock().unwrap(),
+        "global_landing_pages",
+    ) {
+        db_reports.push(r);
+    }
+    if let Ok(r) =
+        crate::db::sqlite::collect_health_report(&state.db.reserved.lock().unwrap(), "reserved")
+    {
+        db_reports.push(r);
+    }
+
+    let system_db_path = state.db.topology.system_db();
+    let users_db_path = state.db.topology.users_registry_db();
+    let admin_db_path = state.db.topology.admin_db();
 
     let system_db_size = format_size(
         std::fs::metadata(&system_db_path)
@@ -69,7 +87,7 @@ pub async fn health_get(
             .unwrap_or(0),
     );
 
-    let users_dir = state.config.data_dir.join("users");
+    let users_dir = state.db.topology.users_dir();
     let tenants_db_size = format_size(get_dir_size(&users_dir).unwrap_or(0));
     let total_data_size = format_size(get_dir_size(&state.config.data_dir).unwrap_or(0));
 
@@ -127,8 +145,7 @@ pub async fn health_get(
                 for issue in issues {
                     use crate::services::registry_validator::RegistryIssueType;
                     match issue.issue_type {
-                        RegistryIssueType::StaleReservation
-                        | RegistryIssueType::TenantAdminHasIsolatedContent => {
+                        RegistryIssueType::StaleReservation => {
                             warnings.push(format!(
                                 "Warning for slug {}: {}",
                                 issue.slug, issue.description

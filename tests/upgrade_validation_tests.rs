@@ -99,6 +99,15 @@ async fn test_upgrade_from_v0_4_0() {
         )
         .unwrap();
 
+        let now = chrono::Utc::now().to_rfc3339();
+        system_conn
+            .execute(
+                "INSERT INTO global_slugs (slug, owner_user_id, target_type, target_id, created_at, updated_at, status)
+                 VALUES ('!legacy-link', 1, 'url', ?1, ?2, ?3, 'active');",
+                rusqlite::params![&url.id, now, now],
+            )
+            .unwrap();
+
         // 4. analytics.db
         let mut analytics_conn = rusqlite::Connection::open(&legacy_analytics_path).unwrap();
         bzod::db::migrations::run_migrations(
@@ -131,9 +140,16 @@ async fn test_upgrade_from_v0_4_0() {
             .unwrap();
     }
 
+    // Normalize legacy flat layout to multi-tenant paths
+    bzod::services::backup_layout::normalize_restored_layout(&temp_dir).unwrap();
+
     // Now start the application setup which should trigger migrations/upgrade
     let config = create_temp_config(temp_dir.clone());
     let db = Db::init(&config).expect("Db::init failed to upgrade v0.4.0 database directory");
+
+    // Run identity and slug migrations for legacy data
+    let _ = bzod::db::identity_migrate::run_identity_migration(&config, false, true).await;
+    let _ = bzod::db::slug_migrate::run_global_slug_migration(&config, false, true).await;
 
     // Verify file layout was reorganized
     assert!(!legacy_admin_path.exists());
@@ -153,8 +169,6 @@ async fn test_upgrade_from_v0_4_0() {
     let (queue, _) = AnalyticsQueue::new(db.clone(), 10, rx);
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -206,7 +220,16 @@ async fn test_upgrade_from_v0_4_0() {
     // 2. Existing links redirect correctly
     let redirect_url = format!("{}/!legacy-link", base_url);
     let redirect_res = client.get(&redirect_url).send().await.unwrap();
-    let res_headers = redirect_res.headers();
+    let status = redirect_res.status();
+    let res_headers = redirect_res.headers().clone();
+    let body = redirect_res.text().await.unwrap();
+    assert_eq!(
+        status,
+        reqwest::StatusCode::MOVED_PERMANENTLY,
+        "Got status {} with body {}",
+        status,
+        body
+    );
     assert!(res_headers.get("location").is_some());
     assert_eq!(
         res_headers.get("location").unwrap().to_str().unwrap(),

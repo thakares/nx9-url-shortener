@@ -13,13 +13,14 @@ pub async fn run(
         config.data_dir = PathBuf::from(d);
     }
     let db = Db::init(&config)?;
-    let conn = db.users.lock().unwrap();
-
-    let admin_count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM users WHERE account_type = 'admin';",
-        [],
-        |row| row.get(0),
-    )?;
+    let admin_count: i64 = {
+        let conn = db.users.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM users WHERE account_type = 'admin';",
+            [],
+            |row| row.get(0),
+        )?
+    };
 
     if admin_count > 0 {
         info!("Administrator already exists; initialization skipped.");
@@ -45,8 +46,10 @@ pub async fn run(
     };
 
     let hash = hash_password(&password).map_err(|e| e.to_string())?;
-    let u = crate::db::users::create_admin_user(&conn, &username, &hash)?;
-    db.init_user_databases(u.id)?;
+    {
+        let conn = db.users.lock().unwrap();
+        let _ = crate::db::users::create_admin_user(&conn, &username, &hash)?;
+    }
     info!("Administrator initialized successfully.");
 
     Ok(())

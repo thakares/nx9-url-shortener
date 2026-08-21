@@ -4,6 +4,7 @@
 
 use crate::auth::generate_token;
 use crate::auth::password::hash_password;
+use crate::identity::TenantId;
 use crate::models::Url;
 use crate::utils::validation::validate_redirect_destination;
 use rusqlite::{Connection, Transaction};
@@ -38,9 +39,9 @@ impl BulkUrlError {
     }
 }
 
-fn release_reserved(system: &Connection, slugs: &[String], owner_user_id: i64) {
+fn release_reserved(urls_conn: &Connection, slugs: &[String], owner_tenant_id: &TenantId) {
     for slug in slugs {
-        let _ = crate::db::users::release_global_slug(system, slug, owner_user_id);
+        let _ = crate::db::slugs::release_url_slug(urls_conn, slug, owner_tenant_id);
     }
 }
 
@@ -66,11 +67,15 @@ pub fn ensure_url_quota(
 }
 
 /// Create many URLs inside a single content transaction with global slug reservation.
+#[allow(clippy::too_many_arguments)]
 pub fn create_urls_bulk(
     content_db: &Mutex<Connection>,
-    system_db: &Mutex<Connection>,
+    reserved_db: &Mutex<Connection>,
+    global_urls_db: &Mutex<Connection>,
+    global_landing_pages_db: &Mutex<Connection>,
     users_db: &Mutex<Connection>,
     owner_user_id: i64,
+    owner_tenant_id: TenantId,
     items: Vec<BulkUrlCreateItem>,
 ) -> Result<Vec<Url>, BulkUrlError> {
     let mut conn = crate::utils::lock_db(content_db, "content_db")
@@ -83,12 +88,20 @@ pub fn create_urls_bulk(
     let mut reserved_slugs: Vec<String> = Vec::new();
 
     for item in items {
-        match create_one_in_tx(&tx, system_db, owner_user_id, item, &mut reserved_slugs) {
+        match create_one_in_tx(
+            &tx,
+            reserved_db,
+            global_urls_db,
+            global_landing_pages_db,
+            &owner_tenant_id,
+            item,
+            &mut reserved_slugs,
+        ) {
             Ok(url) => created_urls.push(url),
             Err(e) => {
                 let _ = tx.rollback();
-                if let Ok(system_conn) = crate::utils::lock_db(system_db, "system_db") {
-                    release_reserved(&system_conn, &reserved_slugs, owner_user_id);
+                if let Ok(urls_conn) = crate::utils::lock_db(global_urls_db, "global_urls_db") {
+                    release_reserved(&urls_conn, &reserved_slugs, &owner_tenant_id);
                 }
                 return Err(e);
             }
@@ -96,23 +109,20 @@ pub fn create_urls_bulk(
     }
 
     if let Err(e) = tx.commit() {
-        if let Ok(system_conn) = crate::utils::lock_db(system_db, "system_db") {
-            release_reserved(&system_conn, &reserved_slugs, owner_user_id);
+        if let Ok(urls_conn) = crate::utils::lock_db(global_urls_db, "global_urls_db") {
+            release_reserved(&urls_conn, &reserved_slugs, &owner_tenant_id);
         }
         return Err(BulkUrlError::Internal(format!(
             "Failed to commit transaction: {e}"
         )));
     }
 
-    // Activate slugs
+    // Activate slugs in v0.8 global_urls.db
     {
-        let system_conn = crate::utils::lock_db(system_db, "system_db")
+        let urls_conn = crate::utils::lock_db(global_urls_db, "global_urls_db")
             .map_err(|e| BulkUrlError::Internal(e.to_string()))?;
         for url in &created_urls {
-            let _ = system_conn.execute(
-                "UPDATE global_slugs SET target_id = ?1, status = 'active', updated_at = ?2 WHERE slug = ?3;",
-                rusqlite::params![url.id, chrono::Utc::now().to_rfc3339(), url.code],
-            );
+            let _ = crate::db::slugs::activate_url_slug(&urls_conn, &url.code, &url.id);
         }
     }
 
@@ -130,37 +140,47 @@ pub fn create_urls_bulk(
 
 fn create_one_in_tx(
     tx: &Transaction<'_>,
-    system_db: &Mutex<Connection>,
-    owner_user_id: i64,
+    reserved_db: &Mutex<Connection>,
+    global_urls_db: &Mutex<Connection>,
+    global_landing_pages_db: &Mutex<Connection>,
+    owner_tenant_id: &TenantId,
     item: BulkUrlCreateItem,
     reserved_slugs: &mut Vec<String>,
 ) -> Result<Url, BulkUrlError> {
     let mut code = item.code.unwrap_or_default().trim().to_lowercase();
     if code.is_empty() {
         code = generate_token(3);
-    } else if code.len() != 6 || !code.chars().all(|c| c.is_ascii_hexdigit()) {
+    } else if !crate::utils::validation::validate_redirect_code(&code) {
         return Err(BulkUrlError::BadRequest(format!(
-            "Short code '{code}' must be 6 hex characters"
+            "Short code or slug '{code}' is invalid (must be 6 hex characters or !custom-slug)"
         )));
     }
 
     {
-        let system_conn = crate::utils::lock_db(system_db, "system_db")
+        let reserved_conn = crate::utils::lock_db(reserved_db, "reserved_db")
             .map_err(|e| BulkUrlError::Internal(e.to_string()))?;
-        let available = crate::db::users::is_slug_available(&system_conn, &code).unwrap_or(false)
-            && !reserved_slugs.contains(&code);
+        let urls_conn = crate::utils::lock_db(global_urls_db, "global_urls_db")
+            .map_err(|e| BulkUrlError::Internal(e.to_string()))?;
+        let pages_conn = crate::utils::lock_db(global_landing_pages_db, "global_landing_pages_db")
+            .map_err(|e| BulkUrlError::Internal(e.to_string()))?;
+
+        let available =
+            crate::db::slugs::is_slug_available(&reserved_conn, &urls_conn, &pages_conn, &code)
+                .unwrap_or(false)
+                && !reserved_slugs.contains(&code);
+
         if !available {
             return Err(BulkUrlError::Conflict(format!(
                 "Short code '{code}' already exists"
             )));
         }
-        if let Err(e) = crate::db::users::register_global_slug(
-            &system_conn,
+
+        if let Err(e) = crate::db::slugs::reserve_url_slug(
+            &reserved_conn,
+            &urls_conn,
+            &pages_conn,
             &code,
-            owner_user_id,
-            "url",
-            "",
-            "reserving",
+            owner_tenant_id,
         ) {
             return Err(BulkUrlError::Internal(format!(
                 "Failed to reserve slug '{code}': {e}"

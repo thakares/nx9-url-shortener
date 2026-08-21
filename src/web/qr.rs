@@ -1,3 +1,4 @@
+use crate::db::tenant::TenantOpenMode;
 use crate::services::qr::{generate_qr_png, generate_qr_svg};
 use crate::state::AppState;
 use crate::utils::get_client_ip;
@@ -37,57 +38,36 @@ pub async fn qr_handler(
             return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
         }
 
-        // We need to look up owner_user_id, target_id, and status from global_slugs
-        let (owner_user_id, target_id, slug_status) = {
-            let system_conn = state.system_db.lock().unwrap();
-            let mut stmt = match system_conn.prepare(
-                "SELECT owner_user_id, target_id, status FROM global_slugs WHERE slug = ?1;",
-            ) {
-                Ok(s) => s,
-                Err(_) => {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
-                }
-            };
-            use rusqlite::OptionalExtension;
-            match stmt
-                .query_row(rusqlite::params![&file], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, String>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })
-                .optional()
-            {
-                Ok(Some((uid, tid, status))) => (uid, tid, status),
-                Ok(None) => return (StatusCode::NOT_FOUND, "URL not found").into_response(),
-                Err(_) => {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response()
-                }
-            }
+        // Look up slug info from v0.8 slug registry (with fallback)
+        let info = match state.lookup_slug(&file) {
+            Ok(Some(info)) => info,
+            Ok(None) => return (StatusCode::NOT_FOUND, "URL not found").into_response(),
+            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
         };
 
-        if slug_status == "disabled" {
+        if info.status == "disabled" {
             return (StatusCode::GONE, "This content has been disabled").into_response();
-        } else if slug_status != "active" {
+        } else if info.status != "active" {
             return (StatusCode::NOT_FOUND, "URL not found").into_response();
         }
 
-        let user_dbs = match state.get_user_dbs(owner_user_id) {
+        let user_dbs = match state
+            .open_slug_owner(&info.owner_tenant_id, TenantOpenMode::PublicContent)
+        {
             Ok(dbs) => dbs,
             Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
         };
 
         let qr_scans = {
             let conn = user_dbs.analytics.lock().unwrap();
-            crate::db::qr::get_qr_scan_count(&conn, &target_id).unwrap_or(0)
+            crate::db::qr::get_qr_scan_count(&conn, &info.target_id).unwrap_or(0)
         };
 
         let direct_clicks = {
             let conn = user_dbs.analytics.lock().unwrap();
             conn.query_row(
                 "SELECT COUNT(*) FROM visits WHERE target_id = ?1;",
-                rusqlite::params![target_id],
+                rusqlite::params![info.target_id],
                 |row| row.get(0),
             )
             .unwrap_or(0)
@@ -109,36 +89,16 @@ pub async fn qr_handler(
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
-    // We need to look up owner_user_id, target_type, target_id, and status from global_slugs
-    let (owner_user_id, target_type, target_id, slug_status) = {
-        let system_conn = state.system_db.lock().unwrap();
-        let mut stmt = match system_conn
-            .prepare("SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;")
-        {
-            Ok(s) => s,
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-        };
-        use rusqlite::OptionalExtension;
-        match stmt
-            .query_row(rusqlite::params![code], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            })
-            .optional()
-        {
-            Ok(Some(info)) => info,
-            Ok(None) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
-            Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
-        }
+    // Look up slug info from v0.8 slug registry (with fallback)
+    let info = match state.lookup_slug(code) {
+        Ok(Some(info)) => info,
+        Ok(None) => return (StatusCode::NOT_FOUND, "Not Found").into_response(),
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
     };
 
-    if slug_status == "disabled" {
+    if info.status == "disabled" {
         return (StatusCode::GONE, "This content has been disabled").into_response();
-    } else if slug_status != "active" {
+    } else if info.status != "active" {
         return (StatusCode::NOT_FOUND, "Not Found").into_response();
     }
 
@@ -159,7 +119,7 @@ pub async fn qr_handler(
         .clone()
         .unwrap_or_else(|| format!("{}://{}", proto, host_header));
 
-    let full_url = if target_type == "page" {
+    let full_url = if info.target_type == crate::db::slugs::SlugTargetType::LandingPage {
         format!("{}/p/{}", base_url.trim_end_matches('/'), code)
     } else {
         format!("{}/{}", base_url.trim_end_matches('/'), code)
@@ -204,11 +164,13 @@ pub async fn qr_handler(
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string());
 
-        if let Ok(user_dbs) = state.get_user_dbs(owner_user_id) {
+        if let Ok(user_dbs) =
+            state.open_slug_owner(&info.owner_tenant_id, TenantOpenMode::PublicContent)
+        {
             if let Ok(analytics_conn) = user_dbs.analytics.lock() {
                 let _ = crate::db::qr::log_qr_access(
                     &analytics_conn,
-                    &target_id,
+                    &info.target_id,
                     Some(ip.as_str()),
                     user_agent.as_deref(),
                 );

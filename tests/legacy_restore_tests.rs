@@ -546,16 +546,23 @@ async fn test_current_backup_restore_roundtrip() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!current-test",
-            user_id,
-            "url",
-            "current-id",
-            "active",
-        )
-        .unwrap();
+        let tenant_id = {
+            let conn = db.users.lock().unwrap();
+            bzod::db::users::get_user_by_id(&conn, user_id)
+                .unwrap()
+                .unwrap()
+                .tenant_id
+                .unwrap()
+        };
+        let urls_conn = db.global_urls.lock().unwrap();
+        let now = chrono::Utc::now().to_rfc3339();
+        urls_conn
+            .execute(
+                "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+                 VALUES ('!current-test', ?1, 'current-id', ?2, ?3, 'active', NULL);",
+                rusqlite::params![tenant_id.as_str(), now, now],
+            )
+            .unwrap();
     }
 
     // Create a native backup

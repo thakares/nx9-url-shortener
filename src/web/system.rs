@@ -97,22 +97,46 @@ pub async fn metrics_endpoint(
 
     // 1. Gather stats from DBs
     let (total_urls, active_links, dead_links) = {
-        let conn = state.content_db.lock().unwrap();
-        crate::db::content::get_url_counts(&conn).unwrap_or((0, 0, 0))
+        let conn = state.db.global_urls.lock().unwrap();
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status != 'retired';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'active';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let dead: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'disabled';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        (total, active, dead)
     };
 
     let total_pages = {
-        let conn = state.content_db.lock().unwrap();
-        crate::db::content::get_landing_page_count(&conn).unwrap_or(0)
+        let conn = state.db.global_landing_pages.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM global_landing_pages WHERE status != 'retired';",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
     };
 
-    let (total_clicks, total_page_views) = {
-        let conn = state.analytics_db.lock().unwrap();
-        (
-            crate::db::analytics::get_total_clicks(&conn).unwrap_or(0),
-            crate::db::analytics::get_total_page_views(&conn).unwrap_or(0),
-        )
+    let total_clicks = {
+        let users_conn = state.users_db.lock().unwrap();
+        crate::db::users::get_platform_total_clicks(&state.db.topology, &users_conn).unwrap_or(0)
     };
+    let total_page_views = 0i64;
 
     // Calculate memory in bytes
     let mut mem_bytes = 0;

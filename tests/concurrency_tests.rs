@@ -23,14 +23,19 @@ async fn test_concurrent_slug_creation() {
     let db = Db::init(&config).expect("Failed to init Db");
 
     let barrier = Arc::new(Barrier::new(2));
-    let db_path = temp_dir.join("admin/system.db");
+    let db_path = temp_dir.join("slugs/global_urls.db");
 
     let b1 = barrier.clone();
     let path1 = db_path.clone();
     let task1 = tokio::spawn(async move {
         let conn = rusqlite::Connection::open(&path1).unwrap();
         b1.wait().await;
-        bzod::db::users::register_global_slug(&conn, "!conc-slug", 10, "url", "url10", "active")
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!conc-slug', 't-tenant10', 'url10', ?1, ?2, 'active', NULL);",
+            rusqlite::params![now, now],
+        )
     });
 
     let b2 = barrier.clone();
@@ -38,7 +43,12 @@ async fn test_concurrent_slug_creation() {
     let task2 = tokio::spawn(async move {
         let conn = rusqlite::Connection::open(&path2).unwrap();
         b2.wait().await;
-        bzod::db::users::register_global_slug(&conn, "!conc-slug", 20, "url", "url20", "active")
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "INSERT INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at)
+             VALUES ('!conc-slug', 't-tenant20', 'url20', ?1, ?2, 'active', NULL);",
+            rusqlite::params![now, now],
+        )
     });
 
     let res1 = task1.await.unwrap();
@@ -54,12 +64,12 @@ async fn test_concurrent_slug_creation() {
         ),
     }
 
-    // Verify exactly 1 record exists in global_slugs
+    // Verify exactly 1 record exists in global_urls
     {
-        let system_conn = db.system.lock().unwrap();
-        let count: i64 = system_conn
+        let urls_conn = db.global_urls.lock().unwrap();
+        let count: i64 = urls_conn
             .query_row(
-                "SELECT COUNT(*) FROM global_slugs WHERE slug = '!conc-slug';",
+                "SELECT COUNT(*) FROM global_urls WHERE slug = '!conc-slug';",
                 [],
                 |row| row.get(0),
             )

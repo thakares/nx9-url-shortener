@@ -48,10 +48,15 @@ async fn start_test_server(
     Box::leak(Box::new(tx));
     let (queue, _) = AnalyticsQueue::new(db.clone(), 1000, rx);
 
+    // Create a standard tenant user
+    {
+        let users = db.users.lock().unwrap();
+        let _ = bzod::db::users::create_user(&users, "testuser", "dummy_hash", "standard", None);
+    }
+    let _ = db.init_user_databases(1);
+
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -95,25 +100,27 @@ fn seed_url(db: &Db, seed: SeedUrl<'_>) {
     db.init_user_databases(seed.owner_user_id)
         .expect("init user dbs");
 
+    let (content_path, tid) = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, seed.owner_user_id)
+            .unwrap()
+            .expect("seed owner must be a registered user");
+        let path = bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db");
+        (path, user.tenant_id.unwrap())
+    };
+
+    let id = uuid::Uuid::new_v4().to_string();
+
     {
-        let system = db.system.lock().unwrap();
-        let _ = bzod::db::users::register_global_slug(
-            &system,
-            seed.code,
-            seed.owner_user_id,
-            "url",
-            "seed",
-            "active",
-        );
+        let urls_conn = db.global_urls.lock().unwrap();
+        let _ = bzod::db::slugs::register_url_slug(&urls_conn, seed.code, &tid, &id, "active");
     }
 
-    let content_path = db
-        .data_dir
-        .join("users")
-        .join(seed.owner_user_id.to_string())
-        .join("content.db");
     let conn = rusqlite::Connection::open(content_path).unwrap();
-    let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT INTO urls (id, code, destination, title, description, status, created_at, updated_at, expires_at, expired, password_hash, max_access_count, access_count)
@@ -271,7 +278,15 @@ async fn wall_clock_expiry_returns_410_without_hot_path_write_dependency() {
     assert_eq!(res.status(), reqwest::StatusCode::GONE);
 
     // Column may still be 0 until sweeper runs — correctness does not require write.
-    let content_path = db.data_dir.join("users/1/content.db");
+    let content_path = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, 1).unwrap().unwrap();
+        bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db")
+    };
     let conn = rusqlite::Connection::open(content_path).unwrap();
     let expired_flag: i64 = conn
         .query_row("SELECT expired FROM urls WHERE code = 'ab3333';", [], |r| {
@@ -347,7 +362,15 @@ async fn password_gate_before_access_increment() {
     assert!(loc.contains("/gate/ab5555"));
 
     // Access count must not have incremented
-    let content_path = db.data_dir.join("users/1/content.db");
+    let content_path = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, 1).unwrap().unwrap();
+        bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db")
+    };
     let conn = rusqlite::Connection::open(content_path).unwrap();
     let count: i64 = conn
         .query_row(
@@ -403,7 +426,15 @@ async fn concurrent_redirects_increment_access_count() {
     }
     assert_eq!(ok_301, N);
 
-    let content_path = db.data_dir.join("users/1/content.db");
+    let content_path = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, 1).unwrap().unwrap();
+        bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db")
+    };
     let conn = rusqlite::Connection::open(content_path).unwrap();
     let count: i64 = conn
         .query_row(
@@ -514,6 +545,10 @@ async fn destination_audit_finds_legacy_invalid_without_rewriting() {
     fs::create_dir_all(&temp_dir).unwrap();
     let config = create_temp_config(temp_dir.clone());
     let db = Db::init(&config).unwrap();
+    {
+        let users = db.users.lock().unwrap();
+        let _ = bzod::db::users::create_user(&users, "testuser", "dummy_hash", "standard", None);
+    }
 
     seed_url(
         &db,
@@ -563,7 +598,15 @@ async fn destination_audit_finds_legacy_invalid_without_rewriting() {
     assert_eq!(report.unsupported_scheme, 1);
 
     // Data not rewritten
-    let content_path = db.data_dir.join("users/1/content.db");
+    let content_path = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, 1).unwrap().unwrap();
+        bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db")
+    };
     let conn = rusqlite::Connection::open(content_path).unwrap();
     let dest: String = conn
         .query_row(
@@ -597,10 +640,10 @@ async fn disabled_slug_returns_410() {
         },
     );
     {
-        let system = db.system.lock().unwrap();
-        system
+        let urls_conn = db.global_urls.lock().unwrap();
+        urls_conn
             .execute(
-                "UPDATE global_slugs SET status = 'disabled' WHERE slug = 'ab7777';",
+                "UPDATE global_urls SET status = 'disabled' WHERE slug = 'ab7777';",
                 [],
             )
             .unwrap();
@@ -640,7 +683,15 @@ async fn redirect_performance_smoke() {
     }
     // Reset access count after warm-up for clean correctness check
     {
-        let content_path = db.data_dir.join("users/1/content.db");
+        let content_path = {
+            let users = db.users.lock().unwrap();
+            let user = bzod::db::users::get_user_by_id(&users, 1).unwrap().unwrap();
+            bzod::db::tenant::location_for_user(&user)
+                .unwrap()
+                .dir(&db.topology)
+                .unwrap()
+                .join("content.db")
+        };
         let conn = rusqlite::Connection::open(content_path).unwrap();
         conn.execute(
             "UPDATE urls SET access_count = 0 WHERE code = 'ab8888';",
@@ -702,7 +753,17 @@ async fn redirect_performance_smoke() {
     assert_eq!(errors, 0, "error rate must be zero");
     assert_eq!(latencies_ms.len(), REQUESTS);
 
-    let content_path = db.data_dir.join("users/1/content.db");
+    let content_path = {
+        let users = db.users.lock().unwrap();
+        let user = bzod::db::users::get_user_by_id(&users, 1)
+            .unwrap()
+            .expect("user 1 must exist");
+        bzod::db::tenant::location_for_user(&user)
+            .unwrap()
+            .dir(&db.topology)
+            .unwrap()
+            .join("content.db")
+    };
     let conn = rusqlite::Connection::open(content_path).unwrap();
     let count: i64 = conn
         .query_row(

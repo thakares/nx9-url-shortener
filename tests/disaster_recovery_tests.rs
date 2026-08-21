@@ -84,8 +84,7 @@ async fn test_partial_restore_failure_rollback() {
         let count: i64 = conn
             .query_row("SELECT COUNT(*) FROM users;", [], |row| row.get(0))
             .unwrap();
-        // Only legacy_admin (ID 1) should exist
-        assert_eq!(count, 1);
+        assert_eq!(count, 0, "No users should exist after failed restore");
     }
 
     let _ = fs::remove_dir_all(&temp_dir);

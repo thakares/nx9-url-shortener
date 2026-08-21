@@ -96,25 +96,7 @@ fn load_tenant_user_by_username(
     conn: &rusqlite::Connection,
     username: &str,
 ) -> Result<Option<crate::models::TenantUser>, rusqlite::Error> {
-    conn.query_row(
-        "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata
-         FROM users WHERE username = ?1;",
-        [username],
-        |row| {
-            Ok(crate::models::TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        },
-    )
-    .optional()
+    crate::db::users::get_user_by_username(conn, username)
 }
 
 fn tenant_user_to_admin_user(u: crate::models::TenantUser) -> User {
@@ -180,21 +162,18 @@ pub async fn login_post(
             }
         };
 
-        let conn = match state.users_db.lock() {
-            Ok(c) => c,
-            Err(_) => {
-                return Redirect::to("/admin/login?error=Internal error").into_response();
-            }
-        };
-        match crate::db::users::create_admin_user(&conn, &form.username, &hash) {
-            Ok(u) => {
-                if let Err(e) = state.db.init_user_databases(u.id) {
-                    tracing::error!(
-                        "Failed to init user databases during admin bootstrap: {:?}",
-                        e
-                    );
+        let created_user_res = {
+            let conn = match state.users_db.lock() {
+                Ok(c) => c,
+                Err(_) => {
+                    return Redirect::to("/admin/login?error=Internal error").into_response();
                 }
+            };
+            crate::db::users::create_admin_user(&conn, &form.username, &hash)
+        };
 
+        match created_user_res {
+            Ok(u) => {
                 if let Ok(system_conn) = state.system_db.lock() {
                     let metadata = audit_meta(&ip, &headers);
                     let _ = crate::db::audit_events::write_audit_event(
@@ -385,26 +364,7 @@ pub async fn public_login_post(
 
     let user_opt: Option<crate::models::TenantUser> = {
         let conn = state.users_db.lock().unwrap();
-        let user_res: Result<Option<crate::models::TenantUser>, rusqlite::Error> = conn.query_row(
-            "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata \
-             FROM users WHERE username = ?1;",
-            [&form.username],
-            |row| {
-                Ok(crate::models::TenantUser {
-                    id: row.get(0)?,
-                    username: row.get(1)?,
-                    password_hash: row.get(2)?,
-                    status: row.get(3)?,
-                    created_at: row.get(4)?,
-                    last_login: row.get(5)?,
-                    account_type: row.get(6)?,
-                    organization_id: row.get(7)?,
-                    metadata: row.get(8)?,
-                })
-            }
-        ).optional();
-
-        match user_res {
+        match crate::db::users::get_user_by_username(&conn, &form.username) {
             Ok(Some(u)) => {
                 if u.status != "active" {
                     None

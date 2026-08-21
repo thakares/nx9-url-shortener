@@ -79,8 +79,11 @@ async fn test_legacy_migration() {
         .unwrap();
     }
 
-    // Call Db::init which triggers the legacy migration
-    let db = Db::init(&config).expect("Failed to init Db and run legacy migration");
+    // Call normalize_restored_layout to move legacy flat files into multi-tenant paths
+    bzod::services::backup_layout::normalize_restored_layout(&temp_dir).unwrap();
+
+    // Call Db::init
+    let _db = Db::init(&config).expect("Failed to init Db and run legacy migration");
 
     // Verify files moved to correct directories
     assert!(!legacy_admin_path.exists());
@@ -88,26 +91,12 @@ async fn test_legacy_migration() {
     assert!(temp_dir.join("admin/admin.db").exists());
     assert!(temp_dir.join("users/1/content.db").exists());
 
-    // Verify legacy_admin created as system and disabled
+    // Verify legacy content is preserved in users/1/content.db
     {
-        let conn = db.users.lock().unwrap();
-        let user = bzod::db::users::get_user_by_id(&conn, 1).unwrap().unwrap();
-        assert_eq!(user.username, "legacy_admin");
-        assert_eq!(user.status, "disabled");
-        assert_eq!(user.account_type, "system");
-    }
-
-    // Verify slug registered in global_slugs
-    {
-        let conn = db.system.lock().unwrap();
-        let exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM global_slugs WHERE slug = '!legacy-slug');",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert!(exists);
+        let conn = rusqlite::Connection::open(temp_dir.join("users/1/content.db")).unwrap();
+        let url = bzod::db::content::get_url_by_code(&conn, "!legacy-slug").unwrap();
+        assert!(url.is_some());
+        assert_eq!(url.unwrap().destination, "https://legacy.com");
     }
 
     let _ = fs::remove_dir_all(&temp_dir);

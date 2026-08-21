@@ -215,19 +215,15 @@ fn classify_registry_issues(
 
     for issue in issues {
         match issue.issue_type {
-            RegistryIssueType::DuplicateSlug
+            RegistryIssueType::Conflict
             | RegistryIssueType::InvalidTargetType
             | RegistryIssueType::InvalidStatus => {
                 errors.push(issue);
             }
-            RegistryIssueType::MissingOwner if !is_legacy => {
+            RegistryIssueType::MissingTenant if !is_legacy => {
                 errors.push(issue);
             }
             _ => {
-                // For legacy restores: MissingDatabase, MissingTarget, MissingOwner,
-                // StaleReservation, TenantAdminHasIsolatedContent are warnings.
-                // These represent pre-existing inconsistencies in the backup data,
-                // not restore corruption.
                 warnings.push(issue);
             }
         }

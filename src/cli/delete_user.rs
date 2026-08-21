@@ -15,11 +15,6 @@ pub async fn run(
     }
     let db = Db::init(&config)?;
 
-    if user_id == 1 && !force {
-        error!("Deleting legacy_admin system account requires --force flag");
-        return Ok(());
-    }
-
     // Capture user details
     let user_details = {
         let conn = db.users.lock().unwrap();
@@ -32,36 +27,62 @@ pub async fn run(
         }
     };
 
-    // 1. Transactional clean up on system.db (deleting their global slug mappings)
-    {
-        let mut system_conn = db.system.lock().unwrap();
-        let tx = system_conn.transaction()?;
+    if user_details.account_type == "admin" && !force {
+        error!("Deleting administrator account requires --force flag");
+        return Ok(());
+    }
 
-        // Get all slugs owned by the user
-        let slugs: Vec<String> = {
-            let mut stmt = tx.prepare("SELECT slug FROM global_slugs WHERE owner_user_id = ?1;")?;
-            let rows = stmt.query_map([user_id], |row| row.get(0))?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
+    // 1. Retire/cleanup slugs from v0.8 global_urls.db and global_landing_pages.db
+    let now = Utc::now().to_rfc3339();
+    if let Some(ref tid) = user_details.tenant_id {
+        let tid_str = tid.to_string();
+        let urls_conn = db.global_urls.lock().unwrap();
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        let system_conn = db.system.lock().unwrap();
 
-        // Delete from global_slugs and write to history
-        let now = Utc::now().to_rfc3339();
-        for slug in slugs {
-            let _ = tx.execute("DELETE FROM global_slugs WHERE slug = ?1;", [&slug]);
-            let _ = tx.execute(
+        // Get all URL slugs owned by tenant
+        let mut stmt =
+            urls_conn.prepare("SELECT slug FROM global_urls WHERE owner_tenant_id = ?1;")?;
+        let url_slugs: Vec<String> = stmt
+            .query_map([&tid_str], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Get all page slugs owned by tenant
+        let mut stmt2 = pages_conn
+            .prepare("SELECT slug FROM global_landing_pages WHERE owner_tenant_id = ?1;")?;
+        let page_slugs: Vec<String> = stmt2
+            .query_map([&tid_str], |row| row.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        // Record history and retire/delete slugs
+        for slug in url_slugs {
+            let _ = urls_conn.execute("DELETE FROM global_urls WHERE slug = ?1;", [&slug]);
+            let _ = system_conn.execute(
                 "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username)
                  VALUES (?1, ?2, NULL, 'deleted', ?3, ?4);",
                 rusqlite::params![slug, user_id, now, "cli"],
             );
         }
 
-        tx.commit()?;
+        for slug in page_slugs {
+            let _ =
+                pages_conn.execute("DELETE FROM global_landing_pages WHERE slug = ?1;", [&slug]);
+            let _ = system_conn.execute(
+                "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username)
+                 VALUES (?1, ?2, NULL, 'deleted', ?3, ?4);",
+                rusqlite::params![slug, user_id, now, "cli"],
+            );
+        }
     }
 
-    // 2. Delete user folder and database files from disk
-    let user_dir = config.data_dir.join("users").join(user_id.to_string());
-    if user_dir.exists() {
-        let _ = std::fs::remove_dir_all(&user_dir);
+    // 2. Delete tenant directory from disk
+    if let Some(ref tid) = user_details.tenant_id {
+        let user_dir = db.topology.tenant_dir(*tid);
+        if user_dir.exists() {
+            let _ = std::fs::remove_dir_all(&user_dir);
+        }
     }
 
     // 3. Remove user entry from users.db (cascading deletes quotas/sessions/tokens)

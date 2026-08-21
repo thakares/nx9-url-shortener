@@ -1,6 +1,69 @@
+use crate::identity::TenantId;
 use crate::models::{TenantUser, UserApiToken, UserQuotas, UserSession};
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
+
+const USER_COLUMNS: &str = "id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata, tenant_id, uuid";
+
+fn map_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<TenantUser> {
+    let tenant_raw: Option<String> = row.get(9)?;
+    let tenant_id = match tenant_raw {
+        Some(s) => Some(TenantId::parse(&s).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Text, Box::new(e))
+        })?),
+        None => None,
+    };
+    let uuid: Option<String> = row.get(10)?;
+    Ok(TenantUser {
+        id: row.get(0)?,
+        username: row.get(1)?,
+        password_hash: row.get(2)?,
+        status: row.get(3)?,
+        created_at: row.get(4)?,
+        last_login: row.get(5)?,
+        account_type: row.get(6)?,
+        organization_id: row.get(7)?,
+        metadata: row.get(8)?,
+        tenant_id,
+        uuid,
+    })
+}
+
+fn allocate_unique_tenant_id(conn: &Connection) -> rusqlite::Result<TenantId> {
+    for _ in 0..16 {
+        let candidate = TenantId::generate();
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE tenant_id = ?1);",
+            [candidate.as_str()],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Ok(candidate);
+        }
+    }
+    Err(rusqlite::Error::SqliteFailure(
+        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+        Some("failed to allocate unique TenantId".into()),
+    ))
+}
+
+pub fn allocate_unique_uuid(conn: &Connection) -> rusqlite::Result<String> {
+    for _ in 0..16 {
+        let candidate = uuid::Uuid::new_v4().to_string();
+        let exists: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE uuid = ?1);",
+            [&candidate],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Ok(candidate);
+        }
+    }
+    Err(rusqlite::Error::SqliteFailure(
+        rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+        Some("failed to allocate unique UUID".into()),
+    ))
+}
 
 // --- User Operations ---
 
@@ -17,11 +80,19 @@ pub fn create_admin_user(
     let created_at = Utc::now().to_rfc3339();
     let status = "active";
     let account_type = "admin";
+    let user_uuid = allocate_unique_uuid(conn)?;
 
     conn.execute(
-        "INSERT INTO users (username, password_hash, status, created_at, account_type, metadata) 
-         VALUES (?1, ?2, ?3, ?4, ?5, NULL);",
-        params![username, password_hash, status, created_at, account_type],
+        "INSERT INTO users (username, password_hash, status, created_at, account_type, metadata, tenant_id, uuid) 
+         VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, ?6);",
+        params![
+            username,
+            password_hash,
+            status,
+            created_at,
+            account_type,
+            user_uuid,
+        ],
     )?;
 
     let id = conn.last_insert_rowid();
@@ -39,6 +110,8 @@ pub fn create_admin_user(
         account_type: account_type.to_string(),
         organization_id: None,
         metadata: None,
+        tenant_id: None,
+        uuid: Some(user_uuid),
     })
 }
 
@@ -58,17 +131,21 @@ pub fn create_user(
 
     let created_at = Utc::now().to_rfc3339();
     let status = "active";
+    let tenant_id = allocate_unique_tenant_id(conn)?;
+    let user_uuid = allocate_unique_uuid(conn)?;
 
     conn.execute(
-        "INSERT INTO users (username, password_hash, status, created_at, account_type, metadata) 
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6);",
+        "INSERT INTO users (username, password_hash, status, created_at, account_type, metadata, tenant_id, uuid) 
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8);",
         params![
             username,
             password_hash,
             status,
             created_at,
             account_type,
-            metadata
+            metadata,
+            tenant_id.as_str(),
+            user_uuid,
         ],
     )?;
 
@@ -87,27 +164,37 @@ pub fn create_user(
         account_type: account_type.to_string(),
         organization_id: None,
         metadata: metadata.map(|s| s.to_string()),
+        tenant_id: Some(tenant_id),
+        uuid: Some(user_uuid),
     })
 }
 
 pub fn get_user_by_id(conn: &Connection, id: i64) -> rusqlite::Result<Option<TenantUser>> {
     conn.query_row(
-        "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata 
-         FROM users WHERE id = ?1;",
+        &format!("SELECT {USER_COLUMNS} FROM users WHERE id = ?1;"),
         params![id],
-        |row| {
-            Ok(TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        },
+        map_user,
+    )
+    .optional()
+}
+
+pub fn get_user_by_tenant_id(
+    conn: &Connection,
+    tenant_id: TenantId,
+) -> rusqlite::Result<Option<TenantUser>> {
+    conn.query_row(
+        &format!("SELECT {USER_COLUMNS} FROM users WHERE tenant_id = ?1;"),
+        params![tenant_id.as_str()],
+        map_user,
+    )
+    .optional()
+}
+
+pub fn get_user_by_uuid(conn: &Connection, uuid: &str) -> rusqlite::Result<Option<TenantUser>> {
+    conn.query_row(
+        &format!("SELECT {USER_COLUMNS} FROM users WHERE uuid = ?1;"),
+        params![uuid],
+        map_user,
     )
     .optional()
 }
@@ -117,22 +204,9 @@ pub fn get_user_by_username(
     username: &str,
 ) -> rusqlite::Result<Option<TenantUser>> {
     conn.query_row(
-        "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata 
-         FROM users WHERE username = ?1;",
+        &format!("SELECT {USER_COLUMNS} FROM users WHERE username = ?1;"),
         params![username],
-        |row| {
-            Ok(TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        },
+        map_user,
     )
     .optional()
 }
@@ -184,23 +258,10 @@ pub fn update_user_last_login(conn: &Connection, id: i64) -> rusqlite::Result<()
 }
 
 pub fn list_users(conn: &Connection) -> rusqlite::Result<Vec<TenantUser>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata 
-         FROM users ORDER BY username ASC;",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(TenantUser {
-            id: row.get(0)?,
-            username: row.get(1)?,
-            password_hash: row.get(2)?,
-            status: row.get(3)?,
-            created_at: row.get(4)?,
-            last_login: row.get(5)?,
-            account_type: row.get(6)?,
-            organization_id: row.get(7)?,
-            metadata: row.get(8)?,
-        })
-    })?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {USER_COLUMNS} FROM users ORDER BY username ASC;"
+    ))?;
+    let rows = stmt.query_map([], map_user)?;
 
     let mut users = Vec::new();
     for u in rows {
@@ -439,6 +500,9 @@ pub fn delete_user_api_token(conn: &Connection, id: i64, user_id: i64) -> rusqli
 
 // --- Global Slug & Quota Reconciliation Helpers ---
 
+#[deprecated(
+    note = "Legacy v0.7 global_slugs function; use crate::db::slugs::is_slug_available instead"
+)]
 pub fn is_slug_available(system_conn: &Connection, slug: &str) -> rusqlite::Result<bool> {
     // 1. Check reserved list
     let reserved: bool = system_conn
@@ -465,6 +529,9 @@ pub fn is_slug_available(system_conn: &Connection, slug: &str) -> rusqlite::Resu
     Ok(!exists)
 }
 
+#[deprecated(
+    note = "Legacy v0.7 global_slugs function; use crate::db::slugs::reserve_*_slug instead"
+)]
 pub fn register_global_slug(
     system_conn: &Connection,
     slug: &str,
@@ -490,6 +557,9 @@ pub fn register_global_slug(
     Ok(())
 }
 
+#[deprecated(
+    note = "Legacy v0.7 global_slugs function; use crate::db::slugs::release_*_slug instead"
+)]
 pub fn release_global_slug(
     system_conn: &Connection,
     slug: &str,
@@ -508,6 +578,7 @@ pub fn release_global_slug(
     Ok(())
 }
 
+#[deprecated(note = "Legacy v0.7 global_slugs function; use crate::db::slugs APIs instead")]
 pub fn soft_delete_global_slug(
     system_conn: &Connection,
     slug: &str,
@@ -544,10 +615,11 @@ pub fn audit_slug_namespace(
     let mut invalid_entries = Vec::new();
     let warnings = Vec::new();
 
-    let mut slug_owners: HashMap<String, Vec<i64>> = HashMap::new();
+    let mut slug_owners: HashMap<String, Vec<String>> = HashMap::new();
 
     // 1. Scan legacy content.db if it exists
-    let legacy_content_path = config.data_dir.join("content.db");
+    let legacy_content_path =
+        crate::db::topology::Topology::new(&config.data_dir).legacy_flat_content_db();
     if legacy_content_path.exists() {
         if let Ok(conn) = Connection::open(&legacy_content_path) {
             // URLs
@@ -555,7 +627,7 @@ pub fn audit_slug_namespace(
                 if let Ok(mut rows) = stmt.query([]) {
                     while let Some(row) = rows.next().unwrap_or(None) {
                         if let Ok(code) = row.get::<_, String>(0) {
-                            slug_owners.entry(code).or_default().push(1); // 1 = legacy admin
+                            slug_owners.entry(code).or_default().push("1".to_string());
                         }
                     }
                 }
@@ -565,7 +637,7 @@ pub fn audit_slug_namespace(
                 if let Ok(mut rows) = stmt.query([]) {
                     while let Some(row) = rows.next().unwrap_or(None) {
                         if let Ok(code) = row.get::<_, String>(0) {
-                            slug_owners.entry(code).or_default().push(1);
+                            slug_owners.entry(code).or_default().push("1".to_string());
                         }
                     }
                 }
@@ -574,14 +646,14 @@ pub fn audit_slug_namespace(
     }
 
     // 2. Scan all tenant databases in data_dir/users/<id>/content.db
-    let users_dir = config.data_dir.join("users");
+    let users_dir = crate::db::topology::Topology::new(&config.data_dir).users_dir();
     if users_dir.exists() {
         for entry in std::fs::read_dir(users_dir)? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() {
                 if let Some(name_str) = path.file_name().and_then(|n| n.to_str()) {
-                    if let Ok(user_id) = name_str.parse::<i64>() {
+                    if crate::db::topology::is_valid_user_dir_name(name_str) {
                         let content_db_path = path.join("content.db");
                         if content_db_path.exists() {
                             if let Ok(conn) = Connection::open(&content_db_path) {
@@ -590,7 +662,10 @@ pub fn audit_slug_namespace(
                                     if let Ok(mut rows) = stmt.query([]) {
                                         while let Some(row) = rows.next().unwrap_or(None) {
                                             if let Ok(code) = row.get::<_, String>(0) {
-                                                slug_owners.entry(code).or_default().push(user_id);
+                                                slug_owners
+                                                    .entry(code)
+                                                    .or_default()
+                                                    .push(name_str.to_string());
                                             }
                                         }
                                     }
@@ -602,7 +677,10 @@ pub fn audit_slug_namespace(
                                     if let Ok(mut rows) = stmt.query([]) {
                                         while let Some(row) = rows.next().unwrap_or(None) {
                                             if let Ok(code) = row.get::<_, String>(0) {
-                                                slug_owners.entry(code).or_default().push(user_id);
+                                                slug_owners
+                                                    .entry(code)
+                                                    .or_default()
+                                                    .push(name_str.to_string());
                                             }
                                         }
                                     }
@@ -638,6 +716,9 @@ pub fn audit_slug_namespace(
     })
 }
 
+#[deprecated(
+    note = "Legacy v0.7 global_slugs function; use crate::db::slugs::cleanup_stale_reservations instead"
+)]
 pub fn cleanup_stale_reservations(
     system_conn: &Connection,
     data_dir: &std::path::Path,
@@ -661,18 +742,31 @@ pub fn cleanup_stale_reservations(
             let age = Utc::now().signed_duration_since(created_at.with_timezone(&Utc));
             if age > chrono::Duration::minutes(15) {
                 // Check if target record exists by looking up code = slug in owner's content.db
-                let content_db_path = if owner_user_id == 1 {
-                    let p1 = data_dir.join("users").join("1").join("content.db");
-                    if p1.exists() {
-                        p1
+                let topology = crate::db::topology::Topology::new(data_dir);
+                let content_db_path = {
+                    let users_path = topology.users_registry_db();
+                    if let Ok(users_conn) = Connection::open(&users_path) {
+                        crate::db::tenant::existing_content_path(
+                            &users_conn,
+                            &topology,
+                            owner_user_id,
+                        )
+                        .ok()
+                        .or_else(|| {
+                            if owner_user_id == 1 {
+                                Some(topology.legacy_flat_content_db())
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or_else(|| topology.legacy_flat_content_db())
+                    } else if owner_user_id == 1 {
+                        topology.legacy_flat_content_db()
                     } else {
-                        data_dir.join("content.db")
+                        topology
+                            .content_db_i64(owner_user_id)
+                            .unwrap_or_else(|_| topology.legacy_flat_content_db())
                     }
-                } else {
-                    data_dir
-                        .join("users")
-                        .join(owner_user_id.to_string())
-                        .join("content.db")
                 };
 
                 let mut target_exists = false;
@@ -722,6 +816,9 @@ pub fn cleanup_stale_reservations(
     Ok(cleaned_count)
 }
 
+#[deprecated(
+    note = "Legacy v0.7 global_slugs function; use v0.8 slug databases and TenantId instead"
+)]
 pub fn register_restored_user_slugs(
     system_conn: &Connection,
     target_user_id: i64,
@@ -866,4 +963,30 @@ pub fn reconcile_user_quotas(
     )?;
 
     Ok(())
+}
+
+/// Calculate aggregate platform total clicks across all active tenant analytics databases.
+pub fn get_platform_total_clicks(
+    topology: &crate::db::topology::Topology,
+    users_conn: &Connection,
+) -> Option<i64> {
+    let mut stmt = users_conn
+        .prepare("SELECT tenant_id FROM users WHERE status != 'deleted' AND tenant_id IS NOT NULL;")
+        .ok()?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0)).ok()?;
+    let mut total = 0i64;
+    for tid_str in rows.flatten() {
+        if let Ok(tid) = crate::identity::TenantId::parse(&tid_str) {
+            let analytics_path = topology.tenant_analytics_db(tid);
+            if analytics_path.exists() {
+                if let Ok(conn) = Connection::open(&analytics_path) {
+                    let count: i64 = conn
+                        .query_row("SELECT COUNT(*) FROM visits;", [], |r| r.get(0))
+                        .unwrap_or(0);
+                    total += count;
+                }
+            }
+        }
+    }
+    Some(total)
 }

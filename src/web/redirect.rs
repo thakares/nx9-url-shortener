@@ -15,17 +15,25 @@ use axum::{
 };
 use axum_extra::extract::CookieJar;
 use chrono::Utc;
-use rusqlite::OptionalExtension;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tracing::{error, warn};
 use uuid::Uuid;
 
 use crate::analytics::get_client_country;
+use crate::db::tenant::TenantOpenMode;
+use crate::identity::TenantId;
 use crate::models::{LinkPreview, Url, VisitRecord};
 use crate::state::AppState;
 use crate::templates::PreviewTemplate;
 use crate::utils::get_client_ip;
+
+struct ResolvedUrl {
+    owner_tenant_id: Option<TenantId>,
+    owner_user_id: i64,
+    url: Url,
+    content: Arc<Mutex<rusqlite::Connection>>,
+}
 
 /// Compact outcome from blocking redirect DB work (avoids large enum / Result variants).
 enum ResolveOutcome {
@@ -111,79 +119,40 @@ fn permanent_redirect_to(destination: &str, code: &str) -> Response {
     }
 }
 
-/// Result of the initial global-slug + URL resolution phase.
-struct ResolvedUrl {
-    owner_user_id: i64,
-    url: Url,
-    content: Arc<Mutex<rusqlite::Connection>>,
-}
-
 /// Lookup global slug namespace then load the URL from the tenant content DB.
 /// Runs entirely on a blocking thread.
 fn resolve_url_blocking(
-    system_db: Arc<Mutex<rusqlite::Connection>>,
+    _system_db: Arc<Mutex<rusqlite::Connection>>,
     state: AppState,
     code: &str,
 ) -> ResolveOutcome {
-    // 1. Query global slug namespace in system.db
-    let slug_info = {
-        let system_conn = match system_db.lock() {
-            Ok(c) => c,
-            Err(e) => {
-                return ResolveOutcome::DbError {
-                    operation: "lock_system_db",
-                    message: e.to_string(),
-                    owner_user_id: None,
-                    resource_id: None,
-                };
-            }
-        };
-        let mut stmt = match system_conn.prepare(
-            "SELECT owner_user_id, target_type, target_id, status FROM global_slugs WHERE slug = ?1;",
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                return ResolveOutcome::DbError {
-                    operation: "prepare_global_slugs",
-                    message: e.to_string(),
-                    owner_user_id: None,
-                    resource_id: None,
-                };
-            }
-        };
-        match stmt
-            .query_row(rusqlite::params![code], |row| {
-                Ok((
-                    row.get::<_, i64>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
-                ))
-            })
-            .optional()
-        {
-            Ok(info) => info,
-            Err(e) => {
-                return ResolveOutcome::DbError {
-                    operation: "query_global_slugs",
-                    message: e.to_string(),
-                    owner_user_id: None,
-                    resource_id: None,
-                };
-            }
+    // 1. Query global slug namespace across v0.8 slug databases (with fallback)
+    let slug_info = match state.lookup_slug(code) {
+        Ok(info) => info,
+        Err(e) => {
+            return ResolveOutcome::DbError {
+                operation: "lookup_slug",
+                message: e.to_string(),
+                owner_user_id: None,
+                resource_id: None,
+            };
         }
     };
 
-    let (owner_user_id, target_type, _target_id, slug_status) = match slug_info {
+    let info = match slug_info {
         Some(info) => info,
         None => {
-            // Fallback to legacy_admin's DB (user_id = 1) if not found in global_slugs
-            (1, "url".to_string(), "".to_string(), "active".to_string())
+            return ResolveOutcome::Early {
+                status: StatusCode::NOT_FOUND,
+                body: "Not Found",
+            };
         }
     };
 
+    let owner_user_id = info.owner_tenant_id.parse::<i64>().unwrap_or(0);
+
     // If slug status is disabled, flagged, or soft_deleted, we return 410 Gone
-    if slug_status != "active" {
+    if info.status != "active" {
         return ResolveOutcome::Early {
             status: StatusCode::GONE,
             body: "This content has been disabled or moderated",
@@ -191,22 +160,23 @@ fn resolve_url_blocking(
     }
 
     // If target type is page, redirect permanently to /p/slug
-    if target_type == "page" {
+    if info.target_type == crate::db::slugs::SlugTargetType::LandingPage {
         return ResolveOutcome::PermanentPath(format!("/p/{}", code));
     }
 
     // 2. Get content database connection via tenant DB resolution
-    let content_conn = match state.get_user_dbs(owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(e) => {
-            return ResolveOutcome::DbError {
-                operation: "get_user_dbs",
-                message: e.to_string(),
-                owner_user_id: Some(owner_user_id),
-                resource_id: None,
-            };
-        }
-    };
+    let content_conn =
+        match state.open_slug_owner(&info.owner_tenant_id, TenantOpenMode::PublicContent) {
+            Ok(dbs) => dbs,
+            Err(e) => {
+                return ResolveOutcome::DbError {
+                    operation: "open_slug_owner",
+                    message: e.to_string(),
+                    owner_user_id: Some(owner_user_id),
+                    resource_id: None,
+                };
+            }
+        };
 
     let url = {
         let conn = match content_conn.content.lock() {
@@ -239,7 +209,10 @@ fn resolve_url_blocking(
         }
     };
 
+    let owner_tenant_id = TenantId::parse(&info.owner_tenant_id).ok();
+
     ResolveOutcome::Ready(Box::new(ResolvedUrl {
+        owner_tenant_id,
         owner_user_id,
         url,
         content: content_conn.content,
@@ -347,6 +320,7 @@ pub async fn resolve_redirect(
     };
 
     let ResolvedUrl {
+        owner_tenant_id,
         owner_user_id,
         url,
         content,
@@ -424,7 +398,6 @@ pub async fn resolve_redirect(
         }
     };
 
-    // Asynchronously record analytics
     let ip = get_client_ip(&headers, connect_info);
     let country = get_client_country(&headers);
     let user_agent = headers
@@ -454,6 +427,7 @@ pub async fn resolve_redirect(
         accept_language,
         country,
         status_code: if preview_opt.is_some() { 200 } else { 302 },
+        owner_tenant_id,
         owner_user_id: Some(owner_user_id),
     };
 

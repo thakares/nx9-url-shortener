@@ -17,10 +17,27 @@ pub async fn run(
         return Err("Invalid short code or custom slug format".into());
     }
 
-    let url_opt = {
-        let conn = db.content.lock().unwrap();
-        crate::db::content::get_url_by_code(&conn, &normalized_code)?
+    let owner_info = {
+        let conn = db.global_urls.lock().unwrap();
+        conn.query_row(
+            "SELECT owner_tenant_id FROM global_urls WHERE slug = ?1 AND status = 'active';",
+            rusqlite::params![normalized_code],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
     };
+
+    let tid_str = match owner_info {
+        Some(t) => t,
+        None => return Err(format!("Short code not found: {}", normalized_code).into()),
+    };
+    let tid = tid_str
+        .parse::<crate::identity::TenantId>()
+        .map_err(|e| format!("Invalid tenant id for slug {}: {:?}", normalized_code, e))?;
+
+    let content_path = db.topology.tenant_content_db(tid);
+    let conn = rusqlite::Connection::open(&content_path)?;
+    let url_opt = crate::db::content::get_url_by_code(&conn, &normalized_code)?;
 
     match url_opt {
         Some(url) => {

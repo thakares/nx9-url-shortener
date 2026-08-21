@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use bzod::config::Config;
 use bzod::db::Db;
 use std::fs;

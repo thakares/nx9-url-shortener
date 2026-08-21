@@ -50,8 +50,6 @@ async fn start_test_server(
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -107,17 +105,15 @@ async fn test_ownership_isolation_endpoints() {
     .await
     .unwrap();
 
-    let (id_a, _id_b) = {
+    let (id_a, tid_a, _id_b) = {
         let conn = db.users.lock().unwrap();
         let a = bzod::db::users::get_user_by_username(&conn, "usera")
             .unwrap()
-            .unwrap()
-            .id;
+            .unwrap();
         let b = bzod::db::users::get_user_by_username(&conn, "userb")
             .unwrap()
-            .unwrap()
-            .id;
-        (a, b)
+            .unwrap();
+        (a.id, a.tenant_id.unwrap(), b.id)
     };
 
     // User A adds a URL
@@ -136,16 +132,9 @@ async fn test_ownership_isolation_endpoints() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!usera-slug",
-            id_a,
-            "url",
-            &url.id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        bzod::db::slugs::register_url_slug(&urls_conn, "!usera-slug", &tid_a, &url.id, "active")
+            .unwrap();
         url.id
     };
 
@@ -162,12 +151,11 @@ async fn test_ownership_isolation_endpoints() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        bzod::db::slugs::register_landing_page_slug(
+            &pages_conn,
             "!usera-page",
-            id_a,
-            "page",
+            &tid_a,
             &page.id,
             "active",
         )

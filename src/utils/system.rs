@@ -22,6 +22,9 @@ pub fn get_db_file_info(data_dir: &Path) -> String {
         ("admin/admin.db", "Admin DB"),
         ("admin/system.db", "System DB"),
         ("admin/users.db", "Users DB"),
+        ("slugs/global_urls.db", "Global URLs DB"),
+        ("slugs/global_landing_pages.db", "Global Landing Pages DB"),
+        ("slugs/reserved.db", "Reserved Slugs DB"),
         ("users/1/content.db", "Legacy Content DB"),
         ("users/1/analytics.db", "Legacy Analytics DB"),
     ];

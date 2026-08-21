@@ -6,6 +6,7 @@ pub mod cli;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod identity;
 pub mod jobs;
 pub mod models;
 pub mod services;

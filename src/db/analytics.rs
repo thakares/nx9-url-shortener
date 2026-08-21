@@ -639,6 +639,7 @@ pub fn get_target_visits_paginated(
             accept_language: row.get("accept_language")?,
             country: row.get("country")?,
             status_code: row.get("status_code")?,
+            owner_tenant_id: None,
             owner_user_id: row.get("owner_user_id")?,
         })
     })?;
@@ -695,6 +696,7 @@ pub fn get_target_visits_all_in_memory(
             accept_language: row.get("accept_language")?,
             country: row.get("country")?,
             status_code: row.get("status_code")?,
+            owner_tenant_id: None,
             owner_user_id: row.get("owner_user_id")?,
         })
     })?;

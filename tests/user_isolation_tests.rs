@@ -38,21 +38,26 @@ async fn test_user_database_isolation() {
     .await
     .unwrap();
 
-    let (id_a, id_b) = {
+    let (user_a, user_b) = {
         let conn = db.users.lock().unwrap();
         let a = bzod::db::users::get_user_by_username(&conn, "usera")
             .unwrap()
-            .unwrap()
-            .id;
+            .unwrap();
         let b = bzod::db::users::get_user_by_username(&conn, "userb")
             .unwrap()
-            .unwrap()
-            .id;
+            .unwrap();
         (a, b)
     };
 
-    let dir_a = temp_dir.join("users").join(id_a.to_string());
-    let dir_b = temp_dir.join("users").join(id_b.to_string());
+    let topology = bzod::db::topology::Topology::new(&temp_dir);
+    let dir_a = bzod::db::tenant::location_for_user(&user_a)
+        .unwrap()
+        .dir(&topology)
+        .unwrap();
+    let dir_b = bzod::db::tenant::location_for_user(&user_b)
+        .unwrap()
+        .dir(&topology)
+        .unwrap();
 
     assert_ne!(dir_a, dir_b);
     assert!(dir_a.join("content.db").exists());

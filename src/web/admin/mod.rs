@@ -186,8 +186,48 @@ pub(crate) async fn perform_csv_export(
             Err(status) => return status.into_response(),
         };
 
+    let (_slug, owner_tid) = {
+        let conn = if target_type == "url" {
+            state.db.global_urls.lock().unwrap()
+        } else {
+            state.db.global_landing_pages.lock().unwrap()
+        };
+        let table = if target_type == "url" {
+            "global_urls"
+        } else {
+            "global_landing_pages"
+        };
+        match conn.query_row(
+            &format!(
+                "SELECT slug, owner_tenant_id FROM {} WHERE target_id = ?1 OR slug = ?1 LIMIT 1;",
+                table
+            ),
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok((s, t)) => (s, t),
+            Err(_) => return (StatusCode::NOT_FOUND, "Target not found").into_response(),
+        }
+    };
+    let tid = match owner_tid.parse::<crate::identity::TenantId>() {
+        Ok(t) => t,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid tenant identity").into_response()
+        }
+    };
+    let user_dbs = match state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to open tenant database",
+            )
+                .into_response()
+        }
+    };
+
     let target_exists = {
-        let conn = state.content_db.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         if target_type == "url" {
             get_url_by_id(&conn, &id)
                 .map(|u| u.is_some())
@@ -203,7 +243,7 @@ pub(crate) async fn perform_csv_export(
     }
 
     let count = {
-        let conn = state.analytics_db.lock().unwrap();
+        let conn = user_dbs.analytics.lock().unwrap();
         get_target_visit_total_filtered(
             &conn,
             target_type,
@@ -215,14 +255,14 @@ pub(crate) async fn perform_csv_export(
     };
 
     let (has_utm_source, has_utm_campaign) = {
-        let conn = state.analytics_db.lock().unwrap();
+        let conn = user_dbs.analytics.lock().unwrap();
         let cols = get_visits_schema_columns(&conn).unwrap_or_default();
         (cols.contains("utm_source"), cols.contains("utm_campaign"))
     };
 
     let (tx, rx) =
         tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::convert::Infallible>>(32);
-    let analytics_db = state.analytics_db.clone();
+    let analytics_db = user_dbs.analytics.clone();
     let target_id = id.clone();
 
     tokio::task::spawn_blocking(move || {
@@ -378,8 +418,48 @@ pub(crate) async fn perform_json_export(
             Err(status) => return status.into_response(),
         };
 
+    let (_slug, owner_tid) = {
+        let conn = if target_type == "url" {
+            state.db.global_urls.lock().unwrap()
+        } else {
+            state.db.global_landing_pages.lock().unwrap()
+        };
+        let table = if target_type == "url" {
+            "global_urls"
+        } else {
+            "global_landing_pages"
+        };
+        match conn.query_row(
+            &format!(
+                "SELECT slug, owner_tenant_id FROM {} WHERE target_id = ?1 OR slug = ?1 LIMIT 1;",
+                table
+            ),
+            rusqlite::params![id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        ) {
+            Ok((s, t)) => (s, t),
+            Err(_) => return (StatusCode::NOT_FOUND, "Target not found").into_response(),
+        }
+    };
+    let tid = match owner_tid.parse::<crate::identity::TenantId>() {
+        Ok(t) => t,
+        Err(_) => {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Invalid tenant identity").into_response()
+        }
+    };
+    let user_dbs = match state.open_tenant(tid, crate::state::TenantOpenMode::CoreJob) {
+        Ok(d) => d,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to open tenant database",
+            )
+                .into_response()
+        }
+    };
+
     let target_exists = {
-        let conn = state.content_db.lock().unwrap();
+        let conn = user_dbs.content.lock().unwrap();
         if target_type == "url" {
             get_url_by_id(&conn, &id)
                 .map(|u| u.is_some())
@@ -395,7 +475,7 @@ pub(crate) async fn perform_json_export(
     }
 
     let count = {
-        let conn = state.analytics_db.lock().unwrap();
+        let conn = user_dbs.analytics.lock().unwrap();
         get_target_visit_total_filtered(
             &conn,
             target_type,
@@ -411,7 +491,7 @@ pub(crate) async fn perform_json_export(
     }
 
     let visits_raw = {
-        let conn = state.analytics_db.lock().unwrap();
+        let conn = user_dbs.analytics.lock().unwrap();
         match get_target_visits_all_in_memory(
             &conn,
             target_type,

@@ -27,6 +27,24 @@ pub struct TenantUser {
     pub account_type: String, // 'system', 'admin', 'standard', 'organization', 'service'
     pub organization_id: Option<i64>,
     pub metadata: Option<String>,
+    /// Frozen v0.8 tenant id. None only for unmigrated v0.7 rows (Phase 3).
+    pub tenant_id: Option<crate::identity::TenantId>,
+    /// Frozen v0.8 immutable UUID.
+    pub uuid: Option<String>,
+}
+
+impl TenantUser {
+    pub fn require_tenant_id(&self) -> Result<crate::identity::TenantId, crate::error::AppError> {
+        self.tenant_id.ok_or_else(|| {
+            crate::error::AppError::Internal(format!("user {} has unmigrated tenant_id", self.id))
+        })
+    }
+
+    pub fn require_uuid(&self) -> Result<&str, crate::error::AppError> {
+        self.uuid.as_deref().ok_or_else(|| {
+            crate::error::AppError::Internal(format!("user {} has unmigrated uuid", self.id))
+        })
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

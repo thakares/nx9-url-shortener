@@ -16,6 +16,10 @@ struct UserBackupMetadata {
     created_at: String,
     account_type: String,
     metadata: Option<String>,
+    #[serde(default)]
+    tenant_id: Option<String>,
+    #[serde(default)]
+    uuid: Option<String>,
     quotas: UserBackupQuotas,
 }
 
@@ -94,7 +98,7 @@ pub async fn run(
     );
 
     // 4. Force checkpoint on user's databases
-    let user_dir = config.data_dir.join("users").join(user_id.to_string());
+    let user_dir = crate::db::tenant::location_for_user(&user)?.dir(&db.topology)?;
     if let Ok(c) = rusqlite::Connection::open(user_dir.join("content.db")) {
         let _ = c.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
     }
@@ -119,6 +123,8 @@ pub async fn run(
         created_at: user.created_at,
         account_type: user.account_type,
         metadata: user.metadata,
+        tenant_id: user.tenant_id.map(|t| t.to_string()),
+        uuid: user.uuid,
         quotas,
     };
     let metadata_bytes = serde_json::to_vec_pretty(&metadata_obj)?;

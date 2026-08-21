@@ -5,16 +5,21 @@
 use std::path::{Path, PathBuf};
 use tracing::warn;
 
+use crate::db::topology::{Topology, LEGACY_ADMIN_USER_KEY};
+
 /// Move flat legacy DB files into multi-tenant paths after tarball extract.
 ///
 /// Layout:
 /// - `admin.db` / `system.db` / `users.db` (+ wal/shm) → `{data_dir}/admin/`
 /// - `content.db` / `analytics.db` (+ wal/shm) → `{data_dir}/users/1/`
+/// - `{data_dir}/slugs/` is created empty if missing (v0.8 topology)
 pub fn normalize_restored_layout(data_dir: &Path) -> std::io::Result<()> {
-    let admin_dir = data_dir.join("admin");
-    let users_1_dir = data_dir.join("users").join("1");
+    let topology = Topology::new(data_dir);
+    let admin_dir = topology.admin_dir();
+    let users_1_dir = topology.legacy_admin_dir();
     std::fs::create_dir_all(&admin_dir)?;
     std::fs::create_dir_all(&users_1_dir)?;
+    std::fs::create_dir_all(topology.slugs_dir())?;
 
     let admin_files = [
         "admin.db",
@@ -80,12 +85,17 @@ pub struct RestoredDbPaths {
 
 impl RestoredDbPaths {
     pub fn from_data_dir(data_dir: &Path) -> Self {
+        let topology = Topology::new(data_dir);
         Self {
-            admin: data_dir.join("admin/admin.db"),
-            system: data_dir.join("admin/system.db"),
-            users: data_dir.join("admin/users.db"),
-            content: data_dir.join("users/1/content.db"),
-            analytics: data_dir.join("users/1/analytics.db"),
+            admin: topology.admin_db(),
+            system: topology.system_db(),
+            users: topology.users_registry_db(),
+            content: topology
+                .content_db(LEGACY_ADMIN_USER_KEY)
+                .expect("legacy admin user key is valid"),
+            analytics: topology
+                .analytics_db(LEGACY_ADMIN_USER_KEY)
+                .expect("legacy admin user key is valid"),
         }
     }
 }
@@ -113,6 +123,7 @@ mod tests {
         assert!(dir.join("admin/users.db").exists());
         assert!(dir.join("users/1/content.db").exists());
         assert!(dir.join("users/1/analytics.db").exists());
+        assert!(dir.join("slugs").is_dir());
         assert!(!dir.join("admin.db").exists());
         assert!(!dir.join("content.db").exists());
 

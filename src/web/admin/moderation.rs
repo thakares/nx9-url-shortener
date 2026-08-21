@@ -1,4 +1,5 @@
 use super::*;
+use crate::identity::TenantId;
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct GlobalSlugRow {
@@ -48,28 +49,83 @@ pub async fn moderation_get(
         Err(redir) => return redir.into_response(),
     };
 
-    let flagged_items = {
-        let conn = state.system_db.lock().unwrap();
-        let mut stmt = conn.prepare(
-            "SELECT slug, owner_user_id, target_type, target_id, created_at, updated_at, status, deleted_at \
-             FROM global_slugs WHERE status = 'flagged' OR status = 'disabled' ORDER BY updated_at DESC;"
-        ).unwrap();
-        let rows = stmt
-            .query_map([], |row| {
+    let mut flagged_items: Vec<GlobalSlugRow> = Vec::new();
+
+    // Query global_urls.db
+    {
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        let query_res = urls_conn.prepare(
+            "SELECT slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at \
+             FROM global_urls WHERE status = 'flagged' OR status = 'disabled' ORDER BY updated_at DESC;"
+        ).and_then(|mut stmt| {
+            let rows = stmt.query_map([], |row| {
+                let tid_str: String = row.get(1)?;
+                let uid = if let Ok(tid) = TenantId::parse(&tid_str) {
+                    crate::db::users::get_user_by_tenant_id(&users_conn, tid)
+                        .ok()
+                        .flatten()
+                        .map(|u| u.id)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
                 Ok(GlobalSlugRow {
                     slug: row.get(0)?,
-                    owner_user_id: row.get(1)?,
-                    target_type: row.get(2)?,
-                    target_id: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    status: row.get(6)?,
-                    deleted_at: row.get(7)?,
+                    owner_user_id: uid,
+                    target_type: "url".to_string(),
+                    target_id: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    status: row.get(5)?,
+                    deleted_at: row.get(6)?,
                 })
-            })
-            .unwrap();
-        rows.filter_map(|r| r.ok()).collect()
-    };
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        });
+        if let Ok(items) = query_res {
+            flagged_items.extend(items);
+        }
+    }
+
+    // Query global_landing_pages.db
+    {
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        let query_res = pages_conn.prepare(
+            "SELECT slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at \
+             FROM global_landing_pages WHERE status = 'flagged' OR status = 'disabled' ORDER BY updated_at DESC;"
+        ).and_then(|mut stmt| {
+            let rows = stmt.query_map([], |row| {
+                let tid_str: String = row.get(1)?;
+                let uid = if let Ok(tid) = TenantId::parse(&tid_str) {
+                    crate::db::users::get_user_by_tenant_id(&users_conn, tid)
+                        .ok()
+                        .flatten()
+                        .map(|u| u.id)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                Ok(GlobalSlugRow {
+                    slug: row.get(0)?,
+                    owner_user_id: uid,
+                    target_type: "page".to_string(),
+                    target_id: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    status: row.get(5)?,
+                    deleted_at: row.get(6)?,
+                })
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        });
+        if let Ok(items) = query_res {
+            flagged_items.extend(items);
+        }
+    }
+
+    flagged_items.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
     let logs = {
         let conn = state.system_db.lock().unwrap();
@@ -139,46 +195,91 @@ pub async fn moderation_post(
         return Redirect::to("/admin/moderation?error=Invalid moderation action").into_response();
     }
 
-    let (owner_user_id, target_type) = {
-        let system_conn = state.system_db.lock().unwrap();
-        let row_opt: Option<(i64, String)> = system_conn
-            .query_row(
-                "SELECT owner_user_id, target_type FROM global_slugs WHERE slug = ?1;",
-                [&form.slug],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()
-            .unwrap_or(None);
+    let slug_info = match state.lookup_slug(&form.slug) {
+        Ok(Some(info)) => info,
+        _ => return Redirect::to("/admin/moderation?error=Slug not found").into_response(),
+    };
 
-        match row_opt {
-            Some(r) => r,
-            None => return Redirect::to("/admin/moderation?error=Slug not found").into_response(),
+    let owner_tenant_id = match TenantId::parse(&slug_info.owner_tenant_id) {
+        Ok(t) => t,
+        Err(_) => {
+            return Redirect::to("/admin/moderation?error=Invalid tenant on slug").into_response()
         }
     };
 
-    let owner_username = {
+    let (owner_user_id, owner_username) = {
         let users_conn = state.users_db.lock().unwrap();
-        crate::db::users::get_user_by_id(&users_conn, owner_user_id)
-            .unwrap_or(None)
-            .map(|u| u.username)
+        match crate::db::users::get_user_by_tenant_id(&users_conn, owner_tenant_id) {
+            Ok(Some(u)) => (u.id, Some(u.username)),
+            _ => (0, None),
+        }
     };
 
-    {
-        let system_conn = state.system_db.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
+    let now = Utc::now().to_rfc3339();
 
-        if action == "deleted" {
-            let _ = system_conn.execute("DELETE FROM global_slugs WHERE slug = ?1;", [&form.slug]);
+    // 1. Update v0.8 slug database
+    if action == "deleted" {
+        if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+            let urls_conn = state.db.global_urls.lock().unwrap();
+            let _ = urls_conn.execute("DELETE FROM global_urls WHERE slug = ?1;", [&form.slug]);
         } else {
-            let _ = system_conn.execute(
-                "UPDATE global_slugs SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+            let pages_conn = state.db.global_landing_pages.lock().unwrap();
+            let _ = pages_conn.execute(
+                "DELETE FROM global_landing_pages WHERE slug = ?1;",
+                [&form.slug],
+            );
+        }
+    } else {
+        if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+            let urls_conn = state.db.global_urls.lock().unwrap();
+            let _ = urls_conn.execute(
+                "UPDATE global_urls SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+                rusqlite::params![action, now, form.slug],
+            );
+        } else {
+            let pages_conn = state.db.global_landing_pages.lock().unwrap();
+            let _ = pages_conn.execute(
+                "UPDATE global_landing_pages SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
                 rusqlite::params![action, now, form.slug],
             );
         }
+    }
 
+    // 2. Sync to tenant content DB if accessible
+    if let Ok(tenant_dbs) =
+        state.open_tenant(owner_tenant_id, crate::db::tenant::TenantOpenMode::CoreJob)
+    {
+        if let Ok(conn) = tenant_dbs.content.lock() {
+            if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+                let content_status = if action == "disabled" || action == "deleted" {
+                    "dead"
+                } else {
+                    "active"
+                };
+                let _ = conn.execute(
+                    "UPDATE urls SET status = ?1 WHERE code = ?2;",
+                    rusqlite::params![content_status, form.slug],
+                );
+            } else {
+                let content_state = if action == "disabled" || action == "deleted" {
+                    "archived"
+                } else {
+                    "published"
+                };
+                let _ = conn.execute(
+                    "UPDATE landing_pages SET state = ?1 WHERE code = ?2;",
+                    rusqlite::params![content_state, form.slug],
+                );
+            }
+        }
+    }
+
+    // 3. Record moderation event and audit log in system.db
+    {
+        let system_conn = state.system_db.lock().unwrap();
         let event_id = Uuid::new_v4().to_string();
         let _ = system_conn.execute(
-            "INSERT INTO moderation_events (id, timestamp, admin_username, target_user_id, target_username, resource_type, resource_identifier, action, severity, reason)
+            "INSERT INTO moderation_events (id, timestamp, admin_username, target_user_id, target_username, resource_type, resource_identifier, action, severity, reason) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);",
             rusqlite::params![
                 event_id,
@@ -186,7 +287,7 @@ pub async fn moderation_post(
                 user.username,
                 owner_user_id,
                 owner_username,
-                target_type,
+                slug_info.target_type.as_str(),
                 form.slug,
                 action,
                 form.severity,
@@ -231,48 +332,130 @@ pub async fn slugs_get(
         Err(redir) => return redir.into_response(),
     };
 
-    let system_conn = state.system_db.lock().unwrap();
+    let mut slugs: Vec<GlobalSlugRow> = Vec::new();
 
-    let mut sql = "SELECT slug, owner_user_id, target_type, target_id, created_at, updated_at, status, deleted_at FROM global_slugs WHERE 1=1".to_string();
-    let mut values = vec![];
-    if let Some(ref s) = query.search {
-        if !s.trim().is_empty() {
-            sql.push_str(" AND slug LIKE ?");
-            values.push(rusqlite::types::Value::Text(format!("%{}%", s.trim())));
-        }
-    }
-    if let Some(o) = query.owner {
-        sql.push_str(" AND owner_user_id = ?");
-        values.push(rusqlite::types::Value::Integer(o));
-    }
-    if let Some(ref st) = query.status {
-        if !st.trim().is_empty() {
-            sql.push_str(" AND status = ?");
-            values.push(rusqlite::types::Value::Text(st.trim().to_string()));
-        }
-    }
-    sql.push_str(" ORDER BY created_at DESC LIMIT 100;");
+    // Query global_urls.db
+    {
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        let mut sql = "SELECT slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at FROM global_urls WHERE 1=1".to_string();
+        let mut values = vec![];
 
-    let slugs = {
-        let mut stmt = system_conn.prepare(&sql).unwrap();
-        let rows = stmt
-            .query_map(rusqlite::params_from_iter(values.iter()), |row| {
+        if let Some(ref s) = query.search {
+            if !s.trim().is_empty() {
+                sql.push_str(" AND slug LIKE ?");
+                values.push(rusqlite::types::Value::Text(format!("%{}%", s.trim())));
+            }
+        }
+        if let Some(ref st) = query.status {
+            if !st.trim().is_empty() {
+                sql.push_str(" AND status = ?");
+                values.push(rusqlite::types::Value::Text(st.trim().to_string()));
+            }
+        }
+        sql.push_str(" ORDER BY created_at DESC LIMIT 100;");
+
+        let items_res = urls_conn.prepare(&sql).and_then(|mut stmt| {
+            let rows = stmt.query_map(rusqlite::params_from_iter(values.iter()), |row| {
+                let tid_str: String = row.get(1)?;
+                let uid = if let Ok(tid) = TenantId::parse(&tid_str) {
+                    crate::db::users::get_user_by_tenant_id(&users_conn, tid)
+                        .ok()
+                        .flatten()
+                        .map(|u| u.id)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
                 Ok(GlobalSlugRow {
                     slug: row.get(0)?,
-                    owner_user_id: row.get(1)?,
-                    target_type: row.get(2)?,
-                    target_id: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    status: row.get(6)?,
-                    deleted_at: row.get(7)?,
+                    owner_user_id: uid,
+                    target_type: "url".to_string(),
+                    target_id: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    status: row.get(5)?,
+                    deleted_at: row.get(6)?,
                 })
-            })
-            .unwrap();
-        rows.filter_map(|r| r.ok()).collect()
-    };
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        });
+
+        if let Ok(items) = items_res {
+            for r in items {
+                if let Some(o) = query.owner {
+                    if r.owner_user_id != o {
+                        continue;
+                    }
+                }
+                slugs.push(r);
+            }
+        }
+    }
+
+    // Query global_landing_pages.db
+    {
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let users_conn = state.users_db.lock().unwrap();
+        let mut sql = "SELECT slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at FROM global_landing_pages WHERE 1=1".to_string();
+        let mut values = vec![];
+
+        if let Some(ref s) = query.search {
+            if !s.trim().is_empty() {
+                sql.push_str(" AND slug LIKE ?");
+                values.push(rusqlite::types::Value::Text(format!("%{}%", s.trim())));
+            }
+        }
+        if let Some(ref st) = query.status {
+            if !st.trim().is_empty() {
+                sql.push_str(" AND status = ?");
+                values.push(rusqlite::types::Value::Text(st.trim().to_string()));
+            }
+        }
+        sql.push_str(" ORDER BY created_at DESC LIMIT 100;");
+
+        let items_res = pages_conn.prepare(&sql).and_then(|mut stmt| {
+            let rows = stmt.query_map(rusqlite::params_from_iter(values.iter()), |row| {
+                let tid_str: String = row.get(1)?;
+                let uid = if let Ok(tid) = TenantId::parse(&tid_str) {
+                    crate::db::users::get_user_by_tenant_id(&users_conn, tid)
+                        .ok()
+                        .flatten()
+                        .map(|u| u.id)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+                Ok(GlobalSlugRow {
+                    slug: row.get(0)?,
+                    owner_user_id: uid,
+                    target_type: "page".to_string(),
+                    target_id: row.get(2)?,
+                    created_at: row.get(3)?,
+                    updated_at: row.get(4)?,
+                    status: row.get(5)?,
+                    deleted_at: row.get(6)?,
+                })
+            })?;
+            Ok(rows.filter_map(|r| r.ok()).collect::<Vec<_>>())
+        });
+
+        if let Ok(items) = items_res {
+            for r in items {
+                if let Some(o) = query.owner {
+                    if r.owner_user_id != o {
+                        continue;
+                    }
+                }
+                slugs.push(r);
+            }
+        }
+    }
+
+    slugs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
 
     let history = {
+        let system_conn = state.system_db.lock().unwrap();
         let mut stmt = system_conn.prepare(
             "SELECT id, slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username \
              FROM slug_history ORDER BY timestamp DESC LIMIT 50;"
@@ -332,198 +515,19 @@ pub async fn slugs_transfer_post(
         return Redirect::to("/admin/slugs?error=Invalid CSRF token").into_response();
     }
 
-    let user_exists = {
-        let conn = state.users_db.lock().unwrap();
-        conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM users WHERE id = ?1);",
-            [form.new_owner_user_id],
-            |row| row.get::<_, bool>(0),
-        )
-        .unwrap_or(false)
+    let req = crate::services::slug_transfer::SlugTransferRequest {
+        slug: form.slug.clone(),
+        new_owner_user_id: form.new_owner_user_id,
     };
 
-    if !user_exists {
-        return Redirect::to("/admin/slugs?error=New owner user ID does not exist").into_response();
+    match crate::services::slug_transfer::transfer_slug(&state, &req, &user.username) {
+        Ok(_) => Redirect::to(&format!(
+            "/admin/slugs?success=Slug /{} successfully transferred to user {}",
+            form.slug, form.new_owner_user_id
+        ))
+        .into_response(),
+        Err(e) => Redirect::to(&format!("/admin/slugs?error={}", e.message())).into_response(),
     }
-
-    let (old_owner, target_type, mut new_target_id) =
-        {
-            let conn = state.system_db.lock().unwrap();
-            let row_opt: Option<(i64, String, String)> = conn.query_row(
-            "SELECT owner_user_id, target_type, target_id FROM global_slugs WHERE slug = ?1;",
-            [&form.slug],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        ).optional().unwrap_or(None);
-            match row_opt {
-                Some(r) => r,
-                None => return Redirect::to("/admin/slugs?error=Slug not found").into_response(),
-            }
-        };
-
-    if old_owner == form.new_owner_user_id {
-        return Redirect::to("/admin/slugs?error=Slug is already owned by this user")
-            .into_response();
-    }
-
-    let old_dbs = match state.get_user_dbs(old_owner) {
-        Ok(dbs) => dbs,
-        Err(_) => {
-            return Redirect::to("/admin/slugs?error=Failed to load current owner's database")
-                .into_response()
-        }
-    };
-    let new_dbs = match state.get_user_dbs(form.new_owner_user_id) {
-        Ok(dbs) => dbs,
-        Err(_) => {
-            return Redirect::to("/admin/slugs?error=Failed to load new owner's database")
-                .into_response()
-        }
-    };
-
-    {
-        let old_conn = old_dbs.content.lock().unwrap();
-        let new_conn = new_dbs.content.lock().unwrap();
-
-        if target_type == "url" {
-            let url_opt = match crate::db::content::get_url_by_code(&old_conn, &form.slug) {
-                Ok(u) => u,
-                Err(e) => {
-                    return Redirect::to(&format!(
-                        "/admin/slugs?error=Failed to retrieve old URL: {}",
-                        e
-                    ))
-                    .into_response()
-                }
-            };
-
-            if let Some(url) = url_opt {
-                // Check quota
-                let users_conn = state.users_db.lock().unwrap();
-                let quota_opt =
-                    crate::db::users::get_user_quotas(&users_conn, form.new_owner_user_id)
-                        .unwrap_or(None);
-                if let Some(quota) = quota_opt {
-                    if quota.current_urls >= quota.max_urls {
-                        return Redirect::to(
-                            "/admin/slugs?error=New owner has exceeded URL quota limit",
-                        )
-                        .into_response();
-                    }
-                }
-
-                // Copy
-                let new_url = match crate::db::content::create_url_extended(
-                    &new_conn,
-                    &url.code,
-                    &url.destination,
-                    url.title.as_deref(),
-                    url.description.as_deref(),
-                    &url.tags,
-                    url.expires_at.as_deref(),
-                    url.password_hash.as_deref(),
-                    url.max_access_count,
-                ) {
-                    Ok(u) => u,
-                    Err(e) => {
-                        return Redirect::to(&format!(
-                            "/admin/slugs?error=Failed to copy URL record: {}",
-                            e
-                        ))
-                        .into_response()
-                    }
-                };
-                new_target_id = new_url.id;
-
-                // Delete old
-                let _ = crate::db::content::delete_url(&old_conn, &url.id);
-            }
-        } else if target_type == "page" {
-            let page_opt = match crate::db::content::get_landing_page_by_code(&old_conn, &form.slug)
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    return Redirect::to(&format!(
-                        "/admin/slugs?error=Failed to retrieve old page: {}",
-                        e
-                    ))
-                    .into_response()
-                }
-            };
-
-            if let Some(page) = page_opt {
-                // Check quota
-                let users_conn = state.users_db.lock().unwrap();
-                let quota_opt =
-                    crate::db::users::get_user_quotas(&users_conn, form.new_owner_user_id)
-                        .unwrap_or(None);
-                if let Some(quota) = quota_opt {
-                    if quota.current_landings >= quota.max_landings {
-                        return Redirect::to(
-                            "/admin/slugs?error=New owner has exceeded landing page quota limit",
-                        )
-                        .into_response();
-                    }
-                }
-
-                // Copy
-                let new_page = match crate::db::content::create_landing_page(
-                    &new_conn,
-                    &page.code,
-                    &page.slug,
-                    &page.title,
-                    &page.html_content,
-                    &page.state,
-                ) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        return Redirect::to(&format!(
-                            "/admin/slugs?error=Failed to copy page record: {}",
-                            e
-                        ))
-                        .into_response()
-                    }
-                };
-                new_target_id = new_page.id;
-
-                // Delete old
-                let _ = crate::db::content::delete_landing_page(&old_conn, &page.id);
-            }
-        }
-    }
-
-    {
-        let conn = state.system_db.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-
-        let _ = conn.execute(
-            "UPDATE global_slugs SET owner_user_id = ?1, target_id = ?2, updated_at = ?3 WHERE slug = ?4;",
-            rusqlite::params![form.new_owner_user_id, new_target_id, now, form.slug],
-        );
-
-        let _ = conn.execute(
-            "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username) \
-             VALUES (?1, ?2, ?3, 'transferred', ?4, ?5);",
-            rusqlite::params![form.slug, old_owner, form.new_owner_user_id, now, user.username],
-        );
-
-        let _ = crate::db::audit_events::write_audit_event(
-            &conn,
-            &user.username,
-            "SLUG_TRANSFER",
-            "slug",
-            &form.slug,
-            Some(&format!(
-                "Transferred from {} to {}",
-                old_owner, form.new_owner_user_id
-            )),
-        );
-    }
-
-    Redirect::to(&format!(
-        "/admin/slugs?success=Slug /{} successfully transferred to user {}",
-        form.slug, form.new_owner_user_id
-    ))
-    .into_response()
 }
 
 #[derive(Deserialize)]
@@ -553,17 +557,30 @@ pub async fn slugs_status_post(
         return Redirect::to("/admin/slugs?error=Invalid status").into_response();
     }
 
-    {
-        let conn = state.system_db.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
+    let slug_info = match state.lookup_slug(&form.slug) {
+        Ok(Some(info)) => info,
+        _ => return Redirect::to("/admin/slugs?error=Slug not found").into_response(),
+    };
 
-        let _ = conn.execute(
-            "UPDATE global_slugs SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+    let now = Utc::now().to_rfc3339();
+    if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let _ = urls_conn.execute(
+            "UPDATE global_urls SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
             rusqlite::params![status, now, form.slug],
         );
+    } else {
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let _ = pages_conn.execute(
+            "UPDATE global_landing_pages SET status = ?1, updated_at = ?2 WHERE slug = ?3;",
+            rusqlite::params![status, now, form.slug],
+        );
+    }
 
+    {
+        let system_conn = state.system_db.lock().unwrap();
         let _ = crate::db::audit_events::write_audit_event(
-            &conn,
+            &system_conn,
             &user.username,
             "SLUG_STATUS_UPDATE",
             "slug",
@@ -600,29 +617,46 @@ pub async fn slugs_delete_post(
         return Redirect::to("/admin/slugs?error=Invalid CSRF token").into_response();
     }
 
+    let slug_info = match state.lookup_slug(&form.slug) {
+        Ok(Some(info)) => info,
+        _ => return Redirect::to("/admin/slugs?error=Slug not found").into_response(),
+    };
+
+    let old_owner_user_id = {
+        let users_conn = state.users_db.lock().unwrap();
+        if let Ok(tid) = TenantId::parse(&slug_info.owner_tenant_id) {
+            crate::db::users::get_user_by_tenant_id(&users_conn, tid)
+                .ok()
+                .flatten()
+                .map(|u| u.id)
+        } else {
+            None
+        }
+    };
+
+    let now = Utc::now().to_rfc3339();
+
+    if slug_info.target_type == crate::db::slugs::SlugTargetType::Url {
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let _ = urls_conn.execute("DELETE FROM global_urls WHERE slug = ?1;", [&form.slug]);
+    } else {
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let _ = pages_conn.execute(
+            "DELETE FROM global_landing_pages WHERE slug = ?1;",
+            [&form.slug],
+        );
+    }
+
     {
-        let conn = state.system_db.lock().unwrap();
-        let now = Utc::now().to_rfc3339();
-
-        let old_owner_user_id: Option<i64> = conn
-            .query_row(
-                "SELECT owner_user_id FROM global_slugs WHERE slug = ?1;",
-                [&form.slug],
-                |row| row.get(0),
-            )
-            .optional()
-            .unwrap_or(None);
-
-        let _ = conn.execute("DELETE FROM global_slugs WHERE slug = ?1;", [&form.slug]);
-
-        let _ = conn.execute(
+        let system_conn = state.system_db.lock().unwrap();
+        let _ = system_conn.execute(
             "INSERT INTO slug_history (slug, old_owner_user_id, new_owner_user_id, action, timestamp, admin_username) \
              VALUES (?1, ?2, NULL, 'deleted', ?3, ?4);",
             rusqlite::params![form.slug, old_owner_user_id, now, user.username],
         );
 
         let _ = crate::db::audit_events::write_audit_event(
-            &conn,
+            &system_conn,
             &user.username,
             "SLUG_RELEASE",
             "slug",

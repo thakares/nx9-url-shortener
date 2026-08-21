@@ -6,7 +6,6 @@
 use crate::db::Db;
 use crate::utils::validation::{classify_redirect_destination, DestinationClass};
 use rusqlite::Connection;
-use std::path::Path;
 use tracing::{error, info, warn};
 
 /// Summary counters for a destination audit run.
@@ -124,14 +123,12 @@ pub fn audit_content_conn(
     Ok(())
 }
 
-fn open_user_content(data_dir: &Path, user_id: i64) -> Result<Connection, rusqlite::Error> {
-    let path = data_dir
-        .join("users")
-        .join(user_id.to_string())
-        .join("content.db");
-    if !path.exists() {
-        return Err(rusqlite::Error::InvalidPath(path));
-    }
+fn open_user_content(db: &Db, user_id: i64) -> Result<Connection, rusqlite::Error> {
+    let users = db
+        .users
+        .lock()
+        .map_err(|_| rusqlite::Error::InvalidPath(std::path::PathBuf::from("users-db-poisoned")))?;
+    let path = crate::db::tenant::existing_content_path(&users, &db.topology, user_id)?;
     let conn = Connection::open(path)?;
     crate::db::sqlite::enable_wal(&conn, "content")?;
     Ok(conn)
@@ -158,7 +155,7 @@ pub fn audit_all_destinations(db: &Db) -> Result<DestinationAuditReport, String>
     };
 
     for user_id in user_ids {
-        match open_user_content(&db.data_dir, user_id) {
+        match open_user_content(db, user_id) {
             Ok(conn) => {
                 report.scanned_users += 1;
                 if let Err(e) = audit_content_conn(&conn, user_id, &mut report) {

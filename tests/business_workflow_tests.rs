@@ -55,8 +55,6 @@ async fn start_test_server(
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -190,9 +188,9 @@ async fn test_scenario_a_user_create_login_shorten_visit_analytics() {
 
     // 6. Verify visit is logged in analytics
     let url_uuid = {
-        let conn = state.system_db.lock().unwrap();
+        let conn = state.db.global_urls.lock().unwrap();
         conn.query_row(
-            "SELECT target_id FROM global_slugs WHERE slug = '!mygoogle';",
+            "SELECT target_id FROM global_urls WHERE slug = '!mygoogle';",
             [],
             |row| row.get::<_, String>(0),
         )
@@ -505,9 +503,9 @@ async fn test_scenario_c_slug_transfer_workflow() {
 
     // Verify visit recorded for standard_c1
     let url_uuid = {
-        let conn = state.system_db.lock().unwrap();
+        let conn = state.db.global_urls.lock().unwrap();
         conn.query_row(
-            "SELECT target_id FROM global_slugs WHERE slug = '!myyahoo';",
+            "SELECT target_id FROM global_urls WHERE slug = '!myyahoo';",
             [],
             |row| row.get::<_, String>(0),
         )
@@ -607,9 +605,9 @@ async fn test_scenario_c_slug_transfer_workflow() {
 
     // standard_c2 analytics should display Yahoo!
     let url_uuid = {
-        let conn = state.system_db.lock().unwrap();
+        let conn = state.db.global_urls.lock().unwrap();
         conn.query_row(
-            "SELECT target_id FROM global_slugs WHERE slug = '!myyahoo';",
+            "SELECT target_id FROM global_urls WHERE slug = '!myyahoo';",
             [],
             |row| row.get::<_, String>(0),
         )

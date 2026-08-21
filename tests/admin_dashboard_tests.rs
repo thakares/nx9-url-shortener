@@ -20,6 +20,15 @@ async fn test_admin_user_listing() {
 
     let db = Db::init(&config).expect("Failed to init Db");
 
+    let _ = bzod::cli::create_admin::run(
+        Some("admin".to_string()),
+        Some("adminpass123".to_string()),
+        None,
+        config.clone(),
+    )
+    .await
+    .unwrap();
+
     let _ = bzod::cli::create_user::run(
         Some("usera".to_string()),
         Some("password123".to_string()),
@@ -32,9 +41,9 @@ async fn test_admin_user_listing() {
     let conn = db.users.lock().unwrap();
     let users = bzod::db::users::list_users(&conn).unwrap();
 
-    // Verify list contains legacy_admin and usera
+    // Verify list contains admin and usera
     assert!(users.len() >= 2);
-    assert!(users.iter().any(|u| u.username == "legacy_admin"));
+    assert!(users.iter().any(|u| u.username == "admin"));
     assert!(users.iter().any(|u| u.username == "usera"));
 
     let _ = fs::remove_dir_all(&temp_dir);

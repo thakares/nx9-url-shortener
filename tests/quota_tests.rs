@@ -126,8 +126,8 @@ async fn test_quota_reconcile_job() {
 
     // Run reconciliation
     {
-        let users_conn = db.users.lock().unwrap();
         let user_content_conn = bzod::jobs::open_user_content_conn(&db, user_id).unwrap();
+        let users_conn = db.users.lock().unwrap();
         bzod::db::users::reconcile_user_quotas(&users_conn, user_id, &user_content_conn).unwrap();
 
         // Verify drift is repaired

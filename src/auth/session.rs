@@ -199,25 +199,8 @@ pub fn authenticate_user_session(
     }
 
     // Get tenant user (status must be 'active')
-    let mut stmt = users_conn.prepare(
-        "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata 
-         FROM users WHERE id = ?1 AND status = 'active';"
-    )?;
-    let user_opt = stmt
-        .query_row([session.user_id], |row| {
-            Ok(TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        })
-        .optional()?;
+    let user_opt = crate::db::users::get_user_by_id(users_conn, session.user_id)?
+        .filter(|u| u.status == "active");
 
     if let Some(user) = user_opt {
         Ok(Some((user, session.id)))
@@ -251,25 +234,8 @@ pub fn authenticate_api_key(
     let user_id_opt: Option<i64> = stmt.query_row([&hashed_key], |row| row.get(0)).optional()?;
 
     if let Some(user_id) = user_id_opt {
-        let mut stmt = users_conn.prepare(
-            "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata 
-             FROM users WHERE id = ?1 AND status = 'active';"
-        )?;
-        let user_opt = stmt
-            .query_row([user_id], |row| {
-                Ok(TenantUser {
-                    id: row.get(0)?,
-                    username: row.get(1)?,
-                    password_hash: row.get(2)?,
-                    status: row.get(3)?,
-                    created_at: row.get(4)?,
-                    last_login: row.get(5)?,
-                    account_type: row.get(6)?,
-                    organization_id: row.get(7)?,
-                    metadata: row.get(8)?,
-                })
-            })
-            .optional()?;
+        let user_opt =
+            crate::db::users::get_user_by_id(users_conn, user_id)?.filter(|u| u.status == "active");
 
         if let Some(user) = user_opt {
             return Ok(Some(ApiActor::User(user)));

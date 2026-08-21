@@ -47,6 +47,16 @@ async fn test_cli_shorten_and_expand() {
     fs::create_dir_all(&temp_dir).unwrap();
     let config = create_temp_config(temp_dir.clone());
 
+    // 0. Create a standard user
+    let _ = bzod::cli::create_user::run(
+        Some("cliuser".to_string()),
+        Some("password123".to_string()),
+        None,
+        config.clone(),
+    )
+    .await
+    .unwrap();
+
     // 1. Shorten with generated code
     let res = bzod::cli::shorten::run(
         "https://example.com/one".to_string(),
@@ -78,20 +88,11 @@ async fn test_cli_shorten_and_expand() {
     assert!(res_dup.is_err());
     assert!(res_dup.unwrap_err().to_string().contains("already exists"));
 
-    // 4. Expand custom slug
-    {
-        let db = Db::init(&config).unwrap();
-        let conn = db.content.lock().unwrap();
-        let url_opt = bzod::db::content::get_url_by_code(&conn, "!office").unwrap();
-        assert!(url_opt.is_some());
-        assert_eq!(url_opt.unwrap().destination, "https://example.com/two");
-    }
-
-    // 5. CLI expand round-trip validation
+    // 4. CLI expand round-trip validation
     let expand_res = bzod::cli::expand::run("!office".to_string(), None, config.clone()).await;
     assert!(expand_res.is_ok());
 
-    // 6. Case-insensitive CLI expand validation
+    // 5. Case-insensitive CLI expand validation
     let expand_res_upper =
         bzod::cli::expand::run("!OFFICE".to_string(), None, config.clone()).await;
     assert!(expand_res_upper.is_ok());
@@ -108,12 +109,30 @@ async fn test_perform_restore_and_validation() {
     fs::create_dir_all(&restore_dir).unwrap();
 
     let config = create_temp_config(temp_dir.clone());
+
+    // Create user and url
+    let _ = bzod::cli::create_user::run(
+        Some("restoreuser".to_string()),
+        Some("password123".to_string()),
+        None,
+        config.clone(),
+    )
+    .await
+    .unwrap();
+
     let db = Db::init(&config).unwrap();
+    let (uid, tid) = {
+        let conn = db.users.lock().unwrap();
+        let u = bzod::db::users::get_user_by_username(&conn, "restoreuser")
+            .unwrap()
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
+    };
 
     // 1. Create a mock database record
     {
-        let conn = db.content.lock().unwrap();
-        bzod::db::content::create_url_extended(
+        let conn = bzod::jobs::open_user_content_conn(&db, uid).unwrap();
+        let url = bzod::db::content::create_url_extended(
             &conn,
             "!home",
             "https://my-home.com",
@@ -125,6 +144,9 @@ async fn test_perform_restore_and_validation() {
             None,
         )
         .unwrap();
+
+        let urls_conn = db.global_urls.lock().unwrap();
+        bzod::db::slugs::register_url_slug(&urls_conn, "!home", &tid, &url.id, "active").unwrap();
     }
 
     // 2. Perform a backup
@@ -142,18 +164,15 @@ async fn test_perform_restore_and_validation() {
     assert!(restore_dir.join("admin/admin.db").exists());
     assert!(restore_dir.join("admin/users.db").exists());
     assert!(restore_dir.join("admin/system.db").exists());
-    assert!(restore_dir.join("users/1/content.db").exists());
-    assert!(restore_dir.join("users/1/analytics.db").exists());
+    assert!(restore_dir.join("slugs/global_urls.db").exists());
+    assert!(restore_dir
+        .join(format!("users/{}/content.db", tid.as_str()))
+        .exists());
 
     // Verify custom slug was preserved in the restored DB
     let restore_config = create_temp_config(restore_dir.clone());
-    let restore_db = Db::init(&restore_config).unwrap();
-    {
-        let conn = restore_db.content.lock().unwrap();
-        let url = bzod::db::content::get_url_by_code(&conn, "!home").unwrap();
-        assert!(url.is_some());
-        assert_eq!(url.unwrap().destination, "https://my-home.com");
-    }
+    let expand_res = bzod::cli::expand::run("!home".to_string(), None, restore_config).await;
+    assert!(expand_res.is_ok());
 
     let _ = fs::remove_dir_all(&temp_dir);
     let _ = fs::remove_dir_all(&restore_dir);

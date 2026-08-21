@@ -133,12 +133,14 @@ pub async fn users_create_post(
         }
     };
 
-    if let Err(e) = state.db.init_user_databases(new_user.id) {
-        return Redirect::to(&format!(
-            "/admin/users?error=Failed to initialize user databases: {}",
-            e
-        ))
-        .into_response();
+    if new_user.account_type == "standard" {
+        if let Err(e) = state.db.init_user_databases(new_user.id) {
+            return Redirect::to(&format!(
+                "/admin/users?error=Failed to initialize user databases: {}",
+                e
+            ))
+            .into_response();
+        }
     }
 
     {
@@ -481,25 +483,9 @@ pub async fn user_detail_get(
 
     let target_user = {
         let conn = state.users_db.lock().unwrap();
-        let u_res = conn.query_row(
-            "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata \
-             FROM users WHERE id = ?1;",
-            [id],
-            |row| Ok(crate::models::TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        );
-        match u_res {
-            Ok(u) => u,
-            Err(_) => return Redirect::to("/admin/users?error=User not found").into_response(),
+        match crate::db::users::get_user_by_id(&conn, id) {
+            Ok(Some(u)) => u,
+            _ => return Redirect::to("/admin/users?error=User not found").into_response(),
         }
     };
 
@@ -576,25 +562,9 @@ pub async fn user_edit_get(
 
     let target_user = {
         let conn = state.users_db.lock().unwrap();
-        let u_res = conn.query_row(
-            "SELECT id, username, password_hash, status, created_at, last_login, account_type, organization_id, metadata \
-             FROM users WHERE id = ?1;",
-            [id],
-            |row| Ok(crate::models::TenantUser {
-                id: row.get(0)?,
-                username: row.get(1)?,
-                password_hash: row.get(2)?,
-                status: row.get(3)?,
-                created_at: row.get(4)?,
-                last_login: row.get(5)?,
-                account_type: row.get(6)?,
-                organization_id: row.get(7)?,
-                metadata: row.get(8)?,
-            })
-        );
-        match u_res {
-            Ok(u) => u,
-            Err(_) => return Redirect::to("/admin/users?error=User not found").into_response(),
+        match crate::db::users::get_user_by_id(&conn, id) {
+            Ok(Some(u)) => u,
+            _ => return Redirect::to("/admin/users?error=User not found").into_response(),
         }
     };
 

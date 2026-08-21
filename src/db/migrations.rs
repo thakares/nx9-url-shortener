@@ -35,7 +35,21 @@ pub fn run_migrations(
             );
 
             let tx = conn.transaction()?;
-            tx.execute_batch(m.sql)?;
+            match tx.execute_batch(m.sql) {
+                Ok(()) => (),
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if err_msg.contains("duplicate column name") {
+                        tracing::warn!(
+                            database = db_name,
+                            version = m.version,
+                            "Column already exists during migration, continuing"
+                        );
+                    } else {
+                        return Err(e.into());
+                    }
+                }
+            }
             tx.commit()?;
 
             crate::db::sqlite::set_user_version(conn, m.version as i32)?;
@@ -566,6 +580,26 @@ pub const USERS_MIGRATIONS: &[Migration] = &[
     UPDATE users
     SET account_type = 'admin'
     WHERE username = 'admin' AND account_type = 'standard';
+    "#,
+    },
+    Migration {
+        version: 3,
+        name: "tenant_id",
+        sql: r#"
+    ALTER TABLE users ADD COLUMN tenant_id TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_id
+        ON users(tenant_id)
+        WHERE tenant_id IS NOT NULL;
+    "#,
+    },
+    Migration {
+        version: 4,
+        name: "uuid",
+        sql: r#"
+    ALTER TABLE users ADD COLUMN uuid TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uuid
+        ON users(uuid)
+        WHERE uuid IS NOT NULL;
     "#,
     },
 ];

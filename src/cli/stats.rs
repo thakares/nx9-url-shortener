@@ -15,16 +15,24 @@ pub async fn run(
     println!("Storage Directory: {:?}", config.data_dir);
 
     let files = vec![
-        ("admin.db", config.data_dir.join("admin/admin.db")),
-        ("system.db", config.data_dir.join("admin/system.db")),
-        ("users.db", config.data_dir.join("admin/users.db")),
+        ("admin.db", db.topology.admin_db()),
+        ("system.db", db.topology.system_db()),
+        ("users.db", db.topology.users_registry_db()),
+        ("global_urls.db", db.topology.global_urls_db()),
+        (
+            "global_landing_pages.db",
+            db.topology.global_landing_pages_db(),
+        ),
+        ("reserved.db", db.topology.reserved_db()),
         (
             "legacy content.db",
-            config.data_dir.join("users/1/content.db"),
+            db.topology
+                .content_db(crate::db::topology::LEGACY_ADMIN_USER_KEY)?,
         ),
         (
             "legacy analytics.db",
-            config.data_dir.join("users/1/analytics.db"),
+            db.topology
+                .analytics_db(crate::db::topology::LEGACY_ADMIN_USER_KEY)?,
         ),
     ];
 
@@ -47,8 +55,29 @@ pub async fn run(
     println!("Users Count: {}", users_count);
 
     let (urls_total, urls_active, urls_dead) = {
-        let conn = db.content.lock().unwrap();
-        crate::db::content::get_url_counts(&conn)?
+        let conn = db.global_urls.lock().unwrap();
+        let total: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status != 'retired';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'active';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let dead: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM global_urls WHERE status = 'disabled';",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        (total, active, dead)
     };
     println!(
         "Shortened URLs: {} total ({} active / {} dead)",
@@ -56,14 +85,19 @@ pub async fn run(
     );
 
     let pages_count = {
-        let conn = db.content.lock().unwrap();
-        crate::db::content::get_landing_page_count(&conn)?
+        let conn = db.global_landing_pages.lock().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM global_landing_pages WHERE status != 'retired';",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
     };
     println!("Landing Pages: {}", pages_count);
 
     let total_visits = {
-        let conn = db.analytics.lock().unwrap();
-        crate::db::analytics::get_total_clicks(&conn)?
+        let users_conn = db.users.lock().unwrap();
+        crate::db::users::get_platform_total_clicks(&db.topology, &users_conn).unwrap_or(0)
     };
     println!("Redirect Clicks: {}", total_visits);
 

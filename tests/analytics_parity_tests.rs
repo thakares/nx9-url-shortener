@@ -50,13 +50,11 @@ async fn start_test_server(
 
     let state = AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new())),
         db: db.clone(),
-        config,
+        config: config.clone(),
         analytics_queue: queue,
         start_time: Instant::now(),
     };
@@ -111,11 +109,29 @@ async fn test_analytics_and_table_parity() {
         .unwrap();
     assert_eq!(res.status(), reqwest::StatusCode::SEE_OTHER);
 
-    // Admin adds a URL to the global content_db
+    // Create User B to own global links
+    let _ = bzod::cli::create_user::run(
+        Some("userb".to_string()),
+        Some("password123".to_string()),
+        None,
+        create_temp_config(temp_dir.clone()),
+    )
+    .await
+    .unwrap();
+
+    let (id_b, tid_b) = {
+        let conn = db.users.lock().unwrap();
+        let u = bzod::db::users::get_user_by_username(&conn, "userb")
+            .unwrap()
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
+    };
+
+    // User B adds a URL
     let _admin_url_id = {
-        let conn_admin = db.content.lock().unwrap();
+        let conn_b = bzod::jobs::open_user_content_conn(&db, id_b).unwrap();
         let url = bzod::db::content::create_url_extended(
-            &conn_admin,
+            &conn_b,
             "!admin-slug",
             "https://admin.com",
             None,
@@ -127,24 +143,17 @@ async fn test_analytics_and_table_parity() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!admin-slug",
-            1,
-            "url",
-            &url.id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        bzod::db::slugs::register_url_slug(&urls_conn, "!admin-slug", &tid_b, &url.id, "active")
+            .unwrap();
         url.id
     };
 
-    // Admin adds a Landing Page to the global content_db
+    // User B adds a Landing Page
     let _admin_page_id = {
-        let conn_admin = db.content.lock().unwrap();
+        let conn_b = bzod::jobs::open_user_content_conn(&db, id_b).unwrap();
         let page = bzod::db::content::create_landing_page(
-            &conn_admin,
+            &conn_b,
             "!admin-page",
             "admin-page",
             "Title Admin",
@@ -153,12 +162,11 @@ async fn test_analytics_and_table_parity() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        bzod::db::slugs::register_landing_page_slug(
+            &pages_conn,
             "!admin-page",
-            1,
-            "page",
+            &tid_b,
             &page.id,
             "active",
         )
@@ -176,12 +184,12 @@ async fn test_analytics_and_table_parity() {
     .await
     .unwrap();
 
-    let id_a = {
+    let (id_a, tid_a) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "usera")
+        let u = bzod::db::users::get_user_by_username(&conn, "usera")
             .unwrap()
-            .unwrap()
-            .id
+            .unwrap();
+        (u.id, u.tenant_id.unwrap())
     };
 
     // User A adds a URL
@@ -200,16 +208,9 @@ async fn test_analytics_and_table_parity() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
-            "!usera-slug",
-            id_a,
-            "url",
-            &url.id,
-            "active",
-        )
-        .unwrap();
+        let urls_conn = db.global_urls.lock().unwrap();
+        bzod::db::slugs::register_url_slug(&urls_conn, "!usera-slug", &tid_a, &url.id, "active")
+            .unwrap();
         url.id
     };
 
@@ -226,12 +227,11 @@ async fn test_analytics_and_table_parity() {
         )
         .unwrap();
 
-        let system_conn = db.system.lock().unwrap();
-        bzod::db::users::register_global_slug(
-            &system_conn,
+        let pages_conn = db.global_landing_pages.lock().unwrap();
+        bzod::db::slugs::register_landing_page_slug(
+            &pages_conn,
             "!usera-page",
-            id_a,
-            "page",
+            &tid_a,
             &page.id,
             "active",
         )

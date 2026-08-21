@@ -65,30 +65,48 @@ pub async fn perform_backup(
     if let Ok(conn) = db.admin.lock() {
         let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
     }
-    if let Ok(conn) = db.content.lock() {
-        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
-    }
-    if let Ok(conn) = db.analytics.lock() {
-        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
-    }
     if let Ok(conn) = db.system.lock() {
         let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
     }
-    if let Ok(conn) = db.users.lock() {
+    if let Ok(conn) = db.global_urls.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.global_landing_pages.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.reserved.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    let user_ids: Vec<i64> = if let Ok(conn) = db.users.lock() {
         let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
         if let Ok(mut stmt) = conn.prepare("SELECT id FROM users;") {
             if let Ok(rows) = stmt.query_map([], |row| row.get::<_, i64>(0)) {
-                let user_ids: Vec<i64> = rows.filter_map(|r| r.ok()).collect();
-                for user_id in user_ids {
-                    if let Ok(u_conn) = crate::jobs::open_user_content_conn(db, user_id) {
-                        let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
-                    }
-                    if let Ok(u_conn) = crate::jobs::open_user_analytics_conn(db, user_id) {
-                        let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
-                    }
-                }
+                rows.filter_map(|r| r.ok()).collect()
+            } else {
+                Vec::new()
             }
+        } else {
+            Vec::new()
         }
+    } else {
+        Vec::new()
+    };
+    for user_id in user_ids {
+        if let Ok(u_conn) = crate::jobs::open_user_content_conn(db, user_id) {
+            let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+        }
+        if let Ok(u_conn) = crate::jobs::open_user_analytics_conn(db, user_id) {
+            let _ = u_conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+        }
+    }
+    if let Ok(conn) = db.global_urls.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.global_landing_pages.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
+    }
+    if let Ok(conn) = db.reserved.lock() {
+        let _ = conn.execute("PRAGMA wal_checkpoint(TRUNCATE);", []);
     }
 
     let date_str = Utc::now().format("%Y-%m-%d-%H%M%S").to_string();
@@ -99,12 +117,17 @@ pub async fn perform_backup(
     let enc = GzEncoder::new(file, Compression::default());
     let mut tar = Builder::new(enc);
 
-    let admin_dir = config.data_dir.join("admin");
+    let admin_dir = db.topology.admin_dir();
     if admin_dir.exists() {
         tar.append_dir_all("admin", &admin_dir)?;
     }
 
-    let users_dir = config.data_dir.join("users");
+    let slugs_dir = db.topology.slugs_dir();
+    if slugs_dir.exists() {
+        tar.append_dir_all("slugs", &slugs_dir)?;
+    }
+
+    let users_dir = db.topology.users_dir();
     if users_dir.exists() {
         tar.append_dir_all("users", &users_dir)?;
     }

@@ -31,12 +31,16 @@ async fn test_user_deletion_cleanup() {
     .await
     .unwrap();
 
-    let user_id = {
+    let (user_id, user_dir) = {
         let conn = db.users.lock().unwrap();
-        bzod::db::users::get_user_by_username(&conn, "testuser")
+        let user = bzod::db::users::get_user_by_username(&conn, "testuser")
             .unwrap()
+            .unwrap();
+        let dir = bzod::db::tenant::location_for_user(&user)
             .unwrap()
-            .id
+            .dir(&bzod::db::topology::Topology::new(&temp_dir))
+            .unwrap();
+        (user.id, dir)
     };
 
     // Add session and API token
@@ -52,8 +56,7 @@ async fn test_user_deletion_cleanup() {
         .await
         .unwrap();
 
-    // Verify directory is deleted
-    let user_dir = temp_dir.join("users").join(user_id.to_string());
+    // Verify tenant directory is deleted
     assert!(!user_dir.exists());
 
     // Verify sessions/tokens are cascadingly deleted

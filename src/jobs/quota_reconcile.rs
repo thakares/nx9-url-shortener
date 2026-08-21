@@ -37,9 +37,9 @@ pub async fn run_quota_reconciliation(
             rows.filter_map(|r| r.ok()).collect()
         };
 
-        let users_conn = db.users.lock().unwrap();
         for user_id in user_ids {
             if let Ok(content_conn) = super::open_user_content_conn(&db, user_id) {
+                let users_conn = db.users.lock().unwrap();
                 if let Err(e) =
                     crate::db::users::reconcile_user_quotas(&users_conn, user_id, &content_conn)
                 {

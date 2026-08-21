@@ -24,16 +24,27 @@ pub async fn run(
 
     let mut all_healthy = true;
 
-    // Define target databases in the new layout
-    let admin_dir = config.data_dir.join("admin");
-    let legacy_user_dir = config.data_dir.join("users").join("1");
+    let topology = crate::db::topology::Topology::new(&config.data_dir);
 
     let dbs = vec![
-        ("admin", admin_dir.join("admin.db")),
-        ("system", admin_dir.join("system.db")),
-        ("users", admin_dir.join("users.db")),
-        ("legacy content", legacy_user_dir.join("content.db")),
-        ("legacy analytics", legacy_user_dir.join("analytics.db")),
+        ("admin", topology.admin_db()),
+        ("system", topology.system_db()),
+        ("users", topology.users_registry_db()),
+        ("global_urls", topology.global_urls_db()),
+        ("global_landing_pages", topology.global_landing_pages_db()),
+        ("reserved", topology.reserved_db()),
+        (
+            "legacy content",
+            topology
+                .content_db(crate::db::topology::LEGACY_ADMIN_USER_KEY)
+                .expect("legacy admin user key is valid"),
+        ),
+        (
+            "legacy analytics",
+            topology
+                .analytics_db(crate::db::topology::LEGACY_ADMIN_USER_KEY)
+                .expect("legacy admin user key is valid"),
+        ),
     ];
 
     for (db_name, db_path) in dbs {
@@ -92,8 +103,8 @@ pub async fn run(
     // Global Slug Registry Integrity Check
     println!("Global Slug Registry Integrity Check");
     println!("====================================");
-    let system_db_path = admin_dir.join("system.db");
-    let users_db_path = admin_dir.join("users.db");
+    let system_db_path = topology.system_db();
+    let users_db_path = topology.users_registry_db();
 
     if system_db_path.exists() && users_db_path.exists() {
         match (
@@ -134,7 +145,7 @@ pub async fn run(
                                 );
                                 println!();
                                 println!("Owner:");
-                                println!("    User ID {}", issue.owner_user_id);
+                                println!("    Tenant ID {}", issue.owner_tenant_id);
                                 println!();
                                 println!("Database:");
                                 println!("    {}", issue.database_path.display());

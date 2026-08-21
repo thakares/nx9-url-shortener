@@ -106,11 +106,13 @@ pub async fn user_download_backup(
     };
 
     let ip = get_client_ip(&headers, connect_info);
-    let user_dir = state
-        .config
-        .data_dir
-        .join("users")
-        .join(user.id.to_string());
+    let user_dir = match crate::db::tenant::location_for_user(&user).and_then(|loc| {
+        loc.dir(&state.db.topology)
+            .map_err(|e| crate::error::AppError::BadRequest(e.to_string()))
+    }) {
+        Ok(p) => p,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "Database error").into_response(),
+    };
 
     let mut buffer = Vec::new();
     let res = {
@@ -224,11 +226,15 @@ pub async fn user_restore_backup_post(
         .into_response();
     }
 
-    let user_dir = state
-        .config
-        .data_dir
-        .join("users")
-        .join(user.id.to_string());
+    let user_dir = match crate::db::tenant::location_for_user(&user).and_then(|loc| {
+        loc.dir(&state.db.topology)
+            .map_err(|e| crate::error::AppError::BadRequest(e.to_string()))
+    }) {
+        Ok(p) => p,
+        Err(_) => {
+            return Redirect::to("/user/settings?error=Invalid user directory").into_response()
+        }
+    };
 
     let temp_unpack_dir =
         std::env::temp_dir().join(format!("bzod_restore_unpack_{}", uuid::Uuid::new_v4()));
@@ -241,42 +247,124 @@ pub async fn user_restore_backup_post(
         .into_response();
     }
 
-    let restore_res = {
-        let file = match File::open(&temp_file_path) {
-            Ok(f) => f,
-            Err(e) => {
-                let _ = std::fs::remove_file(&temp_file_path);
-                let _ = std::fs::remove_dir_all(&temp_unpack_dir);
-                return Redirect::to(&format!(
-                    "/user/settings?error=Failed to open upload: {}",
-                    e
-                ))
-                .into_response();
-            }
-        };
+    let restore_res: Result<(), Box<dyn std::error::Error>> = (|| {
+        let file = File::open(&temp_file_path)?;
         let tar_gz = GzDecoder::new(file);
         let mut archive = tar::Archive::new(tar_gz);
-        if let Err(e) = archive.unpack(&temp_unpack_dir) {
-            Err(Box::new(e) as Box<dyn std::error::Error>)
-        } else {
-            // Check for collision using temp content.db
-            let system_conn = state.system_db.lock().unwrap();
-            let temp_content_db = temp_unpack_dir.join("content.db");
-            if temp_content_db.exists() {
-                if let Err(e) = crate::db::users::register_restored_user_slugs(
-                    &system_conn,
-                    user.id,
-                    &temp_content_db,
-                ) {
-                    Err(e)
-                } else {
-                    Ok(())
-                }
-            } else {
-                Err("Backup is missing content.db".into())
+        archive.unpack(&temp_unpack_dir)?;
+
+        let target_tenant_id = user
+            .tenant_id
+            .unwrap_or_else(crate::identity::TenantId::generate);
+        let temp_content_db = temp_unpack_dir.join("content.db");
+        if !temp_content_db.exists() {
+            return Err("Backup is missing content.db".into());
+        }
+
+        let content_conn = rusqlite::Connection::open(&temp_content_db)?;
+
+        let mut urls = Vec::new();
+        if let Ok(mut stmt) = content_conn.prepare("SELECT code, id, created_at, status FROM urls;")
+        {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            }) {
+                urls = rows.filter_map(|r| r.ok()).collect();
             }
         }
-    };
+
+        let mut pages = Vec::new();
+        if let Ok(mut stmt) =
+            content_conn.prepare("SELECT code, id, created_at, state FROM landing_pages;")
+        {
+            if let Ok(rows) = stmt.query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            }) {
+                pages = rows.filter_map(|r| r.ok()).collect();
+            }
+        }
+
+        let urls_conn = state.db.global_urls.lock().unwrap();
+        let pages_conn = state.db.global_landing_pages.lock().unwrap();
+
+        for (slug, _, _, _) in &urls {
+            if let Ok(Some(existing_owner)) = urls_conn
+                .query_row(
+                    "SELECT owner_tenant_id FROM global_urls WHERE slug = ?1;",
+                    [slug],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()
+            {
+                if existing_owner != target_tenant_id.as_str() {
+                    return Err(format!("Slug collision on URL /{}", slug).into());
+                }
+            }
+        }
+
+        for (slug, _, _, _) in &pages {
+            if let Ok(Some(existing_owner)) = pages_conn
+                .query_row(
+                    "SELECT owner_tenant_id FROM global_landing_pages WHERE slug = ?1;",
+                    [slug],
+                    |r| r.get::<_, String>(0),
+                )
+                .optional()
+            {
+                if existing_owner != target_tenant_id.as_str() {
+                    return Err(format!("Slug collision on Landing Page /{}", slug).into());
+                }
+            }
+        }
+
+        let _ = urls_conn.execute(
+            "DELETE FROM global_urls WHERE owner_tenant_id = ?1;",
+            [target_tenant_id.as_str()],
+        );
+        let _ = pages_conn.execute(
+            "DELETE FROM global_landing_pages WHERE owner_tenant_id = ?1;",
+            [target_tenant_id.as_str()],
+        );
+
+        let now = chrono::Utc::now().to_rfc3339();
+        for (slug, target_id, created_at, status) in urls {
+            let global_status = if status == "dead" {
+                "disabled"
+            } else {
+                "active"
+            };
+            let _ = urls_conn.execute(
+                "INSERT OR REPLACE INTO global_urls (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at) 
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL);",
+                rusqlite::params![slug, target_tenant_id.as_str(), target_id, created_at, now, global_status],
+            );
+        }
+
+        for (slug, target_id, created_at, state) in pages {
+            let global_status = if state == "published" {
+                "active"
+            } else {
+                "disabled"
+            };
+            let _ = pages_conn.execute(
+                "INSERT OR REPLACE INTO global_landing_pages (slug, owner_tenant_id, target_id, created_at, updated_at, status, retired_at) 
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL);",
+                rusqlite::params![slug, target_tenant_id.as_str(), target_id, created_at, now, global_status],
+            );
+        }
+
+        Ok(())
+    })();
 
     let _ = std::fs::remove_file(&temp_file_path);
 
@@ -316,7 +404,9 @@ pub async fn user_restore_backup_post(
             }
 
             let mut pool = state.user_dbs.lock().unwrap();
-            pool.remove(&user.id);
+            if let Ok(loc) = crate::db::tenant::location_for_user(&user) {
+                pool.remove(&loc.cache_key());
+            }
             let _ = write_audit_log(
                 &state.admin_db.lock().unwrap(),
                 &state,
@@ -678,8 +768,43 @@ pub async fn bulk_qr_export_post(
     let ip = get_client_ip(&headers, connect_info);
 
     let urls = {
-        let conn = state.content_db.lock().unwrap();
-        crate::db::content::list_urls(&conn, 500, 0, None).unwrap_or_default()
+        let conn = state.db.global_urls.lock().unwrap();
+        let mut stmt = match conn
+            .prepare("SELECT slug, target_id FROM global_urls WHERE status = 'active' LIMIT 500;")
+        {
+            Ok(s) => s,
+            Err(_) => return Redirect::to("/admin/settings?error=Database error").into_response(),
+        };
+        let rows = stmt.query_map([], |row| {
+            let code: String = row.get(0)?;
+            let target_id: String = row.get(1)?;
+            Ok(crate::models::Url {
+                id: target_id,
+                code: code.clone(),
+                destination: format!(
+                    "{}/{}",
+                    state.config.base_url.clone().unwrap_or_default(),
+                    code
+                ),
+                title: None,
+                description: None,
+                created_at: String::new(),
+                updated_at: String::new(),
+                status: "active".to_string(),
+                tags: vec![],
+                expires_at: None,
+                password_hash: None,
+                max_access_count: None,
+                access_count: 0,
+                expired: false,
+                last_latency_ms: None,
+                last_status: None,
+            })
+        });
+        match rows {
+            Ok(r) => r.filter_map(|x| x.ok()).collect(),
+            Err(_) => vec![],
+        }
     };
 
     if urls.is_empty() {
@@ -761,10 +886,7 @@ pub async fn status_get(State(state): State<AppState>, jar: CookieJar) -> Respon
     let uptime_duration = state.start_time.elapsed();
     let uptime = crate::utils::format_duration(uptime_duration);
 
-    let urls = {
-        let conn = state.content_db.lock().unwrap();
-        crate::db::content::list_urls(&conn, 50, 0, None).unwrap_or_default()
-    };
+    let urls = vec![];
 
     let template = crate::templates::StatusTemplate {
         admin_username: user.username,
@@ -911,93 +1033,72 @@ pub async fn restore_backup_post(
     let restore_res = {
         // Temporarily suspend access to active SQLite connections
         let mut admin_conn = state.admin_db.lock().unwrap();
-        let mut content_conn = state.content_db.lock().unwrap();
-        let mut analytics_conn = state.analytics_db.lock().unwrap();
         let mut system_conn = state.system_db.lock().unwrap();
+        let mut users_conn = state.users_db.lock().unwrap();
+        let mut urls_conn = state.db.global_urls.lock().unwrap();
+        let mut pages_conn = state.db.global_landing_pages.lock().unwrap();
+        let mut reserved_conn = state.db.reserved.lock().unwrap();
 
         // 1. Close current connections by replacing them with dummy in-memory DBs
-        *admin_conn = match rusqlite::Connection::open_in_memory() {
-            Ok(c) => c,
-            Err(e) => {
-                return Redirect::to(&format!(
-                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
-                    e
-                ))
-                .into_response()
-            }
-        };
-        *content_conn = match rusqlite::Connection::open_in_memory() {
-            Ok(c) => c,
-            Err(e) => {
-                return Redirect::to(&format!(
-                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
-                    e
-                ))
-                .into_response()
-            }
-        };
-        *analytics_conn = match rusqlite::Connection::open_in_memory() {
-            Ok(c) => c,
-            Err(e) => {
-                return Redirect::to(&format!(
-                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
-                    e
-                ))
-                .into_response()
-            }
-        };
-        *system_conn = match rusqlite::Connection::open_in_memory() {
-            Ok(c) => c,
-            Err(e) => {
-                return Redirect::to(&format!(
-                    "/admin/settings?error=Failed to open temp in-memory DB: {}",
-                    e
-                ))
-                .into_response()
-            }
-        };
+        *admin_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
+        *system_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
+        *users_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
+        *urls_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
+        *pages_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
+        *reserved_conn = rusqlite::Connection::open_in_memory()
+            .unwrap_or_else(|_| rusqlite::Connection::open(":memory:").unwrap());
 
-        // 2. Perform restore unpacking/validation
-        //    perform_restore() handles legacy layout normalization internally
-        //    before validation, so no post-restore normalization is needed.
+        // 2. Clear tenant pool cache
+        if let Ok(mut pool) = state.user_dbs.lock() {
+            pool.clear();
+        }
+
+        // 3. Perform restore unpacking/validation
         let res = crate::cli::restore::perform_restore(&temp_file_path, &state.config.data_dir);
 
-        // 3. Reinitialize database connections using correct multi-tenant paths
-        let paths =
-            crate::services::backup_layout::RestoredDbPaths::from_data_dir(&state.config.data_dir);
-        let new_admin = rusqlite::Connection::open(&paths.admin);
-        let new_system = rusqlite::Connection::open(&paths.system);
-        let new_users = rusqlite::Connection::open(&paths.users);
-        let new_content = rusqlite::Connection::open(&paths.content);
-        let new_analytics = rusqlite::Connection::open(&paths.analytics);
+        // 4. Reinitialize Core database connections
+        let topology = crate::db::topology::Topology::new(&state.config.data_dir);
+        let new_admin = rusqlite::Connection::open(topology.admin_db());
+        let new_system = rusqlite::Connection::open(topology.system_db());
+        let new_users = rusqlite::Connection::open(topology.users_registry_db());
+        let new_urls = rusqlite::Connection::open(topology.global_urls_db());
+        let new_pages = rusqlite::Connection::open(topology.global_landing_pages_db());
+        let new_reserved = rusqlite::Connection::open(topology.reserved_db());
 
-        match (new_admin, new_content, new_analytics, new_system, new_users) {
-            (Ok(adm), Ok(cnt), Ok(any), Ok(sys), Ok(usr)) => {
+        match (
+            new_admin,
+            new_system,
+            new_users,
+            new_urls,
+            new_pages,
+            new_reserved,
+        ) {
+            (Ok(adm), Ok(sys), Ok(usr), Ok(urls), Ok(pages), Ok(resv)) => {
                 let _ = crate::db::sqlite::enable_wal(&adm, "admin");
-                let _ = crate::db::sqlite::enable_wal(&cnt, "content");
-                let _ = crate::db::sqlite::enable_wal(&any, "analytics");
                 let _ = crate::db::sqlite::enable_wal(&sys, "system");
                 let _ = crate::db::sqlite::enable_wal(&usr, "users");
+                let _ = crate::db::sqlite::enable_wal(&urls, "global_urls");
+                let _ = crate::db::sqlite::enable_wal(&pages, "global_landing_pages");
+                let _ = crate::db::sqlite::enable_wal(&resv, "reserved");
 
                 let _ = crate::db::sqlite::enable_foreign_keys(&adm, "admin");
-                let _ = crate::db::sqlite::enable_foreign_keys(&cnt, "content");
-                let _ = crate::db::sqlite::enable_foreign_keys(&any, "analytics");
                 let _ = crate::db::sqlite::enable_foreign_keys(&sys, "system");
                 let _ = crate::db::sqlite::enable_foreign_keys(&usr, "users");
+                let _ = crate::db::sqlite::enable_foreign_keys(&urls, "global_urls");
+                let _ = crate::db::sqlite::enable_foreign_keys(&pages, "global_landing_pages");
+                let _ = crate::db::sqlite::enable_foreign_keys(&resv, "reserved");
 
                 *admin_conn = adm;
-                *content_conn = cnt;
-                *analytics_conn = any;
                 *system_conn = sys;
-                match state.db.users.lock() {
-                    Ok(mut u) => *u = usr,
-                    Err(_) => {
-                        return Redirect::to(
-                            "/admin/settings?error=Failed to reopen restored databases",
-                        )
-                        .into_response();
-                    }
-                }
+                *users_conn = usr;
+                *urls_conn = urls;
+                *pages_conn = pages;
+                *reserved_conn = resv;
             }
             _ => {
                 return Redirect::to("/admin/settings?error=Failed to reopen restored databases")

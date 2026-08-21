@@ -42,8 +42,6 @@ fn build_state(config: Config) -> (Db, bzod::state::AppState) {
     let (queue, _) = AnalyticsQueue::new(db.clone(), 1000, rx);
     let state = bzod::state::AppState {
         admin_db: db.admin.clone(),
-        content_db: db.content.clone(),
-        analytics_db: db.analytics.clone(),
         system_db: db.system.clone(),
         users_db: db.users.clone(),
         user_dbs: Arc::new(Mutex::new(HashMap::new())),
@@ -60,14 +58,20 @@ fn test_migration_idempotent() {
     let mut conn = Connection::open_in_memory().unwrap();
     run_migrations(&mut conn, "users", USERS_MIGRATIONS, None).unwrap();
     run_migrations(&mut conn, "users", USERS_MIGRATIONS, None).unwrap();
-    assert_eq!(get_user_version(&conn).unwrap(), 2);
+    assert_eq!(
+        get_user_version(&conn).unwrap(),
+        USERS_MIGRATIONS.last().unwrap().version
+    );
 }
 
 #[test]
 fn test_users_db_schema_version_2() {
     let mut conn = Connection::open_in_memory().unwrap();
     run_migrations(&mut conn, "users", USERS_MIGRATIONS, None).unwrap();
-    assert_eq!(get_user_version(&conn).unwrap(), 2);
+    assert_eq!(
+        get_user_version(&conn).unwrap(),
+        USERS_MIGRATIONS.last().unwrap().version
+    );
 }
 
 #[test]
