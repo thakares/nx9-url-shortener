@@ -1,10 +1,10 @@
 {% extends "layout.html" %}
 
-{% block title %}Manage Landing Pages - BZOD{% endblock %}
+{% block title %}Global Landing Page Registry - BZOD Admin{% endblock %}
 
 {% block active_pages %}active{% endblock %}
 
-{% block header_title %}Landing Page Registry{% endblock %}
+{% block header_title %}Global Landing Page Registry{% endblock %}
 
 {% block content %}
 {% if let Some(err) = error %}
@@ -13,169 +13,134 @@
     </div>
 {% endif %}
 
-<div class="urls-dashboard">
-    <div class="card">
-        <h3 style="font-size: 1.1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Create a New Landing Page
+<div class="card registered-links-shell" style="padding: 0; overflow: hidden;">
+    <div class="registered-links-header">
+        <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            Global Landing Page Registry
         </h3>
-        
-        <form action="/admin/pages/create" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            
-            <div class="page-form-grid-2">
-                <div class="form-group">
-                    <label for="title">Page Title *</label>
-                    <input type="text" id="title" name="title" class="form-input" placeholder="e.g. Summer Campaign" required>
-                </div>
-                
-                <div class="form-group">
-                    <label for="slug">SEO Slug *</label>
-                    <input type="text" id="slug" name="slug" class="form-input" placeholder="e.g. summer-promo" required pattern="[a-zA-Z0-9\-_]+" title="Only alphanumeric characters, dashes, and underscores allowed">
-                </div>
-            </div>
-
-            <div class="page-form-grid-3">
-                <div class="form-group">
-                    <label for="code">Short Code (4-Hex, optional)</label>
-                    <input type="text" id="code" name="code" class="form-input" placeholder="e.g. a1b2" pattern="[0-9a-fA-F]{4}" title="Must be exactly 4 hex characters">
-                </div>
-
-                <div class="form-group">
-                    <label for="custom_slug">Custom Slug (optional)</label>
-                    <input type="text" id="custom_slug" name="custom_slug" class="form-input" placeholder="e.g. !my-page" pattern="![a-z0-9\-_]{1,24}" title="Must start with ! followed by 1-24 characters (a-z, 0-9, -, _)">
-                </div>
-
-                <div class="form-group">
-                    <label for="state">Publish State</label>
-                    <select id="state" name="state" class="form-input">
-                        <option value="draft">Draft</option>
-                        <option value="published" selected>Published</option>
-                        <option value="archived">Archived</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="html_content">Raw HTML Document *</label>
-                <textarea id="html_content" name="html_content" class="form-input page-html-editor" placeholder="<!DOCTYPE html>&#10;<html>&#10;<head>&#10;  <title>Landing Page</title>&#10;</head>&#10;<body>&#10;  <h1>Welcome!</h1>&#10;</body>&#10;</html>" required></textarea>
-            </div>
-            
-            <button type="submit" class="btn" style="width: 100%; margin-top: 0.5rem;">Save Page</button>
-        </form>
     </div>
 
-    <div class="card registered-links-shell" style="padding: 0; overflow: hidden;">
-        <div class="registered-links-header">
-            <h3 style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Registered Pages
-            </h3>
-        </div>
-        
-        <div class="table-container">
-            <table class="registered-pages-table">
-                <colgroup>
-                    <col class="col-page-title">
-                    <col class="col-page-paths">
-                    <col class="col-page-status">
-                    <col class="col-page-qr">
-                    <col class="col-page-actions">
-                </colgroup>
-                <thead>
+    <div class="table-container">
+        <table class="registered-pages-table">
+            <colgroup>
+                <col class="col-page-title" style="width: 25%;">
+                <col class="col-page-paths" style="width: 25%;">
+                <col class="col-owner" style="width: 15%;">
+                <col class="col-page-status" style="width: 10%;">
+                <col class="col-page-qr" style="width: 8%;">
+                <col class="col-page-actions" style="width: 17%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Page</th>
+                    <th>Paths</th>
+                    <th>Owner / Tenant</th>
+                    <th>Status</th>
+                    <th>QR Code</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if pages.is_empty() %}
                     <tr>
-                        <th>Page</th>
-                        <th>Paths</th>
-                        <th>Status</th>
-                        <th>QR Code</th>
-                        <th>Actions</th>
+                        <td colspan="6" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
+                            No landing pages registered across tenants.
+                        </td>
                     </tr>
-                </thead>
-                <tbody>
-                    {% if pages.is_empty() %}
+                {% else %}
+                    {% for row in pages %}
                         <tr>
-                            <td colspan="5" style="text-align: center; color: var(--text-secondary); padding: 3rem;">
-                                No landing pages registered. Create one to get started!
+                            <td data-label="Page">
+                                <div class="page-title-block">
+                                    <div class="page-title-heading">{{ row.page.title }}</div>
+                                    <div class="page-title-meta">UUID: {{ row.page.id[0..8] }}...</div>
+                                    <div class="page-title-meta">Created {{ row.page.created_at[0..10] }}</div>
+                                </div>
+                            </td>
+                            <td data-label="Paths">
+                                <div class="page-paths">
+                                    <div class="page-path-group">
+                                        <span class="page-path-caption">Short Path</span>
+                                        <a href="/p/{{ row.page.code }}" target="_blank" class="page-path-link">
+                                            /p/{{ row.page.code }}
+                                        </a>
+                                    </div>
+                                    <div class="page-path-group">
+                                        <span class="page-path-caption">SEO Preview Path</span>
+                                        <a href="/p/{{ row.page.code }}/{{ row.page.slug }}" target="_blank" class="page-path-link secondary">
+                                            /p/{{ row.page.code }}/{{ row.page.slug }}
+                                        </a>
+                                    </div>
+                                </div>
+                            </td>
+                            <td data-label="Owner / Tenant">
+                                <div>
+                                    {% if let Some(u) = row.owner_username.as_deref() %}
+                                        <strong style="color: var(--text-primary);">{{ u }}</strong>
+                                    {% else %}
+                                        <span class="text-muted">Unassigned</span>
+                                    {% endif %}
+                                    <div style="font-family: monospace; font-size: 0.72rem; color: var(--text-muted);">{{ row.owner_tenant_id }}</div>
+                                </div>
+                            </td>
+                            <td data-label="Status" class="status-cell">
+                                <span class="badge badge-{{ row.page.state }}">
+                                    {{ row.page.state }}
+                                </span>
+                            </td>
+                            {% let code = row.page.code.as_str() %}
+                            {% include "components/qr_preview.html" %}
+                            <td data-label="Actions" class="actions-cell">
+                                <div class="action-stack" style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+                                    <a href="/admin/moderation" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.2rem;">
+                                        🛡️ Moderate
+                                    </a>
+                                    <a href="/admin/slugs" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.2rem;">
+                                        🔄 Transfer
+                                    </a>
+                                    <a href="/admin/analytics/page/{{ row.page.id }}" class="btn btn-secondary" style="padding: 0.3rem 0.5rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.2rem;">
+                                        📊 Analytics
+                                    </a>
+                                    <form action="/admin/pages/delete/{{ row.page.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this page?');" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-danger" style="padding: 0.3rem 0.5rem; font-size: 0.75rem;">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
-                    {% else %}
-                        {% for page in pages %}
-                            <tr>
-                                <td data-label="Page">
-                                    <div class="page-title-block">
-                                        <div class="page-title-heading">{{ page.title }}</div>
-                                        <div class="page-title-meta">UUID: {{ page.id[0..8] }}...</div>
-                                        <div class="page-title-meta">Created {{ page.created_at[0..10] }}</div>
-                                    </div>
-                                </td>
-                                <td data-label="Paths">
-                                    <div class="page-paths">
-                                        <div class="page-path-group">
-                                            <span class="page-path-caption">Short Path</span>
-                                            <a href="/p/{{ page.code }}" target="_blank" class="page-path-link">
-                                                /p/{{ page.code }}
-                                            </a>
-                                        </div>
-                                        <div class="page-path-group">
-                                            <span class="page-path-caption">SEO Preview Path</span>
-                                            <a href="/p/{{ page.code }}/{{ page.slug }}" target="_blank" class="page-path-link secondary">
-                                                /p/{{ page.code }}/{{ page.slug }}
-                                            </a>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td data-label="Status" class="status-cell">
-                                    <span class="badge badge-{{ page.state }}">
-                                        {{ page.state }}
-                                    </span>
-                                </td>
-                                {% let code = page.code.as_str() %}
-                                {% include "components/qr_preview.html" %}
-                                <td data-label="Actions" class="actions-cell">
-                                    <div class="action-stack">
-                                        <a href="/admin/analytics/page/{{ page.id }}" class="btn btn-secondary" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 0.25rem;">
-                                            📊 Analytics
-                                        </a>
-                                        <form action="/admin/pages/delete/{{ page.id }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this page?');">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                            <button type="submit" class="btn btn-danger" style="padding: 0.4rem 0.6rem; font-size: 0.8rem;">
-                                                Delete
-                                            </button>
-                                        </form>
-                                    </div>
-                                </td>
-                            </tr>
-                        {% endfor %}
-                    {% endif %}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="pagination">
-            {% if current_page > 1 %}
-                <a href="/admin/pages?page=1" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
-                <a href="/admin/pages?page={{ current_page - 1 }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>
-            {% else %}
-                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</span>
-                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</span>
-            {% endif %}
-
-            {% for p in visible_pages %}
-                {% if self.is_current(p) %}
-                    <span class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; font-weight: bold;">[{{ p }}]</span>
-                {% else %}
-                    <a href="/admin/pages?page={{ p }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">{{ p }}</a>
+                    {% endfor %}
                 {% endif %}
-            {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
-            {% if current_page < total_pages %}
-                <a href="/admin/pages?page={{ current_page + 1 }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</a>
-                <a href="/admin/pages?page={{ total_pages }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</a>
+    <div class="pagination">
+        {% if current_page > 1 %}
+            <a href="/admin/pages?page=1" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</a>
+            <a href="/admin/pages?page={{ current_page - 1 }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</a>
+        {% else %}
+            <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt;&lt; First</span>
+            <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">&lt; Prev</span>
+        {% endif %}
+
+        {% for p in visible_pages %}
+            {% if self.is_current(p) %}
+                <span class="btn btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; font-weight: bold;">[{{ p }}]</span>
             {% else %}
-                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</span>
-                <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</span>
+                <a href="/admin/pages?page={{ p }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">{{ p }}</a>
             {% endif %}
-        </div>
+        {% endfor %}
+
+        {% if current_page < total_pages %}
+            <a href="/admin/pages?page={{ current_page + 1 }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</a>
+            <a href="/admin/pages?page={{ total_pages }}" class="btn btn-secondary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</a>
+        {% else %}
+            <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Next &gt;</span>
+            <span class="btn btn-secondary" style="opacity: 0.5; cursor: not-allowed; padding: 0.4rem 0.8rem; font-size: 0.85rem;">Last &gt;&gt;</span>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

@@ -164,7 +164,7 @@ pub async fn api_create_url(
     let (target_user_id, target_tenant_id, content_db) = match user.0 {
         crate::models::ApiActor::Admin(_) => {
             return (
-                StatusCode::BAD_REQUEST,
+                StatusCode::FORBIDDEN,
                 Json(ApiError {
                     error: "Admin is a platform operator and cannot create application URLs directly without tenant context".to_string(),
                 }),
@@ -184,9 +184,18 @@ pub async fn api_create_url(
                         .into_response()
                 }
             };
-            let tid = u
-                .tenant_id
-                .unwrap_or_else(crate::identity::TenantId::generate);
+            let tid = match u.tenant_id {
+                Some(t) => t,
+                None => {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        Json(ApiError {
+                            error: "User has no assigned TenantId".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             (u.id, tid, user_dbs.content.clone())
         }
     };
@@ -560,7 +569,7 @@ pub async fn api_create_page(
     let (target_user_id, target_tenant_id, content_db) = match user.0 {
         crate::models::ApiActor::Admin(_) => {
             return (
-                StatusCode::BAD_REQUEST,
+                StatusCode::FORBIDDEN,
                 Json(ApiError {
                     error: "Admin is a platform operator and cannot create application landing pages directly without tenant context".to_string(),
                 }),
@@ -580,9 +589,18 @@ pub async fn api_create_page(
                         .into_response()
                 }
             };
-            let tid = u
-                .tenant_id
-                .unwrap_or_else(crate::identity::TenantId::generate);
+            let tid = match u.tenant_id {
+                Some(t) => t,
+                None => {
+                    return (
+                        StatusCode::FORBIDDEN,
+                        Json(ApiError {
+                            error: "User has no assigned TenantId".to_string(),
+                        }),
+                    )
+                        .into_response();
+                }
+            };
             (u.id, tid, user_dbs.content.clone())
         }
     };

@@ -198,9 +198,9 @@ pub fn authenticate_user_session(
         return Ok(None);
     }
 
-    // Get tenant user (status must be 'active')
+    // Get tenant user (status must be 'active', account_type != 'admin', and tenant_id is Some)
     let user_opt = crate::db::users::get_user_by_id(users_conn, session.user_id)?
-        .filter(|u| u.status == "active");
+        .filter(|u| u.status == "active" && u.account_type != "admin" && u.tenant_id.is_some());
 
     if let Some(user) = user_opt {
         Ok(Some((user, session.id)))
@@ -234,8 +234,8 @@ pub fn authenticate_api_key(
     let user_id_opt: Option<i64> = stmt.query_row([&hashed_key], |row| row.get(0)).optional()?;
 
     if let Some(user_id) = user_id_opt {
-        let user_opt =
-            crate::db::users::get_user_by_id(users_conn, user_id)?.filter(|u| u.status == "active");
+        let user_opt = crate::db::users::get_user_by_id(users_conn, user_id)?
+            .filter(|u| u.status == "active" && u.account_type != "admin" && u.tenant_id.is_some());
 
         if let Some(user) = user_opt {
             return Ok(Some(ApiActor::User(user)));

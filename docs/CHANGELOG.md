@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
+# v0.8.0 — Core Admin Separation, Tenant Boundary & Authentication Hardening
+
+## Added
+
+* Core Admin is strictly platform-operator-only and has no tenant application storage.
+* Inspection-only global URL and landing-page registries for Admin.
+* Strict Admin/tenant route boundary with HTTP 403 enforcement.
+* TenantId-based active ownership and tenant filesystem topology.
+* Tenant-aware analytics worker grouping.
+* Deterministic cross-role session invalidation and cookie clearing.
+
+## Changed
+
+* Removed active production dependencies on the legacy `system.db.global_slugs` registry.
+* Removed request-time TenantId generation and integer tenant filesystem fallbacks from active tenant operations.
+* Admin resource creation endpoints reject Core Admin actors with `403 Forbidden`.
+* User login and Admin login now establish role-specific sessions and clear the opposite-role session.
+
+## Compatibility
+
+* Historical v0.7.x migration and legacy restore compatibility remains preserved.
+* Legacy database/schema identifiers are retained only where required for migration and historical restore support.
+
+---
+
 ---
 
 # v0.7.0 — Responsive UI, Theme Support & Build Metadata

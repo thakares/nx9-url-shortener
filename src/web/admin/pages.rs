@@ -118,9 +118,10 @@ pub async fn user_pages_create(
         }
     }
 
-    let owner_tid = user
-        .tenant_id
-        .unwrap_or_else(crate::identity::TenantId::generate);
+    let owner_tid = match user.tenant_id {
+        Some(tid) => tid,
+        None => return (StatusCode::FORBIDDEN, "Missing tenant identity").into_response(),
+    };
 
     {
         let reserved_conn = state.db.reserved.lock().unwrap();
@@ -319,10 +320,10 @@ pub async fn pages_get(
                     }
                 }
             }
-            if let Some(p) = resolved_page {
-                pages.push(p);
+            let page = if let Some(p) = resolved_page {
+                p
             } else {
-                pages.push(crate::models::LandingPage {
+                crate::models::LandingPage {
                     id: target_id,
                     code: slug.clone(),
                     slug,
@@ -331,8 +332,23 @@ pub async fn pages_get(
                     state: status,
                     created_at,
                     updated_at,
-                });
-            }
+                }
+            };
+            let owner_username = {
+                let u_conn = state.users_db.lock().unwrap();
+                u_conn
+                    .query_row(
+                        "SELECT username FROM users WHERE tenant_id = ?1;",
+                        [&owner_tid_str],
+                        |r| r.get(0),
+                    )
+                    .ok()
+            };
+            pages.push(crate::templates::pages::AdminPageRow {
+                page,
+                owner_tenant_id: owner_tid_str,
+                owner_username,
+            });
         }
 
         let start_page = current_page.saturating_sub(3).max(1);
@@ -382,7 +398,11 @@ pub async fn pages_create(
         Err(redir) => return redir.into_response(),
     };
 
-    Redirect::to("/admin/pages?error=Admin is a platform operator and cannot create unowned application pages; create landing pages via a tenant user account").into_response()
+    (
+        StatusCode::FORBIDDEN,
+        "Admin is a platform operator and cannot create unowned application pages; create landing pages via a tenant user account",
+    )
+        .into_response()
 }
 
 // POST /admin/pages/delete/:id

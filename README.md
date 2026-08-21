@@ -6,7 +6,7 @@
 ![SQLite](https://img.shields.io/badge/SQLite-Embedded-blue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey)
 ![License](https://img.shields.io/badge/License-MIT%20OR%20Apache--2.0-green)
-![Version](https://img.shields.io/badge/Version-v0.7.0-purple)
+![Version](https://img.shields.io/badge/Version-v0.8.0-purple)
 
 [![GitHub](https://img.shields.io/badge/GitHub-thakares%2Fbzod-181717?logo=github)](https://github.com/thakares/bzod)
 [![Codeberg](https://img.shields.io/badge/Codeberg-thakares%2Fbzod-2185D0?logo=codeberg)](https://codeberg.org/thakares/bzod)
@@ -93,7 +93,7 @@ No recurring subscription fees.
 
 ---
 
-## Runtime Efficiency (v0.7.0)
+## Runtime Efficiency (v0.8.0)
 
 | Metric | Value |
 |---------|------:|
@@ -1337,7 +1337,7 @@ Community feedback helps guide future development.
 
 **Current Version**
 
-**v0.7.0**
+**v0.8.0**
 
 Production Ready
 

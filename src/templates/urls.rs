@@ -5,11 +5,17 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 
+pub struct AdminUrlRow {
+    pub url: Url,
+    pub owner_tenant_id: String,
+    pub owner_username: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "urls.html")]
 pub struct UrlsTemplate {
     pub admin_username: String,
-    pub urls: Vec<Url>,
+    pub urls: Vec<AdminUrlRow>,
     pub csrf_token: String,
     pub error: Option<String>,
     pub tag_filter: Option<String>,

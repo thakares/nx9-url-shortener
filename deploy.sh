@@ -11,7 +11,7 @@
 #   sudo bash deploy.sh
 #
 # Environment overrides:
-#   BZOD_VERSION=0.7.1
+#   BZOD_VERSION=0.8.0
 #   BZOD_IMAGE=nx9-url-shortener
 #   BZOD_ROOT=/DATA/AppData/nx9-url-shortener
 #   BZOD_PORT=8654
@@ -23,7 +23,7 @@ set -euo pipefail
 # Configuration
 # ============================================================
 
-BZOD_VERSION="${BZOD_VERSION:-0.7.1}"
+BZOD_VERSION="${BZOD_VERSION:-0.8.0}"
 BZOD_IMAGE="${BZOD_IMAGE:-nx9-url-shortener}"
 BZOD_ROOT="${BZOD_ROOT:-/DATA/AppData/nx9-url-shortener}"
 BZOD_PORT="${BZOD_PORT:-8654}"

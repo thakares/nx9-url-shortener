@@ -202,12 +202,10 @@ async fn test_full_http_e2e_flow() {
     let res = client.get(&user_dashboard_url).send().await.unwrap();
     assert_eq!(res.status(), reqwest::StatusCode::OK);
 
-    // Try to access admin dashboard as standard user (RBAC check - should redirect to admin login)
+    // Try to access admin dashboard as standard user (RBAC check - should return 403 Forbidden)
     let admin_dashboard_url = format!("{}/admin/dashboard", base_url);
     let res = client.get(&admin_dashboard_url).send().await.unwrap();
-    assert_eq!(res.status(), reqwest::StatusCode::SEE_OTHER);
-    let redirect_url = res.headers().get("location").unwrap().to_str().unwrap();
-    assert_eq!(redirect_url, "/admin/login");
+    assert_eq!(res.status(), reqwest::StatusCode::FORBIDDEN);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

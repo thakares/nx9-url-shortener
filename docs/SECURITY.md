@@ -1,6 +1,6 @@
 # BZOD Security Guide
 
-Version: v0.7.0
+Version: v0.8.0
 
 ---
 
@@ -16,7 +16,7 @@ BZOD is designed as a self-hosted URL shortener and landing page platform with a
 * Disaster recovery
 * Operational simplicity
 
-This document describes the security architecture, threat model, authentication mechanisms, authorization controls, and operational security recommendations for BZOD v0.7.0.
+This document describes the security architecture, threat model, authentication mechanisms, authorization controls, and operational security recommendations for BZOD v0.8.0.
 
 ---
 
@@ -620,7 +620,7 @@ If compromise is suspected:
 
 # Security Testing
 
-BZOD v0.7.0 includes tests covering:
+BZOD v0.8.0 includes tests covering:
 
 * Authentication
 * Authorization
@@ -665,7 +665,7 @@ These may be addressed in future releases.
 
 # Summary
 
-BZOD v0.7.0 provides:
+BZOD v0.8.0 provides:
 
 * Centralized authentication
 * Secure session management

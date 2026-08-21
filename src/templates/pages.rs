@@ -5,11 +5,17 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 
+pub struct AdminPageRow {
+    pub page: LandingPage,
+    pub owner_tenant_id: String,
+    pub owner_username: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "pages.html")]
 pub struct PagesTemplate {
     pub admin_username: String,
-    pub pages: Vec<LandingPage>,
+    pub pages: Vec<AdminPageRow>,
     pub csrf_token: String,
     pub error: Option<String>,
     pub current_page: usize,

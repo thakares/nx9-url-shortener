@@ -116,6 +116,31 @@ fn audit_meta(ip: &str, headers: &HeaderMap) -> String {
     )
 }
 
+pub(crate) fn clear_admin_cookie(jar: CookieJar) -> CookieJar {
+    let cookie = Cookie::build("bzod_session")
+        .path("/")
+        .max_age(time::Duration::ZERO)
+        .build();
+    jar.add(cookie)
+}
+
+pub(crate) fn clear_user_cookie(jar: CookieJar) -> CookieJar {
+    let cookie = Cookie::build("bzod_user_session")
+        .path("/")
+        .max_age(time::Duration::ZERO)
+        .build();
+    jar.add(cookie)
+}
+
+pub(crate) fn invalidate_session_in_db(state: &AppState, session_id: &str) {
+    if session_id.trim().is_empty() {
+        return;
+    }
+    if let Ok(conn) = state.users_db.lock() {
+        let _ = conn.execute("DELETE FROM sessions WHERE id = ?1;", [session_id]);
+    }
+}
+
 // POST /admin/login
 pub async fn login_post(
     State(state): State<AppState>,
@@ -233,6 +258,14 @@ pub async fn login_post(
             let session_token = generate_token(32);
             let expires = (Utc::now() + chrono::Duration::days(30)).to_rfc3339();
 
+            // Invalidate any existing sessions from the jar
+            if let Some(old_admin_cookie) = jar.get("bzod_session") {
+                invalidate_session_in_db(&state, old_admin_cookie.value());
+            }
+            if let Some(old_user_cookie) = jar.get("bzod_user_session") {
+                invalidate_session_in_db(&state, old_user_cookie.value());
+            }
+
             {
                 let conn = match state.users_db.lock() {
                     Ok(c) => c,
@@ -279,6 +312,7 @@ pub async fn login_post(
                 .build();
 
             let mut response_jar = jar.clone();
+            response_jar = clear_user_cookie(response_jar);
             response_jar = response_jar.add(cookie).add(clear_temp);
 
             (response_jar, Redirect::to("/admin/dashboard")).into_response()
@@ -301,14 +335,17 @@ pub async fn login_post(
 }
 
 // GET /logout
-pub async fn public_logout(State(_state): State<AppState>, jar: CookieJar) -> Response {
-    let cookie = Cookie::build("bzod_user_session")
-        .path("/")
-        .max_age(time::Duration::ZERO)
-        .build();
+pub async fn public_logout(State(state): State<AppState>, jar: CookieJar) -> Response {
+    if let Some(user_cookie) = jar.get("bzod_user_session") {
+        invalidate_session_in_db(&state, user_cookie.value());
+    }
+    if let Some(admin_cookie) = jar.get("bzod_session") {
+        invalidate_session_in_db(&state, admin_cookie.value());
+    }
 
     let mut response_jar = jar.clone();
-    response_jar = response_jar.add(cookie);
+    response_jar = clear_user_cookie(response_jar);
+    response_jar = clear_admin_cookie(response_jar);
 
     (response_jar, Redirect::to("/login")).into_response()
 }
@@ -383,6 +420,14 @@ pub async fn public_login_post(
             let session_token = generate_token(32);
             let expires = (Utc::now() + chrono::Duration::days(30)).to_rfc3339();
 
+            // Invalidate any existing sessions from the jar
+            if let Some(old_admin_cookie) = jar.get("bzod_session") {
+                invalidate_session_in_db(&state, old_admin_cookie.value());
+            }
+            if let Some(old_user_cookie) = jar.get("bzod_user_session") {
+                invalidate_session_in_db(&state, old_user_cookie.value());
+            }
+
             {
                 let conn = state.users_db.lock().unwrap();
                 let _ =
@@ -406,23 +451,51 @@ pub async fn public_login_post(
 
             let secure_flag =
                 crate::utils::resolve_cookie_secure(state.config.cookie_secure, &headers);
-            let cookie = Cookie::build(("bzod_user_session", session_token))
-                .path("/")
-                .secure(secure_flag)
-                .http_only(true)
-                .same_site(axum_extra::extract::cookie::SameSite::Strict)
-                .max_age(time::Duration::days(30))
-                .build();
 
-            let clear_temp = Cookie::build("bzod_temp_csrf")
-                .path("/login")
-                .max_age(time::Duration::ZERO)
-                .build();
+            if user.account_type == "admin" {
+                let cookie = Cookie::build(("bzod_session", session_token))
+                    .path("/")
+                    .secure(secure_flag)
+                    .http_only(true)
+                    .same_site(axum_extra::extract::cookie::SameSite::Strict)
+                    .max_age(time::Duration::days(30))
+                    .build();
 
-            let mut response_jar = jar.clone();
-            response_jar = response_jar.add(cookie).add(clear_temp);
+                let clear_temp = Cookie::build("bzod_temp_csrf")
+                    .path("/login")
+                    .max_age(time::Duration::ZERO)
+                    .build();
 
-            (response_jar, Redirect::to("/user/dashboard")).into_response()
+                let mut response_jar = jar.clone();
+                response_jar = clear_user_cookie(response_jar);
+                response_jar = response_jar.add(cookie).add(clear_temp);
+
+                (response_jar, Redirect::to("/admin/dashboard")).into_response()
+            } else {
+                if user.tenant_id.is_none() {
+                    return Redirect::to("/login?error=Invalid tenant configuration")
+                        .into_response();
+                }
+
+                let cookie = Cookie::build(("bzod_user_session", session_token))
+                    .path("/")
+                    .secure(secure_flag)
+                    .http_only(true)
+                    .same_site(axum_extra::extract::cookie::SameSite::Strict)
+                    .max_age(time::Duration::days(30))
+                    .build();
+
+                let clear_temp = Cookie::build("bzod_temp_csrf")
+                    .path("/login")
+                    .max_age(time::Duration::ZERO)
+                    .build();
+
+                let mut response_jar = jar.clone();
+                response_jar = clear_admin_cookie(response_jar);
+                response_jar = response_jar.add(cookie).add(clear_temp);
+
+                (response_jar, Redirect::to("/user/dashboard")).into_response()
+            }
         }
         None => {
             let system_conn = state.system_db.lock().unwrap();
@@ -446,18 +519,16 @@ pub async fn public_login_post(
 
 // GET /admin/logout
 pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> Response {
-    if let Ok((_, session_id)) = require_auth(&state, &jar).await {
-        let conn = state.users_db.lock().unwrap();
-        let _ = conn.execute("DELETE FROM sessions WHERE id = ?1;", [&session_id]);
+    if let Some(admin_cookie) = jar.get("bzod_session") {
+        invalidate_session_in_db(&state, admin_cookie.value());
+    }
+    if let Some(user_cookie) = jar.get("bzod_user_session") {
+        invalidate_session_in_db(&state, user_cookie.value());
     }
 
-    let cookie = Cookie::build("bzod_session")
-        .path("/")
-        .max_age(time::Duration::ZERO)
-        .build();
-
     let mut response_jar = jar.clone();
-    response_jar = response_jar.add(cookie);
+    response_jar = clear_admin_cookie(response_jar);
+    response_jar = clear_user_cookie(response_jar);
 
     (response_jar, Redirect::to("/admin/login")).into_response()
 }

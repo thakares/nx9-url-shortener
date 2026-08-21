@@ -86,32 +86,74 @@ pub(crate) fn write_audit_log(
 pub(crate) const PAGE_SIZE: usize = 25;
 pub(crate) const ANALYTICS_PAGE_SIZE: usize = 50;
 pub(crate) const MAX_JSON_EXPORT_ROWS: usize = 50_000;
-// Helper: Verify admin session and return user or redirect to login
+// Helper: Verify admin session and return user or error response (403 Forbidden / login redirect)
 pub(crate) async fn require_auth(
     state: &AppState,
     jar: &CookieJar,
-) -> Result<(User, String), Redirect> {
+) -> Result<(User, String), Response> {
     let conn = match state.users_db.lock() {
         Ok(c) => c,
-        Err(_) => return Err(Redirect::to("/admin/login")),
+        Err(_) => return Err(Redirect::to("/admin/login").into_response()),
     };
+
     match authenticate_admin_session(&conn, jar) {
         Ok(Some((user, session_id))) => Ok((user, session_id)),
-        _ => Err(Redirect::to("/admin/login")),
+        Ok(None) => {
+            // Check if user is logged in as a normal tenant user trying to access admin route
+            if let Ok(Some((tenant_user, _))) = authenticate_user_session(&conn, jar) {
+                if tenant_user.account_type != "admin" {
+                    return Err((
+                        StatusCode::FORBIDDEN,
+                        "Forbidden: Standard users cannot access Admin routes",
+                    )
+                        .into_response());
+                }
+            }
+            Err(Redirect::to("/admin/login").into_response())
+        }
+        Err(_) => Err(Redirect::to("/admin/login").into_response()),
     }
 }
-// Helper: Verify tenant user session and return user or redirect to login
+
+// Helper: Verify tenant user session and return tenant user or error response (403 Forbidden / login redirect)
 pub(crate) async fn require_user_auth(
     state: &AppState,
     jar: &CookieJar,
-) -> Result<(crate::models::TenantUser, String), Redirect> {
+) -> Result<(crate::models::TenantUser, String), Response> {
     let conn = match state.users_db.lock() {
         Ok(c) => c,
-        Err(_) => return Err(Redirect::to("/login")),
+        Err(_) => return Err(Redirect::to("/login").into_response()),
     };
+
+    // If an Admin session is present, Core Admin is trying to access /user/* routes -> Reject with 403 Forbidden
+    if let Ok(Some((_admin_user, _))) = authenticate_admin_session(&conn, jar) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "Forbidden: Core Admin cannot access tenant application routes; use /admin/...",
+        )
+            .into_response());
+    }
+
+    // Now check tenant user session
     match authenticate_user_session(&conn, jar) {
-        Ok(Some((user, session_id))) => Ok((user, session_id)),
-        _ => Err(Redirect::to("/login")),
+        Ok(Some((user, session_id))) => {
+            if user.account_type == "admin" {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "Forbidden: Core Admin cannot access tenant application routes; use /admin/...",
+                )
+                    .into_response());
+            }
+            if user.tenant_id.is_none() {
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    "Forbidden: User has no assigned TenantId",
+                )
+                    .into_response());
+            }
+            Ok((user, session_id))
+        }
+        _ => Err(Redirect::to("/login").into_response()),
     }
 }
 #[derive(Deserialize)]

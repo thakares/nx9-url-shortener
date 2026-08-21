@@ -253,9 +253,7 @@ pub async fn user_restore_backup_post(
         let mut archive = tar::Archive::new(tar_gz);
         archive.unpack(&temp_unpack_dir)?;
 
-        let target_tenant_id = user
-            .tenant_id
-            .unwrap_or_else(crate::identity::TenantId::generate);
+        let target_tenant_id = user.tenant_id.ok_or("User is missing assigned TenantId")?;
         let temp_content_db = temp_unpack_dir.join("content.db");
         if !temp_content_db.exists() {
             return Err("Backup is missing content.db".into());

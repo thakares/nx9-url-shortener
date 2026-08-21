@@ -1,10 +1,22 @@
 # Upgrade Guide
 
-Version: v0.7.0
+Version: v0.8.0
 
-This document describes the upgrade process for existing BZOD deployments upgrading to BZOD v0.7.0.
+This document describes the upgrade process for existing BZOD deployments upgrading to BZOD v0.8.0.
 
 ---
+
+# BZOD v0.8.0 Upgrade Overview
+
+BZOD v0.8.0 completes the TenantId-based multi-tenant topology and separates Core Admin from tenant application resources. The active runtime uses the Core databases under `admin/`, global slug registries under `slugs/`, and tenant databases under `users/<TenantId>/`.
+
+Key upgrade characteristics:
+
+* Core Admin has no tenant directory, `content.db`, or `analytics.db`.
+* Active production operations no longer use `system.db.global_slugs`.
+* Active tenant ownership is represented by immutable `TenantId`.
+* Legacy integer IDs and legacy slug data remain available only to migration/restore compatibility paths.
+* Existing legacy deployments should use the repository's migration and restore commands rather than manually copying legacy tenant directories into the v0.8 topology.
 
 # Overview
 

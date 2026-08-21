@@ -27,7 +27,7 @@ services:
 
     hostname: bzod
 
-    image: nx9-url-shortener:v0.7.0
+    image: nx9-url-shortener:v0.8.0
 
     ports:
       - mode: ingress

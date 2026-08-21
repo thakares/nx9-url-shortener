@@ -1,3 +1,30 @@
+# BZOD v0.8.0 — Multi-Tenant Core Separation & Authorization Hardening
+
+Release Date: 2026-08-21
+
+## Highlights
+
+- **Core Admin separation**: Admin is a platform operator, not a tenant and not an application resource owner.
+- **Global slug registries**: Active URL and landing-page ownership uses `slugs/global_urls.db` and `slugs/global_landing_pages.db`.
+- **Strict route boundary**: Core Admin is forbidden from `/user/*`; normal tenant users are forbidden from `/admin/*`.
+- **Capability enforcement**: Admin resource creation through UI and REST/bulk endpoints returns `403 Forbidden`.
+- **Tenant identity hardening**: Active tenant operations require an immutable `TenantId`; no request-time fallback generation or `users/1` application fallback.
+- **Session hygiene**: Admin/user session cookies and server-side sessions are invalidated when switching principals or logging out.
+- **Tenant-aware analytics**: Analytics events are grouped and persisted by `TenantId`.
+- **Legacy compatibility preserved**: Legacy migration and restore paths remain available without being active production paths.
+
+## Verification
+
+- Phase 5 Core Separation tests: **4/4 passed**
+- Admin capability boundary tests: **11/11 passed**
+- Admin/user route and session boundary tests: **27/27 passed**
+- Phase 6A elimination tests: **6/6 passed**
+- Workspace regression suite: **all tests passed**
+- `cargo fmt --all -- --check`: **PASS**
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: **PASS**
+
+---
+
 # BZOD v0.7.0 — Responsive UI, Theme Support & Build Metadata
 
 Release Date: 2026-08-11

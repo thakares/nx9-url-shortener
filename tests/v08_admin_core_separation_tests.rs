@@ -158,19 +158,9 @@ async fn test_admin_cannot_create_unowned_application_resources() {
         .send()
         .await
         .unwrap();
-    assert_eq!(create_url_res.status(), reqwest::StatusCode::SEE_OTHER);
-    let location = create_url_res
-        .headers()
-        .get("location")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(
-        location.contains("error="),
-        "Admin URL creation must be rejected with error redirect"
-    );
+    assert_eq!(create_url_res.status(), reqwest::StatusCode::FORBIDDEN);
 
-    // 4. Admin attempts to create Landing Page via POST /admin/pages/create -> Should redirect with error
+    // 4. Admin attempts to create Landing Page via POST /admin/pages/create -> Should return FORBIDDEN
     let mut page_form = HashMap::new();
     page_form.insert("title", "Admin Page");
     page_form.insert("slug", "!admin_page");
@@ -186,17 +176,7 @@ async fn test_admin_cannot_create_unowned_application_resources() {
         .send()
         .await
         .unwrap();
-    assert_eq!(create_page_res.status(), reqwest::StatusCode::SEE_OTHER);
-    let location = create_page_res
-        .headers()
-        .get("location")
-        .unwrap()
-        .to_str()
-        .unwrap();
-    assert!(
-        location.contains("error="),
-        "Admin Landing Page creation must be rejected with error redirect"
-    );
+    assert_eq!(create_page_res.status(), reqwest::StatusCode::FORBIDDEN);
 
     let _ = fs::remove_dir_all(&temp_dir);
 }

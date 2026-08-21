@@ -217,7 +217,7 @@ pub async fn api_bulk_url(
     let (target_user_id, target_tenant_id, content_db) = match user.0 {
         crate::models::ApiActor::Admin(_) => {
             return (
-                StatusCode::BAD_REQUEST,
+                StatusCode::FORBIDDEN,
                 Json(BulkErrorResponse {
                     error: "Admin is a platform operator and cannot create application URLs directly without tenant context".to_string(),
                 }),

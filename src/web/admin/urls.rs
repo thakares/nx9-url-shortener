@@ -153,9 +153,10 @@ pub async fn user_urls_create(
         }
     }
 
-    let owner_tid = user
-        .tenant_id
-        .unwrap_or_else(crate::identity::TenantId::generate);
+    let owner_tid = match user.tenant_id {
+        Some(tid) => tid,
+        None => return (StatusCode::FORBIDDEN, "Missing tenant identity").into_response(),
+    };
 
     {
         let reserved_conn = state.db.reserved.lock().unwrap();
@@ -415,10 +416,10 @@ pub async fn urls_get(
                     }
                 }
             }
-            if let Some(u) = resolved_url {
-                urls.push(u);
+            let url = if let Some(u) = resolved_url {
+                u
             } else {
-                urls.push(crate::models::Url {
+                crate::models::Url {
                     id: target_id,
                     code: slug,
                     destination: String::new(),
@@ -435,8 +436,23 @@ pub async fn urls_get(
                     expired: false,
                     last_latency_ms: None,
                     last_status: None,
-                });
-            }
+                }
+            };
+            let owner_username = {
+                let u_conn = state.users_db.lock().unwrap();
+                u_conn
+                    .query_row(
+                        "SELECT username FROM users WHERE tenant_id = ?1;",
+                        [&owner_tid_str],
+                        |r| r.get(0),
+                    )
+                    .ok()
+            };
+            urls.push(crate::templates::urls::AdminUrlRow {
+                url,
+                owner_tenant_id: owner_tid_str,
+                owner_username,
+            });
         }
 
         let start_page = current_page.saturating_sub(3).max(1);
@@ -505,7 +521,11 @@ pub async fn urls_create(
         Err(redir) => return redir.into_response(),
     };
 
-    Redirect::to("/admin/urls?error=Admin is a platform operator and cannot create unowned application URLs; create links via a tenant user account").into_response()
+    (
+        StatusCode::FORBIDDEN,
+        "Admin is a platform operator and cannot create unowned application URLs; create links via a tenant user account",
+    )
+        .into_response()
 }
 
 // POST /admin/urls/delete/:id
